@@ -1,0 +1,51 @@
+### Aize ###
+
+class Box {
+    attr length: int;
+    attr height: int;
+    attr depth: int;
+
+    new(box: Box) {
+        box.length = 10;
+        box.width = 10;
+        box.height = 10;
+        return box;
+    }
+}
+
+
+### C source ###
+
+struct AizeBase {
+    size_t ref_count;
+    void* vtable;
+    AizeClass* class;
+}
+
+struct AizeObject {
+    AizeBase base;
+}
+
+
+struct AizeType {
+    AizeObject base;
+    size_t size;
+}
+
+
+struct AizeClass {
+    AizeType base;
+    AizeString* name;
+    AizeClass* base_class;
+    void** strct;    /* like {
+                            {"length", offsetof(ACF4main3Box, AAF4main3Box6length)},
+                            {"width", offsetof(ACF4main3Box, AAF4main3Box5width)},
+                            {"depth", offsetof(ACF4main3Box, AAF4main3Box5depth)},
+                        } */
+}
+
+
+struct ACf4main3Box {
+    AizeObject base;
+    int32_t AAF4main3Box6length;
+}

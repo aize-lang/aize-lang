@@ -1,0 +1,431 @@
+from __future__ import annotations
+
+import contextlib
+
+from ...common.aize_ast import *
+from ...common import *
+
+BASIC_TOKENS = sorted(["+", "+=",
+                       "-", "-=", "->",
+                       "/", "//", "/=", "//=",
+                       "*", "**", "*=", "**=",
+                       "%", "%=",
+                       "^", "^=", "|", "|=", "&", "&=",
+                       "!", "~",
+                       "==", "!=", "<", "<=", ">", ">=",
+                       "(", ")", "[", "]", "{", "}",
+                       "=", ",", ".", ":", ";",
+                       "@", "::"],
+                      key=len, reverse=True)
+
+KEYWORDS = ['class', 'def', 'if', 'return', 'else', 'import', 'cimport']
+
+BIN = '01'
+OCT = BIN + '234567'
+DEC = OCT + '89'
+HEX = DEC + 'ABCDEF'
+IDENT_START = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_'
+IDENT = IDENT_START + DEC
+
+
+class ScanningError(AizeError):
+    def __init__(self, msg: str, scanner: Scanner):
+        # TODO take a TextPos instead of a Scanner
+        self.msg = msg
+        self.scanner = scanner
+
+    def display(self, file: IO):
+        line_no, line = self.scanner.get_line()
+        pos = self.scanner.line_pos
+        file.write(f"In {self.scanner.file}:\n")
+        file.write(f"Lexing Error: {self.msg}:\n")
+        file.write(f"{line_no:>6} | {line}\n")
+        file.write(f"         {' '*pos}^")
+
+
+class ParseError(AizeError):
+    def __init__(self, msg: str, token: Token):
+        self.msg = msg
+        self.token = token
+
+    def display(self, file: IO):
+        line_no = self.token.pos.line
+        line = self.token.pos.text.splitlines()[line_no-1]
+        pos = self.token.pos.pos
+        file.write(f"In {self.token.pos.file}:\n")
+        file.write(f"Parsing Error: {self.msg}:\n")
+        file.write(f"{line_no:>6} | {line}\n")
+        file.write(f"         {' ' * pos[0]}{'^'*(pos[1]-pos[0])}")
+
+
+class Token:
+    def __init__(self, text: str, type: str, pos: TextPos):
+        self.text = text
+        self.type = type
+        self.pos = pos
+
+    def __repr__(self):
+        return f"Token({self.text!r}, {self.type!r}, {self.pos!r})"
+
+
+class Scanner:
+    def __init__(self, file: Path, text: str):
+        self.file = file
+        self.text = text
+
+        self.pos = 0
+        self.line_pos = 0
+        self.line = 1
+
+    @classmethod
+    def scan(cls, path: Path):
+        text = path.read_text()
+        scanner = Scanner(path, text)
+
+        tokens: List[Token] = []
+
+        while not scanner.is_done():
+            for basic in BASIC_TOKENS:
+                token = scanner.match_token(basic)
+                if token:
+                    tokens += token
+                    break
+            else:
+                if scanner.next() == "0":
+                    if scanner.next(n=1) in "0123456789":
+                        # decimal
+                        with scanner.start_token("dec") as token:
+                            while scanner.next() in "0123456789":
+                                scanner.advance()
+                        tokens.append(token)
+                    elif scanner.next() == "x":
+                        # hex
+                        raise ScanningError("Unsupported number type: 'x'", scanner)
+                    else:
+                        with scanner.start_token("dec") as token:
+                            scanner.advance()
+                        tokens.append(token)
+                elif scanner.next() in IDENT_START:
+                    with scanner.start_token("ident") as token:
+                        while scanner.next() in IDENT:
+                            scanner.advance()
+                    if token.text in KEYWORDS:
+                        token.type = token.text
+                    tokens.append(token)
+                elif scanner.next() == "\"":
+                    with scanner.start_token("str") as token:
+                        scanner.advance()
+                        while scanner.next() != "\"":
+                            if scanner.next() == "\\":
+                                scanner.advance()
+                            scanner.advance()
+                        if scanner.is_done():
+                            raise ScanningError("Unterminated String", scanner)
+                        scanner.advance()
+                    tokens.append(token)
+                elif scanner.next() == "\n":
+                    scanner.advance_line()
+                elif scanner.next() in '\t ':
+                    scanner.advance(1)
+                else:
+                    raise ScanningError(f"Unrecognized character: {scanner.next()}", scanner)
+        return tokens
+
+    def is_done(self):
+        return self.pos >= len(self.text)
+
+    def get_line(self):
+        return self.line, self.text.splitlines()[self.line-1]
+
+    def peek(self, text: str):
+        return self.text.startswith(text, self.pos)
+
+    def next(self, n=0):
+        return self.text[self.pos+n] if not self.is_done() else "\0"
+
+    def advance(self, n=1):
+        self.line_pos += n
+        self.pos += n
+
+    def advance_line(self):
+        self.line_pos = 0
+        self.line += 1
+        self.pos += 1
+
+    def match_token(self, text: str):
+        if self.text.startswith(text, self.pos):
+            start = self.line_pos
+            self.advance(len(text))
+            return [Token(text, text, TextPos(self.text, self.line, (start, self.line_pos), self.file))]
+        return []
+
+    @contextlib.contextmanager
+    def start_token(self, type: str):
+        start_pos = self.pos
+        start_line_pos = self.line_pos
+
+        token = new(Token)
+        yield token
+
+        token.text = self.text[start_pos:self.pos]
+        token.type = type
+        token.pos = TextPos(self.text, self.line, (start_line_pos, self.line_pos), self.file)
+
+
+class Parser:
+    def __init__(self, tokens: List[Token]):
+        self.tokens = tokens
+
+        self.pos = 0
+
+    @classmethod
+    def parse(cls, file: Path):
+        to_parse = [file]
+        files = []
+        while len(to_parse) > 0:
+            curr = to_parse.pop()
+            parser = Parser(Scanner.scan(curr))
+            parsed = parser.parse_file(curr)
+            files.append(parsed)
+
+        files[0].is_main = True
+
+        return Program(files)
+
+    @property
+    def curr(self):
+        return self.tokens[self.pos]
+
+    @property
+    def prev(self):
+        return self.tokens[self.pos-1]
+
+    def curr_is(self, type: str):
+        return self.curr.type == type
+
+    def match(self, type: str):
+        if self.curr_is(type):
+            curr = self.curr
+            self.pos += 1
+            return curr
+        else:
+            return None
+
+    def match_exc(self, type: str):
+        match = self.match(type)
+        if not match:
+            raise ParseError(f"Expected '{type}', got '{self.curr.type}'", self.curr)
+        return match
+
+    def imp(self):
+        if self.curr_is("str"):
+            file = Path.cwd() / self.match_exc("str").text[1:-1]
+        else:
+            loc = self.match_exc("ident").text
+            self.match_exc(":")
+            if loc == "std":
+                file = Path(__file__).absolute().parent.parent.parent / "std" / self.match_exc("str").text[1:-1]
+            else:
+                raise ParseError("Location can only be one of 'std'", self.prev)
+        return file
+
+    def parse_file(self, file: Path):
+        tops = []
+        while self.pos < len(self.tokens):
+            if self.curr_is("class"):
+                pass
+            elif self.curr_is("def"):
+                tops.append(self.parse_function())
+            elif self.curr_is("import"):
+                tops.append(self.parse_import())
+            elif self.curr_is("cimport"):
+                tops.append(self.parse_cimport())
+            else:
+                raise ParseError("Not a valid top-level", self.curr)
+        return File(file, False, tops)
+
+    def parse_import(self):
+        start = self.match("import")
+
+        file = self.imp()
+
+        self.match_exc(";")
+
+        return Import(file).place(start.pos)
+
+    def parse_cimport(self):
+        start = self.match("cimport")
+
+        header = self.imp()
+        source = self.imp()
+
+        self.match_exc(";")
+
+        return CImport(header, source).place(start.pos)
+
+    def parse_function(self):
+        start = self.match("def")
+        name = self.match_exc("ident")
+        self.match_exc("(")
+        args = []
+        while not self.match(")"):
+            arg_name = self.match_exc("ident")
+            self.match_exc(":")
+            arg_type = self.parse_type()
+            args.append((arg_name, arg_type))
+            if not self.match(","):
+                self.match_exc(")")
+                break
+        self.match_exc("->")
+        ret = self.parse_type()
+        self.match_exc("{")
+        body = []
+        while not self.match("}"):
+            body.append(self.parse_stmt())
+        return Function(name.text,
+                        FuncTypeNode([arg_type for _, arg_type in args], ret),
+                        [Param(arg_name.text, arg_type) for arg_name, arg_type in args], ret, body).place(start.pos)
+
+    def parse_type(self):
+        return self.parse_name()
+
+    def parse_name(self):
+        ident = self.match_exc("ident")
+        return Name(ident.text).place(ident.pos)
+
+    def parse_stmt(self):
+        if self.curr_is("return"):
+            return self.parse_return()
+        else:
+            return self.parse_expr_stmt()
+
+    def parse_return(self):
+        start = self.match_exc("return")
+        expr = self.parse_expr()
+        self.match_exc(";")
+        return Return(expr).place(start.pos)
+
+    def parse_expr_stmt(self):
+        start = self.curr
+        expr = self.parse_expr()
+        self.match_exc(";")
+        return ExprStmt(expr).place(start.pos)
+
+    def parse_expr(self):
+        return self.parse_assign()
+
+    def parse_assign(self):
+        expr = self.parse_logic()
+        if self.match("="):
+            start = self.prev
+            right = self.parse_assign()
+            if isinstance(expr, GetVar):
+                expr = SetVar(expr.name, right).place(start.pos)
+            else:
+                raise ParseError("Not a valid assignment target", start)
+        return expr
+
+    def parse_logic(self):
+        # TODO and/or
+        return self.parse_cmp()
+
+    def parse_cmp(self):
+        # TODO chaining <, >, <=, >=, ==, !=
+        return self.parse_add()
+
+    def parse_add(self):
+        expr = self.parse_mult()
+        while self.curr.type in ("+", "-"):
+            start = self.curr
+            if self.curr.type == "+":
+                self.match("+")
+                right = self.parse_mult()
+                expr = Add(expr, right).place(start.pos)
+            elif self.curr.type == "-":
+                self.match("-")
+                right = self.parse_mult()
+                expr = Sub(expr, right).place(start.pos)
+        return expr
+
+    def parse_mult(self):
+        expr = self.parse_unary()  # TODO power between this and unary
+        while self.curr.type in ("*", "/", "%"):
+            start = self.curr
+            if self.curr.type == "*":
+                self.match("*")
+                right = self.parse_unary()
+                expr = Mul(expr, right).place(start.pos)
+            elif self.curr.type == "/":
+                self.match("/")
+                right = self.parse_unary()
+                expr = Div(expr, right).place(start.pos)
+            # elif self.curr.type == "//":
+            #     self.match("//")
+            #     right = self.parse_unary()
+            #     expr = FloorDiv(expr, right)
+            elif self.curr.type == "%":
+                self.match("%")
+                right = self.parse_unary()
+                expr = Mod(expr, right).place(start.pos)
+        return expr
+
+    def parse_unary(self):
+        if self.curr.type in ("-", "!", "~"):
+            start = self.curr
+            if self.match("-"):
+                right = self.parse_unary()
+                return Neg(right).place(start.pos)
+            elif self.match("!"):
+                right = self.parse_unary()
+                return Not(right).place(start.pos)
+            elif self.match("~"):
+                right = self.parse_unary()
+                return Inv(right).place(start.pos)
+        return self.parse_call()
+
+    def parse_call(self):
+        expr = self.parse_primary()
+        while True:
+            if self.match("("):
+                start = self.prev
+                args = []
+                while not self.match(")"):
+                    arg = self.parse_expr()
+                    if not self.match(","):
+                        self.match_exc(")")
+                        break
+                    args.append(arg)
+                expr = Call(expr, args).place(start.pos)
+            elif self.match("."):
+                start = self.prev
+                # TODO maybe also match number for tuples?
+                attr = self.match_exc("ident")
+                expr = GetAttr(expr, attr.text).place(start.pos)
+            elif self.match("::"):
+                start = self.prev
+                attr = self.match_exc("ident")
+                if isinstance(expr, GetVar):
+                    expr = GetNamespaceName(GetNamespace(expr.name).place(expr.pos), attr.text).place(start.pos)
+                else:
+                    raise ParseError("Cannot get an attribute from the left", start)
+            else:
+                break
+        return expr
+
+    def parse_primary(self):
+        if self.match("("):
+            expr = self.parse_expr()
+            self.match_exc(")")
+            return expr
+        elif self.curr_is("dec"):
+            num = self.match("dec")
+            return Num(int(num.text)).place(self.prev.pos)
+        elif self.curr_is("str"):
+            s = self.match("str")
+            s_e = s.text.encode().decode("unicode-escape")
+            return Str(s_e).place(self.prev.pos)
+        elif self.curr_is("ident"):
+            var = self.match("ident")
+            return GetVar(var.text).place(self.prev.pos)
+        else:
+            raise ParseError(f"Cannot parse '{self.curr.type}' token", self.curr)

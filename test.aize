@@ -1,0 +1,10 @@
+cimport std:"aizeio.h" std:"aizeio.c";
+
+def test() -> void {
+    aizeio::test();
+}
+
+def main() -> int {
+    test();
+    return 0;
+}

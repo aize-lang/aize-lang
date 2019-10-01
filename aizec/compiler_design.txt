@@ -1,0 +1,24 @@
+Text is read in through a pipe or file
+
+The text is lexed and parsed into a File node. All imports are then found, read, and parsed into their own File nodes.
+These file nodes are combined into one Program node.
+
+The Type Resolution pass first collects all the types named, then goes and binds these types.
+The Semantic Analysis pass then binds variables to names by pointing each name node to its declaration.
+    - Function parameters
+    - Closed Variables
+    - this
+At the same time, it also runs type inference so attributes can also be bound.
+
+Name Mangling rules:
+    All start with 'A' for aize.
+        - Global functions then have 'F'
+            - Then the path, relative to the main file
+                - So D in front of length of folder name then folder name so /frontends is 'D9frontends'
+                - Repeat for folders
+                - Then F for file, file length, file name, so parser.aize is F6parser
+                - if main is '__main__.aize', then 'frontends/aize/parser.aize' would be 'AFD9frontendsD4aizeF6parser'
+                - and '__main__.aize' is 'AFF4__main__'
+            - Then the length, name of the function
+            -
+
