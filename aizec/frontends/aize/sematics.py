@@ -9,7 +9,8 @@ STD = Path(__file__).absolute().parent.parent.parent / "std"
 AIZEIO_H = STD / "aizeio.h"
 AIZEIO_C = STD / "aizeio.c"
 AIZEIO = Table.new(TableType.C_FILE, {
-    'test': NameDecl('test', FuncTypeNode([], Name('void'))).defined(FuncType([], VoidType()), 'test')
+    'test': NameDecl('test', FuncTypeNode([], Name('void'))).defined(FuncType([], VoidType()), 'test'),
+    'print_int': NameDecl('print_int', FuncTypeNode([Name('int')], Name('int'))).defined(FuncType([IntType()], IntType()), 'print_int')
 }, {}, {})
 
 
@@ -49,7 +50,8 @@ class SemanticAnalysis:
         self.file: File = None
         self.main_file: File = None
 
-        self.stack = []
+        self.scope_names: List[str] = []
+        self.scope_block_count: List[int] = []
 
     @contextlib.contextmanager
     def enter(self, table: Table):
@@ -70,9 +72,7 @@ class SemanticAnalysis:
 
     def visit(self, obj, *args, **kwargs):
         name = obj.__class__.__name__
-        self.stack.append(obj)
         val = getattr(self, "visit_"+name)(obj, *args, **kwargs)
-        self.stack.pop()
         return val
 
     def visit_Program(self, obj: Program):
@@ -90,6 +90,24 @@ class SemanticAnalysis:
                         top.type = cls_type
                         self.table.add_type(top.name, cls_type)
                         classes.append((file, top))
+
+        for file in obj.files:
+            self.file = file
+            with self.enter(file.table):
+                for top in file.tops:
+                    if isinstance(top, Function):
+                        func_table = self.table.child(TableType.SCOPE)
+                        top.table = func_table
+                        with self.enter(func_table):
+                            params = []
+                            for param in top.args:
+                                type = self.visit(param.type_ref)
+                                param.type = type
+                                param.unique = self.mangled_var(param.name)
+                                params.append(param.type)
+                                self.table.add_name(param.name, param)
+                            ret = self.visit(top.ret)
+                        top.type = FuncType(params, ret)
 
         for file, cls in classes:
             cls_type = cls.type
@@ -136,22 +154,41 @@ class SemanticAnalysis:
         file = rel_path.with_suffix("").name
         return ''.join(f"D{len(folder)}{folder}" for folder in folders) + f"F{len(file)}{file}"
 
+    def mangled_var(self, name: str):
+        return f"AF{self.mangled_path()}{''.join(self.scope_names)}V{len(name)}{name}"
+
     def visit_Function(self, obj: Function):
         self.file_table.add_name(obj.name, obj)
-        mangled = f"AF" + self.mangled_path() + f"{len(obj.name)}{obj.name}"
+        mangled = f"AF{self.mangled_path()}{len(obj.name)}{obj.name}"
         obj.unique = mangled
 
         if self.file.is_main and obj.name == "main":
             self.program.main = obj
 
-        func_table = self.table.child(TableType.SCOPE)
-        with self.enter(func_table):
-            for param in obj.args:
-                self.table.add_name(param.name, param)
-
+        with self.enter(obj.table):
+            self.scope_names.append(f"F{len(obj.name)}{obj.name}")
+            self.scope_block_count.append(0)
             for stmt in obj.body:
                 self.visit(stmt)
-        obj.type = FuncType([self.visit(param.type) for param in obj.args], self.visit(obj.ret))
+            self.scope_names.pop()
+            self.scope_block_count.pop()
+
+    def visit_If(self, obj: If):
+        self.visit(obj.cond)
+        self.visit(obj.then_stmt)
+        self.visit(obj.else_stmt)
+
+    def visit_Block(self, obj: Block):
+        obj.table = self.table.child(TableType.SCOPE)
+        with self.enter(obj.table):
+            # max 100 nested scopes per scope
+            self.scope_names.append(f"B{self.scope_block_count[-1]:<02}")
+            self.scope_block_count.append(0)
+            for stmt in obj.stmts:
+                self.visit(stmt)
+            self.scope_names.pop()
+            self.scope_block_count.pop()
+            self.scope_block_count[-1] += 1
 
     def visit_Return(self, obj: Return):
         self.visit(obj.val)
@@ -166,6 +203,25 @@ class SemanticAnalysis:
             args.append(self.visit(arg))
         obj.ret = func.ret
         return func.ret
+
+    def visit_LT(self, obj: LT):
+        left = self.visit(obj.left)
+        right = self.visit(obj.right)
+        if isinstance(left, IntType) and isinstance(right, IntType):
+            obj.ret = IntType()
+        else:
+            raise Exception()
+        return obj.ret
+
+    def visit_Add(self, obj: Add):
+        self.visit(obj.left)
+        self.visit(obj.right)
+        return IntType()
+
+    def visit_Sub(self, obj: Sub):
+        self.visit(obj.left)
+        self.visit(obj.right)
+        return IntType()
 
     def visit_GetVar(self, obj: GetVar):
         decl = self.table.get_name(obj.name)

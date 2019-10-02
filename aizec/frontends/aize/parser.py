@@ -91,20 +91,14 @@ class Scanner:
                     tokens += token
                     break
             else:
-                if scanner.next() == "0":
-                    if scanner.next(n=1) in "0123456789":
-                        # decimal
-                        with scanner.start_token("dec") as token:
-                            while scanner.next() in "0123456789":
-                                scanner.advance()
-                        tokens.append(token)
-                    elif scanner.next() == "x":
-                        # hex
-                        raise ScanningError("Unsupported number type: 'x'", scanner)
-                    else:
-                        with scanner.start_token("dec") as token:
+                if scanner.next() == "0" and scanner.next(n=1) in "x":
+                    if scanner.next(n=1) == "x":
+                        raise ScanningError("Cannot parse hex yet", scanner)
+                elif scanner.next() in "0123456789":
+                    with scanner.start_token("dec") as token:
+                        while scanner.next() in "0123456789":
                             scanner.advance()
-                        tokens.append(token)
+                    tokens.append(token)
                 elif scanner.next() in IDENT_START:
                     with scanner.start_token("ident") as token:
                         while scanner.next() in IDENT:
@@ -296,8 +290,31 @@ class Parser:
     def parse_stmt(self):
         if self.curr_is("return"):
             return self.parse_return()
+        elif self.curr_is("if"):
+            return self.parse_if()
+        elif self.curr_is("{"):
+            return self.parse_block()
         else:
             return self.parse_expr_stmt()
+
+    def parse_if(self):
+        start = self.match("if")
+        self.match_exc("(")
+        cond = self.parse_expr()
+        self.match_exc(")")
+        body = self.parse_stmt()
+        if self.match("else"):
+            else_body = self.parse_stmt()
+        else:
+            else_body = Block([])
+        return If(cond, body, else_body).place(start.pos)
+
+    def parse_block(self):
+        start = self.match_exc("{")
+        body = []
+        while not self.match("}"):
+            body.append(self.parse_stmt())
+        return Block(body).place(start.pos)
 
     def parse_return(self):
         start = self.match_exc("return")
@@ -330,8 +347,34 @@ class Parser:
         return self.parse_cmp()
 
     def parse_cmp(self):
-        # TODO chaining <, >, <=, >=, ==, !=
-        return self.parse_add()
+        expr = self.parse_add()
+        while self.curr.type in ("<", ">"):
+            start = self.curr
+            if self.curr.type == "<":
+                self.match("<")
+                right = self.parse_add()
+                expr = LT(expr, right).place(start.pos)
+            elif self.curr.type == ">":
+                self.match(">")
+                right = self.parse_add()
+                expr = GT(expr, right).place(start.pos)
+            elif self.curr.type == "<=":
+                self.match("<=")
+                right = self.parse_add()
+                expr = LE(expr, right).place(start.pos)
+            elif self.curr.type == ">=":
+                self.match(">=")
+                right = self.parse_add()
+                expr = GE(expr, right).place(start.pos)
+            elif self.curr.type == "==":
+                self.match("==")
+                right = self.parse_add()
+                expr = EQ(expr, right).place(start.pos)
+            elif self.curr.type == "!=":
+                self.match("!=")
+                right = self.parse_add()
+                expr = NE(expr, right).place(start.pos)
+        return expr
 
     def parse_add(self):
         expr = self.parse_mult()
@@ -391,10 +434,10 @@ class Parser:
                 args = []
                 while not self.match(")"):
                     arg = self.parse_expr()
+                    args.append(arg)
                     if not self.match(","):
                         self.match_exc(")")
                         break
-                    args.append(arg)
                 expr = Call(expr, args).place(start.pos)
             elif self.match("."):
                 start = self.prev

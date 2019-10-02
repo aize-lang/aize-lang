@@ -276,6 +276,20 @@ class Stmt(Node):
 
 
 @dataclass()
+class If(Stmt):
+    cond: Expr
+    then_stmt: Stmt
+    else_stmt: Stmt
+
+
+@dataclass()
+class Block(Stmt):
+    stmts: List[Stmt]
+
+    table: Table = field(init=False, repr=False)
+
+
+@dataclass()
 class Return(Stmt):
     val: Expr
 
@@ -321,6 +335,8 @@ class Function(Top, NameDecl):
     args: List[Param]
     ret: TypeNode
     body: List[Stmt]
+
+    table: Table = field(init=False, repr=False)
 
 
 @dataclass()

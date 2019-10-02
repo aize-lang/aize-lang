@@ -16,13 +16,13 @@ def hook_aize_error(exc_type: Cls[T], exc_val: T, exc_tb):
 sys.excepthook = hook_aize_error
 
 
-argparser = argparse.ArgumentParser()
-argparser.add_argument("file")
-argparser.add_argument("--keep-c", action='store_false', dest='delete_c')
+arg_parser = argparse.ArgumentParser()
+arg_parser.add_argument("file")
+arg_parser.add_argument("--keep-c", action='store_false', dest='delete_c')
 
 
 if __name__ == '__main__':
-    args = argparser.parse_args()
+    args = arg_parser.parse_args()
     tree = parser.Parser.parse(Path(args.file))
     sematics.SemanticAnalysis(tree).visit(tree)
     gen.CGenerator.compile(tree, args)

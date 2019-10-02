@@ -1,10 +1,16 @@
 cimport std:"aizeio.h" std:"aizeio.c";
 
-def test() -> void {
-    aizeio::test();
+
+def fibo(n: int) -> int {
+    if (n < 2) {
+        return n;
+    } else {
+        return fibo(n-1) + fibo(n-2);
+    }
 }
 
+
 def main() -> int {
-    test();
+    aizeio::print_int(fibo(20));
     return 0;
 }

@@ -56,16 +56,31 @@ class CGenerator:
 
     def visit_Function(self, obj: Function):
         body = [self.visit(stmt) for stmt in obj.body]
-        return cgen.Function(obj.unique, {param.name: self.visit(param.type) for param in obj.args}, self.visit(obj.type.ret), body)
+        return cgen.Function(obj.unique, {param.unique: self.visit(param.type) for param in obj.args}, self.visit(obj.type.ret), body)
 
     def visit_ExprStmt(self, obj: ExprStmt):
         return cgen.ExprStmt(self.visit(obj.expr))
+
+    def visit_If(self, obj: If):
+        return cgen.If(self.visit(obj.cond), self.visit(obj.then_stmt), self.visit(obj.else_stmt))
+
+    def visit_Block(self, obj: Block):
+        return cgen.Block([self.visit(stmt) for stmt in obj.stmts])
 
     def visit_Return(self, obj: Return):
         return cgen.Return(self.visit(obj.val))
 
     def visit_Call(self, obj: Call):
         return cgen.Call(self.visit(obj.left), [self.visit(arg) for arg in obj.args])
+
+    def visit_LT(self, obj: LT):
+        return cgen.BinOp(self.visit(obj.left), '<', self.visit(obj.right))
+
+    def visit_Add(self, obj: Add):
+        return cgen.BinOp(self.visit(obj.left), '+', self.visit(obj.right))
+
+    def visit_Sub(self, obj: Sub):
+        return cgen.BinOp(self.visit(obj.left), '-', self.visit(obj.right))
 
     def visit_GetVar(self, obj: GetVar):
         return cgen.GetVar(obj.ref.unique)

@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, Type as Cls, TypeVar, IO
+from typing import List, Tuple, Dict, Type as Cls, TypeVar, IO, Union
 from pathlib import Path
 
 T = TypeVar('T')

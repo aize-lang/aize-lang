@@ -6,3 +6,7 @@ void test() {
     printf("Hello world");
 }
 
+
+void print_int(int num) {
+    printf("%i", num);
+}

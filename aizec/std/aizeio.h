@@ -1,3 +1,3 @@
-#include "stdio.h"
-
 void test();
+
+void print_int(int);
