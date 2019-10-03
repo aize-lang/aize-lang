@@ -64,8 +64,14 @@ class CGenerator:
     def visit_If(self, obj: If):
         return cgen.If(self.visit(obj.cond), self.visit(obj.then_stmt), self.visit(obj.else_stmt))
 
+    def visit_While(self, obj: While):
+        return cgen.While(self.visit(obj.cond), self.visit(obj.body))
+
     def visit_Block(self, obj: Block):
         return cgen.Block([self.visit(stmt) for stmt in obj.stmts])
+
+    def visit_VarDecl(self, obj: VarDecl):
+        return cgen.Declare(self.visit(obj.type), obj.unique, self.visit(obj.val))
 
     def visit_Return(self, obj: Return):
         return cgen.Return(self.visit(obj.val))
@@ -84,6 +90,9 @@ class CGenerator:
 
     def visit_GetVar(self, obj: GetVar):
         return cgen.GetVar(obj.ref.unique)
+
+    def visit_SetVar(self, obj: SetVar):
+        return cgen.SetVar(obj.ref.unique, self.visit(obj.val))
 
     def visit_Num(self, obj: Num):
         return cgen.Constant(obj.num)

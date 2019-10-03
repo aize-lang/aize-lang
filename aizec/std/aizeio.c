@@ -8,5 +8,5 @@ void test() {
 
 
 void print_int(int num) {
-    printf("%i", num);
+    printf("%i\n", num);
 }

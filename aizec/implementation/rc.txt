@@ -1,0 +1,65 @@
+
+
+class Node<T> {
+    val: T;
+    next: Node<T>?;   # the ? is just an annotation saying it is intentionally designed to be null sometimes, has no significance
+}
+
+class LinkedList<T> {
+    head: Node<T>?;
+
+    method curr(self) -> T {
+        val = self.head.val;
+        return val;
+    }
+
+    T curr(LinkedList<T> self) {        # self = n
+        INC(self);                      # self = n+1
+        val = self.head.val             # self = n+1  val = k
+        INC(val);                       # self = n+1  val = k+1
+
+        _ret_ = val;                    # self = n+1  val = k+1  _ret_ = k+1
+        INC(_ret_);                     # self = n+1  val = k+2  _ret_ = k+2
+
+        DEC(self);                      # self = n    val = k+2  _ret_ = k+2
+        DEC(val);                       # self = n    val = k+1  _ret_ = k+1
+
+        DEC_NO_CHECK(_ret_);            # self = n    val = k    _ret_ = k
+        return _ret_;
+    }
+
+    # possible opts:
+    #   - in sem, check if a variable is ever passed to another function. If not, then only do a CHECK(obj) on it and no INC and DEC
+    #   - if return is just GetVar(var), then don't INC and DEC _ret_ or DEC var, just do DEC_NO_CHECK(var)
+    #   - if not passed to another function and is var-ret'ed, then don't INC or DEC it at all
+
+    T curr(LinkedList<T> self) {
+        val = self.head.val;
+
+        _ret_ = val;
+
+        CHECK(self);
+
+        return _ret_;
+    }
+
+    T get(self, num: int) {
+        INC(self);
+
+        node = self;
+        INC(node);
+
+        for (int i = 0; i < num; i++) {
+            node = node.next;
+        }
+
+        _ret_ = node;
+        INC(_ret_);
+
+        DEC(node);
+        DEC(self);
+
+        DEC_NO_CHECK(_ret_);
+        return _ret_;
+    }
+}

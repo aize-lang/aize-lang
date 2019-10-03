@@ -96,6 +96,13 @@ class SemanticAnalysis:
             with self.enter(file.table):
                 for top in file.tops:
                     if isinstance(top, Function):
+                        self.file_table.add_name(top.name, top)
+                        mangled = f"AF{self.mangled_path()}{len(top.name)}{top.name}"
+                        top.unique = mangled
+
+                        if self.file.is_main and top.name == "main":
+                            self.program.main = top
+
                         func_table = self.table.child(TableType.SCOPE)
                         top.table = func_table
                         with self.enter(func_table):
@@ -158,13 +165,6 @@ class SemanticAnalysis:
         return f"AF{self.mangled_path()}{''.join(self.scope_names)}V{len(name)}{name}"
 
     def visit_Function(self, obj: Function):
-        self.file_table.add_name(obj.name, obj)
-        mangled = f"AF{self.mangled_path()}{len(obj.name)}{obj.name}"
-        obj.unique = mangled
-
-        if self.file.is_main and obj.name == "main":
-            self.program.main = obj
-
         with self.enter(obj.table):
             self.scope_names.append(f"F{len(obj.name)}{obj.name}")
             self.scope_block_count.append(0)
@@ -177,6 +177,10 @@ class SemanticAnalysis:
         self.visit(obj.cond)
         self.visit(obj.then_stmt)
         self.visit(obj.else_stmt)
+
+    def visit_While(self, obj: While):
+        self.visit(obj.cond)
+        self.visit(obj.body)
 
     def visit_Block(self, obj: Block):
         obj.table = self.table.child(TableType.SCOPE)
@@ -191,6 +195,12 @@ class SemanticAnalysis:
             self.scope_block_count[-1] += 1
 
     def visit_Return(self, obj: Return):
+        self.visit(obj.val)
+
+    def visit_VarDecl(self, obj: VarDecl):
+        obj.type = self.visit(obj.type_ref)
+        obj.unique = self.mangled_var(obj.name)
+        self.table.add_name(obj.name, obj)
         self.visit(obj.val)
 
     def visit_ExprStmt(self, obj: ExprStmt):
@@ -226,6 +236,12 @@ class SemanticAnalysis:
     def visit_GetVar(self, obj: GetVar):
         decl = self.table.get_name(obj.name)
         obj.ref = decl
+        return decl.type
+
+    def visit_SetVar(self, obj: SetVar):
+        decl = self.table.get_name(obj.name)
+        obj.ref = decl
+        self.visit(obj.val)
         return decl.type
 
     def visit_GetNamespaceName(self, obj: GetNamespaceName):

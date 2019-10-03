@@ -283,10 +283,21 @@ class If(Stmt):
 
 
 @dataclass()
+class While(Stmt):
+    cond: Expr
+    body: Stmt
+
+
+@dataclass()
 class Block(Stmt):
     stmts: List[Stmt]
 
     table: Table = field(init=False, repr=False)
+
+
+@dataclass()
+class VarDecl(Stmt, NameDecl):
+    val: Expr
 
 
 @dataclass()

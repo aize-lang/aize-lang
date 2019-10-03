@@ -20,5 +20,8 @@ class TextPos:
         self.pos = pos
         self.file = file
 
+    def get_line(self):
+        return self.text.splitlines()[self.line-1]
+
     def __repr__(self):
         return f"TextPos({self.text!r}, {self.line}, {self.pos})"

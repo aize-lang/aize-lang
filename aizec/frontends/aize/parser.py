@@ -18,7 +18,7 @@ BASIC_TOKENS = sorted(["+", "+=",
                        "@", "::"],
                       key=len, reverse=True)
 
-KEYWORDS = ['class', 'def', 'if', 'return', 'else', 'import', 'cimport']
+KEYWORDS = ['class', 'def', 'var', 'while', 'if', 'return', 'else', 'import', 'cimport']
 
 BIN = '01'
 OCT = BIN + '234567'
@@ -292,8 +292,12 @@ class Parser:
             return self.parse_return()
         elif self.curr_is("if"):
             return self.parse_if()
+        elif self.curr_is("while"):
+            return self.parse_while()
         elif self.curr_is("{"):
             return self.parse_block()
+        elif self.curr_is("var"):
+            return self.parse_var()
         else:
             return self.parse_expr_stmt()
 
@@ -309,12 +313,30 @@ class Parser:
             else_body = Block([])
         return If(cond, body, else_body).place(start.pos)
 
+    def parse_while(self):
+        start = self.match("while")
+        self.match_exc("(")
+        cond = self.parse_expr()
+        self.match_exc(")")
+        body = self.parse_stmt()
+        return While(cond, body).place(start.pos)
+
     def parse_block(self):
         start = self.match_exc("{")
         body = []
         while not self.match("}"):
             body.append(self.parse_stmt())
         return Block(body).place(start.pos)
+
+    def parse_var(self):
+        start = self.match("var")
+        var = self.match_exc("ident").text
+        self.match_exc(":")
+        type = self.parse_type()
+        self.match_exc("=")
+        val = self.parse_expr()
+        self.match_exc(";")
+        return VarDecl(var, type, val).place(start.pos)
 
     def parse_return(self):
         start = self.match_exc("return")

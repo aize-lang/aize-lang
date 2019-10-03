@@ -10,7 +10,23 @@ def fibo(n: int) -> int {
 }
 
 
+def fast_fibo(n: int) -> int {
+    var f0: int = 0;
+    var f1: int = 1;
+    var f2: int = f0 + f1;
+    var i: int = 0;
+    while (i < n) {
+        f2 = f0 + f1;
+        f0 = f1;
+        f1 = f2;
+        i = i + 1;
+    }
+    return f0;
+}
+
+
 def main() -> int {
-    aizeio::print_int(fibo(20));
+    aizeio::print_int(fast_fibo(39));
+    aizeio::print_int(fibo(39));
     return 0;
 }
