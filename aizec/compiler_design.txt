@@ -14,6 +14,7 @@ Name Mangling rules:
     All start with 'A' for aize.
         - Global functions then have 'F'
             - Then the path, relative to the main file
+                - B to go back a directory relative to the main file
                 - So D in front of length of folder name then folder name so /frontends is 'D9frontends'
                 - Repeat for folders
                 - Then F for file, file length, file name, so parser.aize is F6parser

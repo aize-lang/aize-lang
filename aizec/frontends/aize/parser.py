@@ -217,7 +217,7 @@ class Parser:
             raise ParseError(f"Expected '{type}', got '{self.curr.type}'", self.curr)
         return match
 
-    def imp(self):
+    def imp(self) -> Path:
         if self.curr_is("str"):
             file = self.file.parent / self.match_exc("str").text[1:-1]
         else:
@@ -261,7 +261,7 @@ class Parser:
 
         self.match_exc(";")
 
-        return Import(file).place(start.pos), file
+        return Import(file, file.with_suffix("").name).place(start.pos), file
 
     def parse_cimport(self):
         start = self.match("cimport")

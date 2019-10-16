@@ -155,7 +155,7 @@ class SemanticAnalysis:
             raise SemanticError("Cannot import c files", obj)
 
     def visit_Import(self, obj: Import):
-        self.file_table.add_namespace(obj.file.name, self.files[obj.file].table)
+        self.file_table.add_namespace(obj.as_name, self.files[obj.file].table)
 
     def mangled_path(self):
         main_path = self.main_file.path

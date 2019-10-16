@@ -353,6 +353,7 @@ class Function(Top, NameDecl):
 @dataclass()
 class Import(Top):
     file: Path
+    as_name: str
 
 
 @dataclass()

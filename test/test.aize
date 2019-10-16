@@ -15,7 +15,7 @@ def main() -> int {
     {
         var i: int = 0;
         while (i < 30) {
-            aizeio::print_int(fibo(i));
+            io::print_int(fibo(i));
             i = i + 1;
         }
     }
