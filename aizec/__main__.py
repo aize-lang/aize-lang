@@ -23,6 +23,7 @@ arg_parser.add_argument("--keep-c", action='store_false', dest='delete_c')
 
 if __name__ == '__main__':
     args = arg_parser.parse_args()
-    tree = parser.Parser.parse(Path(args.file))
+    file = Path(args.file).absolute()
+    tree = parser.Parser.parse(file)
     sematics.SemanticAnalysis(tree).visit(tree)
     gen.CGenerator.compile(tree, args)

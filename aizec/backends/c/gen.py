@@ -7,6 +7,13 @@ from . import _cgen as cgen
 TCC_PATH = Path(__file__).absolute().parent.parent.parent / "tcc" / "tcc.exe"
 
 
+STD_IMPORTS = [
+    STD / "aize_builtins.h", STD / "aize_builtins.c",
+    STD / "aize_mem.h", STD / "aize_mem.c",
+    STD / "aize_common.h",
+]
+
+
 class CGenerator:
     def __init__(self, header: IO, source: IO):
         self.header = header
@@ -14,7 +21,7 @@ class CGenerator:
 
         self.links: List[Path] = []
 
-        self.main: NameDecl = None
+        self.main: NameDecl
 
     @classmethod
     def gen(cls, tree: Program):
@@ -30,7 +37,7 @@ class CGenerator:
     @classmethod
     def compile(cls, tree: Program, args):
         source, header, gen = cls.gen(tree)
-        subprocess.run([str(TCC_PATH), f"{source}", *(str(path) for path in gen.links)])
+        subprocess.run([str(TCC_PATH), "-w", f"{source}", *(str(path) for path in gen.links)], shell=True)
         if args.delete_c:
             source.unlink()
             header.unlink()
@@ -40,6 +47,13 @@ class CGenerator:
 
     def visit_Program(self, obj: Program):
         tops = []
+
+        for imp in STD_IMPORTS:
+            if imp.suffix == ".c":
+                self.links.append(imp)
+            elif imp.suffix == ".h":
+                tops.append(cgen.Include(imp.as_posix()))
+        # TODO link the .c
         for file in obj.files:
             tops.extend(self.visit(file))
         return tops
@@ -47,16 +61,25 @@ class CGenerator:
     def visit_File(self, obj: File):
         tops = []
         for top in obj.tops:
-            tops.append(self.visit(top))
+            ret = self.visit(top)
+            if ret is not None:
+                tops.append(ret)
         return tops
 
     def visit_CImport(self, obj: CImport):
-        self.links.append(obj.source)
+        if obj.source not in self.links:
+            self.links.append(obj.source)
         return cgen.Include(obj.header.as_posix())
+
+    def visit_Import(self, obj: Import):
+        return None
 
     def visit_Function(self, obj: Function):
         body = [self.visit(stmt) for stmt in obj.body]
-        return cgen.Function(obj.unique, {param.unique: self.visit(param.type) for param in obj.args}, self.visit(obj.type.ret), body)
+        return cgen.Function(obj.unique,
+                             {param.unique: self.visit(param.type) for param in obj.args},
+                             self.visit(obj.type.ret),
+                             body)
 
     def visit_ExprStmt(self, obj: ExprStmt):
         return cgen.ExprStmt(self.visit(obj.expr))
@@ -106,6 +129,9 @@ class CGenerator:
 
     def visit_IntType(self, obj: IntType):
         return cgen.IntType()
+
+    def visit_LongType(self, obj: LongType):
+        return cgen.LongType()
 
     def visit_VoidType(self, obj: VoidType):
         return cgen.VoidType()

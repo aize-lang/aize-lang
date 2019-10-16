@@ -167,20 +167,26 @@ class Scanner:
 
 
 class Parser:
-    def __init__(self, tokens: List[Token]):
+    def __init__(self, tokens: List[Token], file: Path):
         self.tokens = tokens
+        self.file = file
 
         self.pos = 0
 
     @classmethod
     def parse(cls, file: Path):
         to_parse = [file]
+        visited = set()
         files = []
         while len(to_parse) > 0:
             curr = to_parse.pop()
-            parser = Parser(Scanner.scan(curr))
-            parsed = parser.parse_file(curr)
+            if curr in visited:
+                continue
+            parser = Parser(Scanner.scan(curr), curr)
+            parsed, imps = parser.parse_file(curr)
             files.append(parsed)
+            visited.add(curr)
+            to_parse.extend(imps)
 
         files[0].is_main = True
 
@@ -213,39 +219,49 @@ class Parser:
 
     def imp(self):
         if self.curr_is("str"):
-            file = Path.cwd() / self.match_exc("str").text[1:-1]
+            file = self.file.parent / self.match_exc("str").text[1:-1]
         else:
             loc = self.match_exc("ident").text
             self.match_exc(":")
             if loc == "std":
-                file = Path(__file__).absolute().parent.parent.parent / "std" / self.match_exc("str").text[1:-1]
+                file = STD / self.match_exc("str").text[1:-1]
             else:
-                raise ParseError("Location can only be one of 'std'", self.prev)
+                raise ParseError("Location can only be 'std' currently", self.prev)
         return file
 
     def parse_file(self, file: Path):
         tops = []
+        imps = []
         while self.pos < len(self.tokens):
             if self.curr_is("class"):
                 pass
             elif self.curr_is("def"):
                 tops.append(self.parse_function())
             elif self.curr_is("import"):
-                tops.append(self.parse_import())
+                obj, imp = self.parse_import()
+                tops.append(obj)
+                imps.append(imp)
             elif self.curr_is("cimport"):
                 tops.append(self.parse_cimport())
             else:
                 raise ParseError("Not a valid top-level", self.curr)
-        return File(file, False, tops)
+        return File(file, False, tops), imps
 
     def parse_import(self):
         start = self.match("import")
 
         file = self.imp()
 
+        for ext in (".aize", ):
+            if file.with_suffix(ext).exists():
+                file = file.with_suffix(ext)
+                break
+        else:
+            raise ParseError(f"No file with extensions '.aize' found for \"{file}\"", start)
+
         self.match_exc(";")
 
-        return Import(file).place(start.pos)
+        return Import(file).place(start.pos), file
 
     def parse_cimport(self):
         start = self.match("cimport")

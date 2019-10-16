@@ -378,6 +378,16 @@ class VoidType(Type):
 
 
 @dataclass()
+class LongType(Type):
+    pass
+
+
+@dataclass()
+class BoolType(Type):
+    pass
+
+
+@dataclass()
 class FuncTypeNode(TypeNode):
     args: List[TypeNode]
     ret: TypeNode

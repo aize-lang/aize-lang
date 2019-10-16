@@ -212,7 +212,12 @@ class VoidType(DataType):
 
 @dataclass()
 class IntType(DataType):
-    typ = "int"
+    typ = "int32_t"
+
+
+@dataclass()
+class LongType(DataType):
+    typ = "int64_t"
 
 
 @dataclass()
@@ -405,9 +410,9 @@ class Include(TopLevel):
 
     def definition(self):
         if self.angled:
-            return "#include <" + self.name + ">"
+            return "#include <" + str(self.name) + ">"
         else:
-            return "#include \"" + self.name + "\""
+            return "#include \"" + str(self.name) + "\""
 
     def declaration(self):
         return self.definition()

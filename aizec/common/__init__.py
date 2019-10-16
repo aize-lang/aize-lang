@@ -25,3 +25,6 @@ class TextPos:
 
     def __repr__(self):
         return f"TextPos({self.text!r}, {self.line}, {self.pos})"
+
+
+STD = Path(__file__).absolute().parent.parent / "std"

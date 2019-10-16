@@ -1,0 +1,5 @@
+cimport "aizeio.h" "aizeio.c";
+
+def print_int(n: int) -> void {
+    aizeio::print_int(n);
+}

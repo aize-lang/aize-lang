@@ -5,7 +5,6 @@ import contextlib
 from ...common.aize_ast import *
 
 
-STD = Path(__file__).absolute().parent.parent.parent / "std"
 AIZEIO_H = STD / "aizeio.h"
 AIZEIO_C = STD / "aizeio.c"
 AIZEIO = Table.new(TableType.C_FILE, {
@@ -37,7 +36,8 @@ class SemanticAnalysis:
             {},
             {
                 "int": IntType(),
-                'void': VoidType()
+                'void': VoidType(),
+                'long': LongType()
             },
             {}
         )
@@ -77,6 +77,7 @@ class SemanticAnalysis:
 
     def visit_Program(self, obj: Program):
         for file in obj.files:
+            self.files[file.path] = file
             file.table = self.table.child(TableType.FILE)
             if file.is_main:
                 self.main_file = file
@@ -150,7 +151,11 @@ class SemanticAnalysis:
             self.file_table.add_namespace("aizeio", AIZEIO)
             self.program.c_files.append((AIZEIO_H, AIZEIO_C))
         else:
+            breakpoint()
             raise SemanticError("Cannot import c files", obj)
+
+    def visit_Import(self, obj: Import):
+        self.file_table.add_namespace(obj.file.name, self.files[obj.file].table)
 
     def mangled_path(self):
         main_path = self.main_file.path
@@ -217,8 +222,10 @@ class SemanticAnalysis:
     def visit_LT(self, obj: LT):
         left = self.visit(obj.left)
         right = self.visit(obj.right)
-        if isinstance(left, IntType) and isinstance(right, IntType):
-            obj.ret = IntType()
+        left_is_int = isinstance(left, (IntType, LongType))
+        right_is_int = isinstance(right, (IntType, LongType))
+        if left_is_int and right_is_int:
+            obj.ret = BoolType()
         else:
             raise Exception()
         return obj.ret
@@ -234,7 +241,10 @@ class SemanticAnalysis:
         return IntType()
 
     def visit_GetVar(self, obj: GetVar):
-        decl = self.table.get_name(obj.name)
+        try:
+            decl = self.table.get_name(obj.name)
+        except KeyError:
+            raise SemanticError(f"Name {obj.name} not found", obj)
         obj.ref = decl
         return decl.type
 

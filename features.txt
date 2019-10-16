@@ -1,0 +1,5 @@
+Features I want to add or have added:
+
+    - No exceptions, only Result Enums
+    - Match enums
+    - Lambdas: var add_five = def (num: int) => num + 5; map(items, {.0 + 5})
