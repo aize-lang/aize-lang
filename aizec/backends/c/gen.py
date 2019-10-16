@@ -14,6 +14,14 @@ STD_IMPORTS = [
 ]
 
 
+class CompilationError(AizeError):
+    def __init__(self, msg: str):
+        self.msg = msg
+
+    def display(self, file: IO):
+        file.write(f"{self.msg}.")
+
+
 class CGenerator:
     def __init__(self, header: IO, source: IO):
         self.header = header
@@ -37,10 +45,16 @@ class CGenerator:
     @classmethod
     def compile(cls, tree: Program, args):
         source, header, gen = cls.gen(tree)
-        subprocess.run([str(TCC_PATH), "-w", f"{source}", *(str(path) for path in gen.links)], shell=True)
+        check = subprocess.run([str(TCC_PATH),
+                                f"-o{args.out.as_posix()}",
+                                "-w", f"{source}",
+                                *(str(path) for path in gen.links)],
+                               check=False)  #, shell=True)
         if args.delete_c:
             source.unlink()
             header.unlink()
+        if check.returncode != 0:
+            raise CompilationError("Compilation of generated C code failed")
 
     def visit(self, obj):
         return getattr(self, "visit_"+obj.__class__.__name__)(obj)

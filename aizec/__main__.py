@@ -18,12 +18,16 @@ sys.excepthook = hook_aize_error
 
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("file")
+arg_parser.add_argument("-o", dest="out", default=None)
 arg_parser.add_argument("--keep-c", action='store_false', dest='delete_c')
 
 
 if __name__ == '__main__':
     args = arg_parser.parse_args()
     file = Path(args.file).absolute()
+    if args.out is None:
+        # TODO support other OS's
+        args.out = file.with_suffix(".exe")
     tree = parser.Parser.parse(file)
     sematics.SemanticAnalysis(tree).visit(tree)
     gen.CGenerator.compile(tree, args)

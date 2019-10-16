@@ -161,10 +161,19 @@ class SemanticAnalysis:
         main_path = self.main_file.path
         main_dir = main_path.parent
         file_path = self.file.path
-        rel_path = file_path.relative_to(main_dir)
+        backs = 0
+        dir_on = main_dir
+        while True:
+            try:
+                rel_path = file_path.relative_to(dir_on)
+            except ValueError:
+                dir_on = dir_on.parent
+                backs += 1
+            else:
+                break
         folders: Tuple[str, ...] = rel_path.parts[:-1]
         file = rel_path.with_suffix("").name
-        return ''.join(f"D{len(folder)}{folder}" for folder in folders) + f"F{len(file)}{file}"
+        return 'B'*backs + ''.join(f"D{len(folder)}{folder}" for folder in folders) + f"F{len(file)}{file}"
 
     def mangled_var(self, name: str):
         return f"AF{self.mangled_path()}{''.join(self.scope_names)}V{len(name)}{name}"
