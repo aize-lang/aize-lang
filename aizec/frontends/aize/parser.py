@@ -18,7 +18,7 @@ BASIC_TOKENS = sorted(["+", "+=",
                        "@", "::"],
                       key=len, reverse=True)
 
-KEYWORDS = ['class', 'def', 'var', 'while', 'if', 'return', 'else', 'import', 'cimport']
+KEYWORDS = ['class', 'def', 'method', 'attr', 'var', 'while', 'if', 'return', 'else', 'import', 'cimport']
 
 BIN = '01'
 OCT = BIN + '234567'
@@ -117,6 +117,9 @@ class Scanner:
                             raise ScanningError("Unterminated String", scanner)
                         scanner.advance()
                     tokens.append(token)
+                elif scanner.next() == "#":
+                    while not scanner.next() == "\n":
+                        scanner.advance()
                 elif scanner.next() == "\n":
                     scanner.advance_line()
                 elif scanner.next() in '\t ':
@@ -234,7 +237,7 @@ class Parser:
         imps = []
         while self.pos < len(self.tokens):
             if self.curr_is("class"):
-                pass
+                tops.append(self.parse_class())
             elif self.curr_is("def"):
                 tops.append(self.parse_function())
             elif self.curr_is("import"):
@@ -247,6 +250,57 @@ class Parser:
                 raise ParseError("Not a valid top-level", self.curr)
         return File(file, False, tops), imps
 
+    def parse_class(self):
+        start = self.match_exc("class")
+
+        name = self.match_exc("ident").text
+        # TODO inheritance, generics
+        self.match_exc("{")
+        attrs = {}
+        methods = {}
+        while not self.match("}"):
+            if self.curr_is("attr"):
+                attr = self.parse_attr()
+                attrs[attr.name] = attr
+            elif self.curr_is("method"):
+                method = self.parse_method()
+                methods[method.name] = method
+            else:
+                raise ParseError("Not a valid class-statement", self.curr)
+
+        return Class(name, Name(name), None, attrs, methods).place(start.pos)
+
+    def parse_attr(self):
+        start = self.match("attr")
+        name = self.match_exc("ident").text
+        self.match_exc(":")
+        type = self.parse_type()
+        self.match_exc(";")
+        return Attr(name, type).place(start.pos)
+
+    def parse_method(self):
+        start = self.match("method")
+        name = self.match_exc("ident")
+        self.match_exc("(")
+        args = []
+        while not self.match(")"):
+            arg_name = self.match_exc("ident")
+            self.match_exc(":")
+            arg_type = self.parse_type()
+            args.append((arg_name, arg_type))
+            if not self.match(","):
+                self.match_exc(")")
+                break
+        self.match_exc("->")
+        ret = self.parse_type()
+        self.match_exc("{")
+        body = []
+        while not self.match("}"):
+            body.append(self.parse_stmt())
+        return Method(name.text,
+                      FuncTypeNode([arg_type for _, arg_type in args], ret),
+                      [Param(arg_name.text, arg_type) for arg_name, arg_type in args], ret, body).place(start.pos)
+
     def parse_import(self):
         start = self.match("import")
 
@@ -257,7 +311,7 @@ class Parser:
                 file = file.with_suffix(ext)
                 break
         else:
-            raise ParseError(f"No file with extensions '.aize' found for \"{file}\"", start)
+            raise ParseError(f"No file with extension '.aize' found for \"{file}\"", start)
 
         self.match_exc(";")
 
@@ -376,6 +430,8 @@ class Parser:
             right = self.parse_assign()
             if isinstance(expr, GetVar):
                 expr = SetVar(expr.name, right).place(start.pos)
+            elif isinstance(expr, GetAttr):
+                expr = SetAttr(expr.left, expr.attr, right).place(start.pos)
             else:
                 raise ParseError("Not a valid assignment target", start)
         return expr

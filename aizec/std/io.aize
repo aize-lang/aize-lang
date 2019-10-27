@@ -1,5 +1,13 @@
 cimport "aizeio.h" "aizeio.c";
 
-def print_int(n: int) -> void {
-    aizeio::print_int(n);
+def print_int(n: int, newline: int) -> void {
+    aizeio::print_int(n, newline);
+}
+
+def print_space() -> void {
+    aizeio::print_space();
+}
+
+def time() -> int {
+    return aizeio::get_time();
 }

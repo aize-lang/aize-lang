@@ -1,5 +1,6 @@
 
 #include "aizeio.h"
+#include "time.h"
 #include <stdio.h>
 
 void test() {
@@ -7,6 +8,17 @@ void test() {
 }
 
 
-void print_int(int num) {
-    printf("%i\n", num);
+void print_int(int num, int newline) {
+    if (newline)
+        printf("%i\n", num);
+    else
+        printf("%i", num);
+}
+
+void print_space() {
+    printf(" ");
+}
+
+int get_time() {
+    return clock();
 }

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, List, Dict, IO, ClassVar, cast, Iterable
+from typing import Any, List, Dict, IO, ClassVar, cast, Iterable, Union
 
 
 class Node(ABC):
@@ -75,6 +75,15 @@ class GetArrow(Expression):
 
     def generate(self):
         return f"{self.struct_p.generate()}->{self.attr}"
+
+
+@dataclass()
+class GetItem(Expression):
+    array_p: Expression
+    item: int
+
+    def generate(self):
+        return f"{self.array_p.generate()}[{self.item}]"
 
 
 @dataclass()
@@ -199,7 +208,7 @@ class DataType(Type):
         if ptrs == 0:
             return self.typ + " " + name + "(" + args + ")"
         else:
-            return self.typ + " (" + "*" * ptrs + name + "(" + args + ")" + ")"
+            return self.typ + "*" * ptrs + " " + name + "(" + args + ")"
 
     def with_name(self, name: str, ptrs=0) -> str:
         return self.typ + "*"*ptrs + " " + name
@@ -275,6 +284,15 @@ class StructType(DataType):
     @property
     def typ(self):
         return "struct " + self.name
+
+
+@dataclass()
+class NameType(DataType):
+    name: str
+
+    @property
+    def typ(self):
+        return self.name
 # endregion
 
 
@@ -290,7 +308,7 @@ class Statement(Node):
 class Declare(Statement):
     typ: Type
     name: str
-    val: Expression
+    val: Union[Expression, None]
 
     def generate(self, indent=0):
         if self.val is None:
@@ -305,6 +323,14 @@ class ExprStmt(Statement):
 
     def generate(self, indent=0):
         return "    "*indent + self.expr.generate() + ";"
+
+
+@dataclass()
+class Comment(Statement):
+    msg: str
+
+    def generate(self, indent=0):
+        return "    "*indent + "// " + self.msg
 
 
 @dataclass()
@@ -468,6 +494,19 @@ class Function(TopLevel):
         return decl
 
 
+@dataclass()
+class Global(TopLevel):
+    name: str
+    type: Type
+    val: Expression
+
+    def definition(self) -> str:
+        return f"extern {self.type.with_name(self.name)};"
+
+    def declaration(self) -> str:
+        return f"{self.type.with_name(self.name)} = {self.val.generate()};"
+
+
 class Program:
     def __init__(self, top_levels: List[TopLevel], path: pathlib.Path):
         self.top_levels = top_levels
@@ -491,16 +530,10 @@ class Unit:
     def __init__(self, programs: List[Program]):
         self.programs = programs
 
-    def generate_single(self, name: str, header: IO, source: IO):
-        header.write(f"#ifndef {name.upper()}_H\n")
-        header.write(f"#define {name.upper()}_H\n")
 
-        source.write(f"#include \"{name}.h\"\n\n")
-        for top_level in self.top_levels:
-            header.write(top_level.declaration())
-            header.write("\n\n")
+def void_ptr():
+    return PointerType(VoidType())
 
-            source.write(top_level.definition())
-            source.write("\n\n")
-        header.write(f"#endif  // {name.upper()}_H")
 
+def printf(s: str, end="\\n"):
+    return ExprStmt(Call(GetVar("printf"), [Constant(s + end)]))

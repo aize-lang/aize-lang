@@ -11,6 +11,8 @@ class TableType(Enum):
     FILE = 1
     C_FILE = 2
     SCOPE = 3
+    CLASS = 4
+    OBJECT = 5
 
 
 class Table:
@@ -21,6 +23,12 @@ class Table:
         self._namespaces: Dict[str, Table] = {}
 
         self.type = type
+
+        self.block_count = 0
+
+    @classmethod
+    def empty(cls, type: TableType):
+        return cls.new(type, {}, {}, {})
 
     @classmethod
     def new(cls, type: TableType, names: Dict[str, NameDecl], types: Dict[str, Type], namespaces: Dict[str, Table]):
@@ -80,6 +88,9 @@ class Table:
     def child(self, type: TableType):
         return Table(type, self)
 
+    def __repr__(self):
+        return f"Table(type={self.type})"
+
 
 @dataclass()
 class Node:
@@ -108,11 +119,16 @@ class Type:
 @dataclass()
 class NameDecl:
     name: str
-    type_ref: FuncTypeNode
-    type: FuncType = field(init=False, repr=False)
+    type_ref: TypeNode
+    type: Type = field(init=False, repr=False)
     unique: str = field(init=False, repr=False)
 
-    def defined(self, type: FuncType, unique: str):
+    @classmethod
+    def direct(cls, name: str, unique: str, type: Type):
+        # noinspection PyTypeChecker
+        return cls(name, None).defined(type, unique)
+
+    def defined(self, type: Type, unique: str):
         self.type = type
         self.unique = unique
         return self
@@ -227,11 +243,51 @@ class Call(Expr):
     left: Expr
     args: List[Expr]
 
+    method_call: Union[MethodCall, None] = field(init=False, default=None, repr=False)
+
 
 @dataclass()
 class GetAttr(Expr):
-    obj: Expr
+    left: Expr
     attr: str
+    pointed: NameDecl = field(init=False, repr=False)
+
+
+@dataclass()
+class SetAttr(Expr):
+    left: Expr
+    attr: str
+    val: Expr
+    pointed: NameDecl = field(init=False, repr=False)
+
+
+@dataclass()
+class MethodCall(Expr):
+    obj: Expr
+    method: str
+    args: List[Expr]
+    depth: int
+
+    pointed: NameDecl = field(init=False, repr=False)
+
+    @classmethod
+    def is_method(cls, obj: Call):
+        if isinstance(obj, Call):
+            if isinstance(obj.left, GetAttr):
+                if isinstance(obj.left.left.ret, ClassType) and obj.left.attr in obj.left.left.ret.methods:
+                    return obj.left.left.ret.methods[obj.left.attr]
+        else:
+            return False
+
+    @classmethod
+    def make_method_call(cls, obj: Call, depth: int):
+        meth = cls.is_method(obj)
+        if meth:
+            call = cls(obj.left.left, obj.left.attr, obj.args, depth).place(obj.pos)
+            call.pointed = meth
+            obj.method_call = call
+        else:
+            raise Exception()
 
 
 @dataclass()
@@ -293,6 +349,7 @@ class Block(Stmt):
     stmts: List[Stmt]
 
     table: Table = field(init=False, repr=False)
+    block_count: int = field(init=False, repr=False)
 
 
 @dataclass()
@@ -316,29 +373,40 @@ class Top(Node):
 
 
 @dataclass()
-class Class(Top):
-    name: str
-    base: Type
+class Class(Top, NameDecl):
+    base: Union[TypeNode, None]
 
-    attrs: Dict[str, TypeNode]
+    attrs: Dict[str, Attr]
     methods: Dict[str, Method]
 
     type: ClassType = field(init=False, repr=False)
 
 
 @dataclass()
-class Method:
-    name_decl: NameDecl
+class Attr(Node, NameDecl):
+    pass
+
+
+@dataclass()
+class Method(Node, NameDecl):
     args: List[Param]
-    ret: Type
+    ret: TypeNode
     body: List[Stmt]
+
+    type: FuncType = field(init=False, repr=False)
+    table: Table = field(init=False, repr=False)
 
 
 @dataclass()
 class ClassType(Type):
     base: ClassType
-    attrs: Dict[str, Type]
-    methods: Dict[str, FuncType]
+    attrs: Dict[str, Attr]
+    methods: Dict[str, Method]
+
+    structs: str = field(init=False, repr=False)
+
+    obj_namespace: Table = field(init=False, repr=False)
+    cls_namespace: Table = field(init=False, repr=False)
 
 
 @dataclass()
@@ -347,7 +415,10 @@ class Function(Top, NameDecl):
     ret: TypeNode
     body: List[Stmt]
 
+    type: FuncType = field(init=False, repr=False)
     table: Table = field(init=False, repr=False)
+
+    temp_count: int = field(init=False, default=0, repr=False)
 
 
 @dataclass()

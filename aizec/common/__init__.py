@@ -8,6 +8,14 @@ def new(cls: Cls[T]) -> T:
     return cls.__new__(cls)
 
 
+def static_var(**kw_vars):
+    def _dec(func):
+        def wrapped(*args, **kwargs):
+            func(*args, **kwargs)
+        return func
+    return _dec
+
+
 class AizeError(Exception):
     def display(self, file: IO):
         raise NotImplementedError()

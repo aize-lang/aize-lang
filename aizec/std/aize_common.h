@@ -7,7 +7,7 @@ extern uint32_t aize_mem_depth;
 
 
 typedef struct AizeBase {
-    void* vtable;
+    void** vtable;
     uint32_t depth;
     size_t ref_count;
 } AizeBase;
