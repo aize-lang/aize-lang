@@ -117,17 +117,63 @@ class CGenerator:
         attrs.update({attr.unique: self.visit(attr.type) for attr in obj.attrs.values()})
         cls_struct = cgen.Struct(obj.unique, attrs)
 
+        vtable_items = [cgen.Ref(cgen.GetVar(meth.unique)) for meth in obj.methods.values()]
+        vtable = cgen.GlobalArray(f"{obj.unique}_vtable", cgen.PointerType(cgen.void_ptr()),
+                                  len(vtable_items),
+                                  cgen.ArrayInit(vtable_items))
+
         new_unique = obj.type.cls_namespace.get_name("new").unique
         new_attrs = {attr.unique: self.visit(attr.type) for attr in obj.attrs.values()}
+
+        def set_attr(attr):
+            return cgen.ExprStmt(cgen.SetArrow(cgen.GetVar("mem"), attr.unique, cgen.GetVar(attr.unique)))
+
         new_func = cgen.Function(new_unique, new_attrs, cls_ptr, [
             cgen.Declare(cls_ptr, "mem", cgen.Call(cgen.GetVar("aize_mem_malloc"), [cgen.SizeOf(cls_struct.struct_type)])),
+            cgen.ExprStmt(cgen.SetArrow(cgen.Cast(cgen.GetVar('mem'), AIZE_BASE), "vtable", cgen.GetVar(vtable.name))),
+            *(set_attr(attr) for attr in obj.attrs.values()),
             cgen.Return(cgen.GetVar("mem")),
         ])
 
-        return [cls_struct, new_func]
+        methods = []
+        for meth in obj.methods.values():
+            methods.append(self.visit(meth))
+
+        return [cls_struct, new_func, *methods, vtable]
 
     def visit_ClassType(self, obj: ClassType):
         return cgen.PointerType(cgen.StructType(obj.structs))
+
+    def visit_Method(self, obj: Method):
+        body = []
+
+        for i in range(obj.temp_count):
+            body.append(cgen.Declare(cgen.void_ptr(), f"AT{i}", None))
+
+        if obj.unique != 'main':
+            body.append(cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])))
+            self.in_main_main = False
+        else:
+            body.append(cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_init"), [])))
+            self.in_main_main = True
+
+        for stmt in obj.body:
+            ret = self.visit(stmt)
+            if self.debug:
+                body.append(cgen.Comment(f"{stmt}"))
+                body.append(cgen.printf(str(stmt)))
+            if isinstance(ret, (list, tuple)):
+                body.extend(ret)
+            elif ret is not None:
+                body.append(ret)
+
+        if len(obj.body) == 0 or not isinstance(obj.body[-1], Return):
+            body.append(cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_exit"), [])))
+
+        return cgen.Function(obj.unique,
+                             {param.unique: self.visit(param.type) for param in obj.args},
+                             self.visit(obj.type.ret),
+                             body)
 
     def visit_Function(self, obj: Function):
         body = []
@@ -178,8 +224,13 @@ class CGenerator:
     def visit_Return(self, obj: Return):
         if self.in_main_main:
             return cgen.Return(self.visit(obj.val))
-        exit_call = cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_exit"), []))
-        return [exit_call, cgen.Return(self.visit(obj.val))]
+        val = self.visit(obj.val)
+        if isinstance(obj.val.ret, ClassType):
+            ret = cgen.Call(cgen.GetVar("aize_mem_ret"), [val])
+            return cgen.Return(ret)
+        else:
+            exit_call = cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_exit"), []))
+            return [exit_call, cgen.Return(val)]
 
     def visit_Call(self, obj: Call):
         if obj.method_call is not None:
@@ -193,7 +244,7 @@ class CGenerator:
         # noinspection PyTypeChecker
         left = cgen.Cast(left, AIZE_BASE)
         left = cgen.GetArrow(left, 'vtable')
-        left = cgen.GetItem(left, 0)
+        left = cgen.GetItem(left, obj.index)
         left = cgen.Cast(left, self.visit(obj.pointed.type))
         left = cgen.Call(left, [cgen.GetVar(f"AT{obj.depth}")] + [self.visit(arg) for arg in obj.args])
         return left

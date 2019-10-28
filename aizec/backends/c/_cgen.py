@@ -153,6 +153,14 @@ class Constant(Expression):
 
 
 @dataclass()
+class ArrayInit(Expression):
+    items: List[Expression]
+
+    def generate(self):
+        return f"{{ {', '.join(item.generate() for item in self.items)} }}"
+
+
+@dataclass()
 class StrExpr(Expression):
     s: str
 
@@ -505,6 +513,20 @@ class Global(TopLevel):
 
     def declaration(self) -> str:
         return f"{self.type.with_name(self.name)} = {self.val.generate()};"
+
+
+@dataclass()
+class GlobalArray(TopLevel):
+    name: str
+    contained: Type
+    num: int
+    val: ArrayInit
+
+    def definition(self) -> str:
+        return f"extern {self.contained.with_name(self.name)}[{self.num}];"
+
+    def declaration(self) -> str:
+        return f"{self.contained.with_name(self.name)}[{self.num}] = {self.val.generate()};"
 
 
 class Program:

@@ -265,6 +265,7 @@ class SetAttr(Expr):
 class MethodCall(Expr):
     obj: Expr
     method: str
+    index: int
     args: List[Expr]
     depth: int
 
@@ -275,15 +276,16 @@ class MethodCall(Expr):
         if isinstance(obj, Call):
             if isinstance(obj.left, GetAttr):
                 if isinstance(obj.left.left.ret, ClassType) and obj.left.attr in obj.left.left.ret.methods:
-                    return obj.left.left.ret.methods[obj.left.attr]
+                    return obj.left.left, obj.left.attr, obj.left.left.ret.methods[obj.left.attr]
         else:
-            return False
+            return None, None, None
 
     @classmethod
     def make_method_call(cls, obj: Call, depth: int):
-        meth = cls.is_method(obj)
+        obj_node, name, meth = cls.is_method(obj)
+        kls: ClassType = obj_node.ret
         if meth:
-            call = cls(obj.left.left, obj.left.attr, obj.args, depth).place(obj.pos)
+            call = cls(obj_node, name, kls.get_index(name), obj.args, depth).place(obj.pos)
             call.pointed = meth
             obj.method_call = call
         else:
@@ -393,6 +395,7 @@ class Method(Node, NameDecl):
     ret: TypeNode
     body: List[Stmt]
 
+    temp_count: int = field(init=False, repr=False)
     type: FuncType = field(init=False, repr=False)
     table: Table = field(init=False, repr=False)
 
@@ -403,10 +406,22 @@ class ClassType(Type):
     attrs: Dict[str, Attr]
     methods: Dict[str, Method]
 
+    vtable: List[str] = field(init=False, default_factory=list, repr=False)
     structs: str = field(init=False, repr=False)
 
     obj_namespace: Table = field(init=False, repr=False)
     cls_namespace: Table = field(init=False, repr=False)
+
+    def get_index(self, method: str):
+        if self.base is not None:
+            try:
+                return self.base.get_index(method)
+            except KeyError:
+                pass
+        if method in self.methods:
+            return self.vtable.index(method)
+        else:
+            raise KeyError(method)
 
 
 @dataclass()

@@ -145,6 +145,7 @@ class SemanticAnalysis:
             cls_type = cls.type
             cls_type.attrs = {}
             cls_type.methods = {}
+            cls_type.vtable = []
             self.file = file
             with self.enter(file.table):
                 if cls.base is not None:
@@ -158,7 +159,7 @@ class SemanticAnalysis:
                     cls_type.attrs[name] = attr
                     cls_type.obj_namespace.add_name(name, attr)
 
-                for name, method in cls.methods.items():
+                for i, (name, method) in enumerate(cls.methods.items()):
                     method.unique = self.mangled_var(name, "M")
                     method.table = self.table.child(TableType.SCOPE)
                     params = []
@@ -172,6 +173,7 @@ class SemanticAnalysis:
                     cls_type.obj_namespace.add_name(name, method)
 
                     cls_type.methods[name] = method
+                    cls_type.vtable.append(method.name)
 
                 with self.enter(cls_type.cls_namespace):
                     new_type = FuncType([attr.type for attr in cls_type.attrs.values()], cls_type)
@@ -210,6 +212,9 @@ class SemanticAnalysis:
             for stmt in obj.body:
                 self.visit(stmt)
             self.scope_names.pop()
+        obj.temp_count = self.max_methcall
+        self.max_methcall = 0
+        self.curr_methcall = 0
 
     def visit_CImport(self, obj: CImport):
         # TODO some means of reading c files directly
@@ -217,7 +222,6 @@ class SemanticAnalysis:
             self.file_table.add_namespace("aizeio", AIZEIO)
             self.program.c_files.append((AIZEIO_H, AIZEIO_C))
         else:
-            breakpoint()
             raise SemanticError("Cannot import c files", obj)
 
     def visit_Import(self, obj: Import):
