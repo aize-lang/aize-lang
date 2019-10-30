@@ -1,6 +1,6 @@
 from aizec.common.interfaces import Frontend, analyze_ast, Program
-from ...common import *
-from .parser import AizeParser
+from aizec.common import *
+from aizec.frontends.aize.parser import AizeParser
 
 
 class Aize(Frontend):

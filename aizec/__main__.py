@@ -2,9 +2,9 @@ import sys
 import argparse
 
 from aizec.common.error import AizeError
-from .common import *
-from .frontends import apply_frontend
-from .backends import apply_backend
+from aizec.common import *
+from aizec.frontends import apply_frontend
+from aizec.backends import apply_backend
 
 
 def hook_aize_error(exc_type: Cls[T], exc_val: T, exc_tb):

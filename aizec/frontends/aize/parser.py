@@ -4,8 +4,8 @@ import contextlib
 
 from aizec.common.error import AizeError
 from aizec.common.interfaces import AIZE_STD
-from ...common.aize_ast import *
-from ...common import *
+from aizec.common.aize_ast import *
+from aizec.common import *
 
 BASIC_TOKENS = sorted(["+", "+=",
                        "-", "-=", "->",

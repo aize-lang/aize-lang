@@ -1,7 +1,7 @@
 from aizec.common.error import CompilerError
 from aizec.common.interfaces import Frontend
-from ..common import *
-from .aize import Aize
+from aizec.common import *
+from aizec.frontends.aize import Aize
 
 
 def get_frontend(language: str) -> Cls[Frontend]:

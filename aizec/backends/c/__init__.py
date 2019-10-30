@@ -1,6 +1,5 @@
 from aizec.common.interfaces import Backend
-from ...common import *
-from .gen import CGenerator
+from aizec.backends.c.gen import CGenerator
 
 
 class C(Backend):

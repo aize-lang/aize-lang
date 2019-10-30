@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Tuple
 
-from . import *
+from aizec.common import *
 
 
 class TableType(Enum):

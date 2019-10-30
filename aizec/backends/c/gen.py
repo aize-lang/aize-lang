@@ -1,14 +1,12 @@
 import subprocess
 import os
-import sys
 
 from aizec.common.error import AizeError
-from ...common.aize_ast import *
-from ...common import *
-from . import _cgen as cgen
+from aizec.common.aize_ast import *
+from aizec.common import *
+from aizec.backends.c import _cgen as cgen
 
 
-TCC_PATH = Path(__file__).absolute().parent.parent.parent / "tcc" / "tcc.exe"
 STD = Path(__file__).absolute().parent / "std"
 
 
@@ -63,7 +61,7 @@ class MinGW(CCompiler):
                             n_ver = input(">>> ")
                             try:
                                 n_ver = int(n_ver)
-                            except Exception:
+                            except ValueError:
                                 pass
                             else:
                                 if 0 <= n_ver < len(versions):
@@ -129,7 +127,7 @@ class CGenerator:
                     n_ver = input(">>> ")
                     try:
                         n_ver = int(n_ver)
-                    except Exception:
+                    except ValueError:
                         pass
                     else:
                         if 0 <= n_ver < len(compilers):
@@ -199,7 +197,7 @@ class CGenerator:
         pass
 
     def visit_Import(self, obj: Import):
-        return None
+        pass
 
     def visit_Class(self, obj: Class):
         # TODO when types are a thing, a mechanism to add that to main?
@@ -223,7 +221,8 @@ class CGenerator:
             return cgen.ExprStmt(cgen.SetArrow(cgen.GetVar("mem"), attr.unique, cgen.GetVar(attr.unique)))
 
         new_func = cgen.Function(new_unique, new_attrs, cls_ptr, [
-            cgen.Declare(cls_ptr, "mem", cgen.Call(cgen.GetVar("aize_mem_malloc"), [cgen.SizeOf(cls_struct.struct_type)])),
+            cgen.Declare(cls_ptr, "mem",
+                         cgen.Call(cgen.GetVar("aize_mem_malloc"), [cgen.SizeOf(cls_struct.struct_type)])),
             cgen.ExprStmt(cgen.SetArrow(cgen.Cast(cgen.GetVar('mem'), AIZE_BASE), "vtable", cgen.GetVar(vtable.name))),
             *(set_attr(attr) for attr in obj.attrs.values()),
             cgen.Return(cgen.GetVar("mem")),
