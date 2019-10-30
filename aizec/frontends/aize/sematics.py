@@ -4,9 +4,6 @@ import contextlib
 
 from ...common.aize_ast import *
 
-
-AIZEIO_H = STD / "aizeio.h"
-AIZEIO_C = STD / "aizeio.c"
 AIZEIO = Table.new(TableType.C_FILE, {
     'test': NameDecl('test', FuncTypeNode([], Name('void'))).defined(FuncType([], VoidType()), 'test'),
     'print_int': NameDecl.direct('print_int', 'print_int', FuncType([IntType(), IntType()], VoidType())),
@@ -17,6 +14,21 @@ AIZEIO = Table.new(TableType.C_FILE, {
 # noinspection PyTypeChecker
 ObjectType = ClassType(None, {}, {})
 ObjectType.structs = 'AizeObject'
+ObjectType.cls_namespace = Table.new(TableType.CLASS, {}, {}, {})
+# TODO finish Obj_namespace
+
+# StringType = ClassType(ObjectType, {}, {})
+# StringType.structs = 'AizeString'
+# StringType.cls_namespace = Table.new(TableType.CLASS, {
+#     'new': NameDecl.direct('new', 'AizeString_new', FuncType([], ))
+# })
+
+ListType = ClassType(ObjectType, {}, {})
+ListType.structs = 'AizeList'
+ListType.cls_namespace = Table.new(TableType.CLASS, {
+    'new': NameDecl.direct('new', 'AizeList_new', FuncType([], ListType))
+}, {}, {})
+ListType.obj_namespace = Table.new(TableType.OBJECT, {}, {}, {})
 
 
 class SemanticError(AizeError):
@@ -44,9 +56,12 @@ class SemanticAnalysis:
             {
                 "int": IntType(),
                 'void': VoidType(),
-                'long': LongType()
+                'long': LongType(),
+                'List': ListType
             },
-            {}
+            {
+                'List': ListType.cls_namespace
+            }
         )
 
         self.file_table: Table = None
@@ -89,6 +104,7 @@ class SemanticAnalysis:
         return val
 
     def visit_Program(self, obj: Program):
+        obj.needed_std.append('builtins')
         for file in obj.files:
             self.files[file.path] = file
             file.table = self.table.child(TableType.FILE)
@@ -145,7 +161,6 @@ class SemanticAnalysis:
             cls_type = cls.type
             cls_type.attrs = {}
             cls_type.methods = {}
-            cls_type.vtable = []
             self.file = file
             with self.enter(file.table):
                 if cls.base is not None:
@@ -216,16 +231,16 @@ class SemanticAnalysis:
         self.max_methcall = 0
         self.curr_methcall = 0
 
-    def visit_CImport(self, obj: CImport):
+    def visit_NativeImport(self, obj: NativeImport):
         # TODO some means of reading c files directly
-        if obj.header == AIZEIO_H and obj.source == AIZEIO_C:
+        if obj.name == 'aizeio':
             self.file_table.add_namespace("aizeio", AIZEIO)
-            self.program.c_files.append((AIZEIO_H, AIZEIO_C))
+            self.program.needed_std.append(obj.name)
         else:
-            raise SemanticError("Cannot import c files", obj)
+            raise SemanticError(f"No Standard Library called {obj.name}", obj)
 
     def visit_Import(self, obj: Import):
-        self.file_table.add_namespace(obj.as_name, self.files[obj.file].table)
+        self.file_table.add_namespace(obj.as_name, self.files[obj.file.abs_path].table)
 
     def mangled_path(self):
         main_path = self.main_file.path
@@ -299,7 +314,8 @@ class SemanticAnalysis:
 
     def visit_Call(self, obj: Call):
         func: FuncType = self.visit(obj.left)
-        if MethodCall.is_method(obj):
+        if MethodCall.is_method(obj)[0]:
+            # noinspection PyUnresolvedReferences
             args = [obj.left.left.ret]
             MethodCall.make_method_call(obj, self.curr_methcall)
             self.curr_methcall += 1
@@ -355,7 +371,7 @@ class SemanticAnalysis:
 
     def visit_SetAttr(self, obj: SetAttr):
         left: ClassType = self.visit(obj.left)
-        val = self.visit(obj.val)
+        self.visit(obj.val)
         attr = left.obj_namespace.get_name(obj.attr)
         obj.pointed = attr
         obj.ret = attr.type
@@ -369,7 +385,10 @@ class SemanticAnalysis:
         return name.type
 
     def visit_GetNamespace(self, obj: GetNamespace):
-        table = self.table.get_namespace(obj.namespace)
+        try:
+            table = self.table.get_namespace(obj.namespace)
+        except KeyError:
+            raise SemanticError(f"No namespace found called '{obj.namespace}'", obj)
         obj.table = table
         return table
 
@@ -378,4 +397,7 @@ class SemanticAnalysis:
         return IntType()
 
     def visit_Name(self, obj: Name):
-        return self.table.get_type(obj.name)
+        try:
+            return self.table.get_type(obj.name)
+        except KeyError:
+            raise SemanticError(f"No type called '{obj.name}'", obj)

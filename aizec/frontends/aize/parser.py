@@ -118,8 +118,13 @@ class Scanner:
                         scanner.advance()
                     tokens.append(token)
                 elif scanner.next() == "#":
-                    while not scanner.next() == "\n":
-                        scanner.advance()
+                    scanner.advance()
+                    if scanner.next() == " ":
+                        # Comment
+                        while not scanner.next() == "\n":
+                            scanner.advance()
+                    elif scanner.peek("nativeimport"):
+                        tokens += scanner.match_token("nativeimport")
                 elif scanner.next() == "\n":
                     scanner.advance_line()
                 elif scanner.next() in '\t ':
@@ -189,7 +194,7 @@ class Parser:
             parsed, imps = parser.parse_file(curr)
             files.append(parsed)
             visited.add(curr)
-            to_parse.extend(imps)
+            to_parse.extend(imp.abs_path for imp in imps)
 
         files[0].is_main = True
 
@@ -220,17 +225,18 @@ class Parser:
             raise ParseError(f"Expected '{type}', got '{self.curr.type}'", self.curr)
         return match
 
-    def imp(self) -> Path:
+    def imp(self) -> FilePath:
         if self.curr_is("str"):
+            loc = 'here'
             file = self.file.parent / self.match_exc("str").text[1:-1]
         else:
             loc = self.match_exc("ident").text
             self.match_exc(":")
             if loc == "std":
-                file = STD / self.match_exc("str").text[1:-1]
+                file = self.match_exc("str").text[1:-1]
             else:
                 raise ParseError("Location can only be 'std' currently", self.prev)
-        return file
+        return FilePath(loc, Path(file))
 
     def parse_file(self, file: Path):
         tops = []
@@ -244,8 +250,8 @@ class Parser:
                 obj, imp = self.parse_import()
                 tops.append(obj)
                 imps.append(imp)
-            elif self.curr_is("cimport"):
-                tops.append(self.parse_cimport())
+            elif self.curr_is("nativeimport"):
+                tops.append(self.parse_nativeimport())
             else:
                 raise ParseError("Not a valid top-level", self.curr)
         return File(file, False, tops), imps
@@ -306,26 +312,29 @@ class Parser:
 
         file = self.imp()
 
-        for ext in (".aize", ):
-            if file.with_suffix(ext).exists():
-                file = file.with_suffix(ext)
-                break
+        if file.where == 'std':
+            if str(file.rel_path) in ('io',):
+                file.abs_path = (AIZE_STD / file.rel_path).with_suffix(".aize")
+            else:
+                raise ParseError(f"No file in the standard library called \"{file.rel_path}\"", start)
         else:
-            raise ParseError(f"No file with extension '.aize' found for \"{file}\"", start)
+            for ext in (".aize", ):
+                if file.rel_path.with_suffix(ext).exists():
+                    file.abs_path = file.rel_path.absolute().with_suffix(ext)
+                    break
+            else:
+                raise ParseError(f"No file with extension '.aize' found for \"{file}\"", start)
 
         self.match_exc(";")
 
-        return Import(file, file.with_suffix("").name).place(start.pos), file
+        return Import(file, file.rel_path.with_suffix("").name).place(start.pos), file
 
-    def parse_cimport(self):
-        start = self.match("cimport")
+    def parse_nativeimport(self):
+        start = self.match("nativeimport")
 
-        header = self.imp()
-        source = self.imp()
+        file = self.match_exc("ident")
 
-        self.match_exc(";")
-
-        return CImport(header, source).place(start.pos)
+        return NativeImport(file.text).place(start.pos)
 
     def parse_function(self):
         start = self.match("def")

@@ -1,4 +1,4 @@
-cimport "aizeio.h" "aizeio.c";
+#nativeimport aizeio
 
 def print_int(n: int, newline: int) -> void {
     aizeio::print_int(n, newline);

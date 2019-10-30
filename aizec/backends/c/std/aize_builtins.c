@@ -1,12 +1,10 @@
 #include "aize_builtins.h"
 
 
-extern uint32_t aize_mem_depth;
+uint32_t aize_mem_depth = 1;
 
 
-void* AizeObject_vtable[0] = {
-    // struct AizeString* (*AizeObject_to_string)(struct AizeObject*)
-};
+void* AizeObject_vtable[0] = { };
 
 
 struct AizeObject* AizeObject_new_AizeObject(struct AizeObject* mem) {
@@ -19,23 +17,56 @@ struct AizeObject* AizeObject_new_AizeObject(struct AizeObject* mem) {
 }
 
 
+#define LIST_START_SIZE 16
+#define LIST_SCALE_FACTOR 2
+#define LIST_SHRINK_WHEN 4
+#define LIST_SHRINK_FACTOR 2
+
+
+void* AizeList_vtable[2] = {&AizeList_append, &AizeList_get};
+
+
+struct AizeList* AizeList_new() {
+    struct AizeList* mem = aize_mem_malloc(sizeof(struct AizeList));
+    (((AizeBase*) mem)->vtable = AizeList_vtable);
+    (mem->len = 0);
+    (mem->capacity = LIST_START_SIZE);
+    (mem->arr = calloc(LIST_START_SIZE, sizeof(AizeBase*)));
+    return mem;
+}
+
+
+void AizeList_append(struct AizeList* list, AizeBase* obj) {
+    if (list->len == list->capacity) {
+        list->arr = realloc(list->arr, list->capacity * LIST_SCALE_FACTOR);
+        list->capacity *= LIST_SCALE_FACTOR;
+    }
+    list->arr[list->len] = obj;
+    list->len++;
+}
+
+
+AizeBase* AizeList_get(struct AizeList* list, size_t item) {
+    return list->arr[item];
+}
+
+
+//====== Memory Management ======
+
+
 #define START_SIZE 256
 #define SCALE_FACTOR 2
 #define SHRINK_WHEN 4
 #define SHRINK_FACTOR 2
 
-
-struct AizeMemArrayList {
+struct AizeArrayList {
     size_t capacity;
     size_t len;
     AizeBase** arr;
 };
 
 
-struct AizeMemArrayList aize_mem_bound = {0, 0, 0};
-
-
-uint32_t aize_mem_depth = 1;
+struct AizeArrayList aize_mem_bound = {0, 0, 0};
 
 
 void aize_mem_init() {

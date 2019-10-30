@@ -16,7 +16,7 @@ def hook_aize_error(exc_type: Cls[T], exc_val: T, exc_tb):
 sys.excepthook = hook_aize_error
 
 
-arg_parser = argparse.ArgumentParser()
+arg_parser = argparse.ArgumentParser(prog="aizec")
 arg_parser.add_argument("file")
 arg_parser.add_argument("-o", dest="out", default=None)
 arg_parser.add_argument("--keep-c", action='store_false', dest='delete_c')

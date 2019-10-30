@@ -16,12 +16,12 @@ class Person {
 
 
 def main() -> int {
+    var list: List = List::new();
     var person: Person = Person::new(10, 10);
-    person.age = 10;
-    io::print_int(person.age, 1);
-    var clone: Person = person.copy();
+    person.print_age();
+    var cloned_person: Person = person.copy();
     person.age = 20;
-    io::print_int(clone.age, 1);
-    io::print_int(person.age, 1);
+    person.print_age();
+    cloned_person.print_age();
     return 0;
 }

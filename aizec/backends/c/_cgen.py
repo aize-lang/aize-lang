@@ -523,10 +523,10 @@ class GlobalArray(TopLevel):
     val: ArrayInit
 
     def definition(self) -> str:
-        return f"extern {self.contained.with_name(self.name)}[{self.num}];"
+        return f"{self.contained.with_name(self.name)}[{self.num}] = {self.val.generate()};"
 
     def declaration(self) -> str:
-        return f"{self.contained.with_name(self.name)}[{self.num}] = {self.val.generate()};"
+        return f"extern {self.contained.with_name(self.name)}[{self.num}];"
 
 
 class Program:

@@ -277,8 +277,7 @@ class MethodCall(Expr):
             if isinstance(obj.left, GetAttr):
                 if isinstance(obj.left.left.ret, ClassType) and obj.left.attr in obj.left.left.ret.methods:
                     return obj.left.left, obj.left.attr, obj.left.left.ret.methods[obj.left.attr]
-        else:
-            return None, None, None
+        return None, None, None
 
     @classmethod
     def make_method_call(cls, obj: Call, depth: int):
@@ -406,11 +405,14 @@ class ClassType(Type):
     attrs: Dict[str, Attr]
     methods: Dict[str, Method]
 
-    vtable: List[str] = field(init=False, default_factory=list, repr=False)
     structs: str = field(init=False, repr=False)
 
     obj_namespace: Table = field(init=False, repr=False)
     cls_namespace: Table = field(init=False, repr=False)
+
+    @property
+    def vtable(self):
+        return list(self.methods)
 
     def get_index(self, method: str):
         if self.base is not None:
@@ -438,14 +440,24 @@ class Function(Top, NameDecl):
 
 @dataclass()
 class Import(Top):
-    file: Path
+    file: FilePath
     as_name: str
 
 
 @dataclass()
-class CImport(Top):
-    header: Path
-    source: Path
+class NativeImport(Top):
+    name: str
+
+
+@dataclass()
+class FilePath:
+    where: str
+    rel_path: Path
+
+    abs_path: Path = field(init=False, repr=False)
+
+    def __hash__(self):
+        return hash((self.where, self.rel_path))
 
 
 @dataclass()
@@ -492,6 +504,6 @@ class File(Node):
 class Program(Node):
     files: List[File]
     # [(header, source), ...]
-    c_files: List[Tuple[Path, Path]] = field(init=False, default_factory=list)
+    needed_std: List[str] = field(init=False, repr=False, default_factory=list)
 
     main: NameDecl = field(init=False, repr=False)

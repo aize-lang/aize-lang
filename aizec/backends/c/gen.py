@@ -7,12 +7,13 @@ from . import _cgen as cgen
 
 
 TCC_PATH = Path(__file__).absolute().parent.parent.parent / "tcc" / "tcc.exe"
+STD = Path(__file__).absolute().parent / "std"
 
 
-STD_IMPORTS = [
-    STD / "aize_builtins.h", STD / "aize_builtins.c",
-    STD / "aize_common.h",
-]
+C_STD = {
+    'builtins': (STD / "aize_builtins.h", STD / "aize_builtins.c"),
+    'aizeio': (STD / "aizeio.h", STD / "aizeio.c")
+}
 
 
 AIZE_BASE = cgen.PointerType(cgen.NameType('AizeBase'))
@@ -79,12 +80,9 @@ class CGenerator:
     def visit_Program(self, obj: Program):
         tops = []
 
-        for imp in STD_IMPORTS:
-            if imp.suffix == ".c":
-                self.links.append(imp)
-            elif imp.suffix == ".h":
-                tops.append(cgen.Include(imp.as_posix()))
-        # TODO link the .c
+        for header, source in (C_STD[std] for std in obj.needed_std):
+            self.links.append(source)
+            tops.append(cgen.Include(header.as_posix()))
         for file in obj.files:
             tops.extend(self.visit(file))
         return tops
@@ -99,10 +97,8 @@ class CGenerator:
                 tops.append(ret)
         return tops
 
-    def visit_CImport(self, obj: CImport):
-        if obj.source not in self.links:
-            self.links.append(obj.source)
-        return cgen.Include(obj.header.as_posix())
+    def visit_NativeImport(self, obj: NativeImport):
+        pass
 
     def visit_Import(self, obj: Import):
         return None
@@ -118,7 +114,7 @@ class CGenerator:
         cls_struct = cgen.Struct(obj.unique, attrs)
 
         vtable_items = [cgen.Ref(cgen.GetVar(meth.unique)) for meth in obj.methods.values()]
-        vtable = cgen.GlobalArray(f"{obj.unique}_vtable", cgen.PointerType(cgen.void_ptr()),
+        vtable = cgen.GlobalArray(f"{obj.unique}_vtable", cgen.void_ptr(),
                                   len(vtable_items),
                                   cgen.ArrayInit(vtable_items))
 
