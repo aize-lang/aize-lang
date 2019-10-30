@@ -1,9 +1,10 @@
 import sys
 import argparse
 
+from aizec.common.error import AizeError
 from .common import *
-from .frontends.aize import parser, sematics
-from .backends.c import gen
+from .frontends import apply_frontend
+from .backends import apply_backend
 
 
 def hook_aize_error(exc_type: Cls[T], exc_val: T, exc_tb):
@@ -19,9 +20,14 @@ sys.excepthook = hook_aize_error
 arg_parser = argparse.ArgumentParser(prog="aizec")
 arg_parser.add_argument("file")
 arg_parser.add_argument("-o", dest="out", default=None)
+arg_parser.add_argument("-f", action='store', dest='frontend', default='aize')
+arg_parser.add_argument("-b", action='store', dest='backend', default='c')
+arg_parser.add_argument("-c", action='store', dest='compiler', default=None)
+# arg_parser.add_argument("-O", action='store', dest='opt', choices=[0, 1, 2, 3], default=0)
 arg_parser.add_argument("--keep-c", action='store_false', dest='delete_c')
 arg_parser.add_argument("--run", action='store_true')
-arg_parser.add_argument("--debug", action='store_true')
+arg_parser.add_argument("--for", action='store', choices=['debug', 'normal', 'release'], dest='for_', default='normal')
+arg_parser.add_argument("--config", action='store', default=None)
 
 
 if __name__ == '__main__':
@@ -30,6 +36,9 @@ if __name__ == '__main__':
     if args.out is None:
         # TODO support other OS's
         args.out = file.with_suffix(".exe")
-    tree = parser.Parser.parse(file)
-    sematics.SemanticAnalysis(tree).visit(tree)
-    gen.CGenerator.compile(tree, args)
+    if args.config is None:
+        args.config = Path(__file__).parent / "aizec_cfg.json"
+    with Config(args.config) as args.config:
+        ast = apply_frontend(args.frontend, file, args)
+
+        apply_backend(args.backend, ast, args)

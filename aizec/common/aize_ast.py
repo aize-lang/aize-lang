@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Tuple
 
 from . import *
 
@@ -507,3 +508,17 @@ class Program(Node):
     needed_std: List[str] = field(init=False, repr=False, default_factory=list)
 
     main: NameDecl = field(init=False, repr=False)
+
+
+class TextPos:
+    def __init__(self, text: str, line: int, pos: Tuple[int, int], file: Path):
+        self.text = text
+        self.line = line
+        self.pos = pos
+        self.file = file
+
+    def get_line(self):
+        return self.text.splitlines()[self.line-1]
+
+    def __repr__(self):
+        return f"TextPos({self.text!r}, {self.line}, {self.pos})"

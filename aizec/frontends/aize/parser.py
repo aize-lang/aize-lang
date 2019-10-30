@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import contextlib
 
+from aizec.common.error import AizeError
+from aizec.common.interfaces import AIZE_STD
 from ...common.aize_ast import *
 from ...common import *
 
@@ -174,7 +176,7 @@ class Scanner:
         token.pos = TextPos(self.text, self.line, (start_line_pos, self.line_pos), self.file)
 
 
-class Parser:
+class AizeParser:
     def __init__(self, tokens: List[Token], file: Path):
         self.tokens = tokens
         self.file = file
@@ -190,7 +192,7 @@ class Parser:
             curr = to_parse.pop()
             if curr in visited:
                 continue
-            parser = Parser(Scanner.scan(curr), curr)
+            parser = cls(Scanner.scan(curr), curr)
             parsed, imps = parser.parse_file(curr)
             files.append(parsed)
             visited.add(curr)
@@ -575,3 +577,4 @@ class Parser:
             return GetVar(var.text).place(self.prev.pos)
         else:
             raise ParseError(f"Cannot parse '{self.curr.type}' token", self.curr)
+

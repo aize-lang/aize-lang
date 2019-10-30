@@ -1,4 +1,5 @@
-from typing import List, Tuple, Dict, Type as Cls, TypeVar, IO, Union
+import json
+from typing import Type as Cls, TypeVar, IO, List
 from pathlib import Path
 
 T = TypeVar('T')
@@ -8,32 +9,43 @@ def new(cls: Cls[T]) -> T:
     return cls.__new__(cls)
 
 
-def static_var(**kw_vars):
-    def _dec(func):
-        def wrapped(*args, **kwargs):
-            func(*args, **kwargs)
-        return func
-    return _dec
+class Config:
+    DEFAULT_DATA = {}
 
+    def __init__(self, path: str):
+        self.path = Path(path)
+        if not self.path.exists():
+            self.file: IO = self.path.open("w")
+            self.file.write(json.dumps(self.DEFAULT_DATA, indent='    '))
+        else:
+            self.file = self.path.open("r+")
+            try:
+                json.loads(self.file.read())
+            except json.JSONDecodeError:
+                print("Corrupted")
+                self.file.seek(0)
+                self.file.write(json.dumps(self.DEFAULT_DATA, indent='    '))
+        self.file: IO = open(path, "r+")
 
-class AizeError(Exception):
-    def display(self, file: IO):
-        raise NotImplementedError()
+    def __setitem__(self, key: str, value):
+        self.file.seek(0)
+        data = json.loads(self.file.read())
+        data[key] = value
+        self.file.seek(0)
+        self.file.write(json.dumps(data, indent='    '))
 
+    def __getitem__(self, item: str):
+        self.file.seek(0)
+        data = json.loads(self.file.read())
+        return data[item]
 
-class TextPos:
-    def __init__(self, text: str, line: int, pos: Tuple[int, int], file: Path):
-        self.text = text
-        self.line = line
-        self.pos = pos
-        self.file = file
+    def __contains__(self, item: str):
+        self.file.seek(0)
+        data = json.loads(self.file.read())
+        return item in data
 
-    def get_line(self):
-        return self.text.splitlines()[self.line-1]
+    def __enter__(self):
+        return self
 
-    def __repr__(self):
-        return f"TextPos({self.text!r}, {self.line}, {self.pos})"
-
-
-AIZE_STD = Path(__file__).absolute().parent / "std"
-
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return

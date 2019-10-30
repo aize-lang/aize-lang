@@ -1,8 +1,10 @@
-import io
 import subprocess
+import os
 import sys
 
+from aizec.common.error import AizeError
 from ...common.aize_ast import *
+from ...common import *
 from . import _cgen as cgen
 
 
@@ -25,6 +27,65 @@ class CompilationError(AizeError):
 
     def display(self, file: IO):
         file.write(f"{self.msg}.")
+
+
+class CCompiler:
+    name: str = None
+
+    def call(self, args: List[str]):
+        raise NotImplementedError()
+
+
+class MinGW(CCompiler):
+    name = "MinGW"
+
+    @classmethod
+    def exists(cls):
+        if os.name == 'nt':
+            for prg_dir in Path(r"C:\Program Files (x86)").iterdir():
+                if prg_dir.name.startswith("mingw-w"):
+                    return True
+        return False
+
+    @classmethod
+    def create(cls, config: Config):
+        for prg_dir in Path(r"C:\Program Files (x86)").iterdir():
+            if prg_dir.name == "mingw-w64":
+                versions = list(prg_dir.iterdir())
+                if len(versions) > 1:
+                    if "mingw" in config and Path(config["mingw"]).exists():
+                        ver = Path(config["mingw"])
+                    else:
+                        print("Multiple versions of MinGW detected. Which would you like to use?")
+                        for n, version in enumerate(versions):
+                            print(f"    {n}  :  {version}")
+                        while True:
+                            n_ver = input(">>> ")
+                            try:
+                                n_ver = int(n_ver)
+                            except Exception:
+                                pass
+                            else:
+                                if 0 <= n_ver < len(versions):
+                                    break
+                        ver = versions[n_ver]
+                        config["mingw"] = str(ver)
+                elif len(versions) == 1:
+                    ver = versions[0]
+                else:
+                    raise CompilationError(f"MinGW folder exists ({prg_dir}) but no compilers in it")
+                path = ver / "mingw32" / "bin"
+                return cls(path)
+        else:
+            raise CompilationError(f"No MinGW installation found")
+
+    def __init__(self, bin_path: Path):
+        self.bin = bin_path
+
+    def call(self, args: List[str]):
+        os.environ["PATH"] = str(self.bin) + os.pathsep + os.environ["PATH"]
+        check = subprocess.run([str(self.bin / "gcc.exe")] + args, check=False)
+        return check
 
 
 class CGenerator:
@@ -51,16 +112,53 @@ class CGenerator:
         return main_file.with_suffix(".c"), main_file.with_suffix(".h"), generator
 
     @classmethod
+    def available_compilers(cls):
+        return [compiler for compiler in [MinGW] if compiler.exists()]
+
+    @classmethod
+    def find_c_compiler(cls, config):
+        compilers = cls.available_compilers()
+        if len(compilers) > 1:
+            if 'ccompiler' in config and config['ccompiler'] in [comp.name for comp in compilers]:
+                compiler = next(comp for comp in compilers if comp.name == config['ccompiler'])
+            else:
+                print("Multiple C Compilers found. Which would you like to use?")
+                for n, compiler in enumerate(compilers):
+                    print(f"    {n}  :  {compiler.name}")
+                while True:
+                    n_ver = input(">>> ")
+                    try:
+                        n_ver = int(n_ver)
+                    except Exception:
+                        pass
+                    else:
+                        if 0 <= n_ver < len(compilers):
+                            break
+                compiler = compilers[n_ver]
+                config['ccompiler'] = compiler.name
+        elif len(compilers) == 1:
+            compiler = compilers[0]
+        else:
+            raise CompilationError("No C Compiler found")
+        return compiler.create(config)
+
+    @classmethod
     def compile(cls, tree: Program, args):
-        source, header, gen = cls.gen(tree, debug=args.debug)
-        call_args = [str(TCC_PATH)]
+        compiler = cls.find_c_compiler(args.config)
+        source, header, gen = cls.gen(tree, debug=args.for_ == 'debug')
+        call_args = []
         call_args += ["-w"]
+
+        if args.for_ in ('debug', 'normal'):
+            call_args += ["-O0"]
+        else:
+            call_args += ["-O3"]
 
         call_args += [f"-o{args.out.as_posix()}"]
         call_args += [f"{source}"]
         call_args += [str(path) for path in gen.links]
 
-        check = subprocess.run(call_args, check=False)
+        check = compiler.call(call_args)
         if args.delete_c:
             source.unlink()
             header.unlink()

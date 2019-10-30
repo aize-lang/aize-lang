@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import contextlib
 
-from ...common.aize_ast import *
+from aizec.common.aize_ast import *
+from aizec.common.error import AizeError
+from aizec.common import new
+
 
 AIZEIO = Table.new(TableType.C_FILE, {
     'test': NameDecl('test', FuncTypeNode([], Name('void'))).defined(FuncType([], VoidType()), 'test'),
