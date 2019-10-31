@@ -1,5 +1,6 @@
 import subprocess
 import os
+import sys
 
 from aizec.common.error import AizeError
 from aizec.common.aize_ast import *
@@ -86,6 +87,29 @@ class MinGW(CCompiler):
         return check
 
 
+class GCC(CCompiler):
+    name = "gcc"
+
+    @classmethod
+    def exists(cls):
+        if os.name == 'posix':
+            check = subprocess.run(["gcc", "--version"], stdout=subprocess.PIPE)
+            return check.returncode == 0
+        return False
+
+    @classmethod
+    def create(cls, config: Config):
+        return cls()
+
+    def __init__(self):
+        pass
+
+    def call(self, args: List[str]):
+        # os.environ["PATH"] = str(self.bin) + os.pathsep + os.environ["PATH"]
+        check = subprocess.run(["gcc"] + args, check=False)
+        return check
+
+
 class CGenerator:
     def __init__(self, header: IO, source: IO, debug: bool):
         self.header = header
@@ -111,7 +135,7 @@ class CGenerator:
 
     @classmethod
     def available_compilers(cls):
-        return [compiler for compiler in [MinGW] if compiler.exists()]
+        return [compiler for compiler in [MinGW, GCC] if compiler.exists()]
 
     @classmethod
     def find_c_compiler(cls, config):
@@ -143,14 +167,19 @@ class CGenerator:
     @classmethod
     def compile(cls, tree: Program, args):
         compiler = cls.find_c_compiler(args.config)
-        source, header, gen = cls.gen(tree, debug=args.for_ == 'debug')
+        source, header, gen = cls.gen(tree, debug=False)  # args.for_ == 'debug')
         call_args = []
-        call_args += ["-w"]
+        call_args += ["-Wall"]
+        if args.for_ != 'debug':
+            call_args += ["-Wno-sequence-point"]
+            call_args += ["-Wno-incompatible-pointer-types"]
 
         if args.for_ in ('debug', 'normal'):
             call_args += ["-O0"]
         else:
             call_args += ["-O3"]
+        if args.for_ == 'debug':
+            call_args += ['-g']
 
         call_args += [f"-o{args.out.as_posix()}"]
         call_args += [f"{source}"]
@@ -221,11 +250,14 @@ class CGenerator:
             return cgen.ExprStmt(cgen.SetArrow(cgen.GetVar("mem"), attr.unique, cgen.GetVar(attr.unique)))
 
         new_func = cgen.Function(new_unique, new_attrs, cls_ptr, [
+            cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])),
             cgen.Declare(cls_ptr, "mem",
                          cgen.Call(cgen.GetVar("aize_mem_malloc"), [cgen.SizeOf(cls_struct.struct_type)])),
             cgen.ExprStmt(cgen.SetArrow(cgen.Cast(cgen.GetVar('mem'), AIZE_BASE), "vtable", cgen.GetVar(vtable.name))),
             *(set_attr(attr) for attr in obj.attrs.values()),
-            cgen.Return(cgen.GetVar("mem")),
+            cgen.ExprStmt(cgen.SetArrow(cgen.Cast(cgen.GetVar('mem'), AIZE_BASE), "ref_count", cgen.Constant(0))),
+            cgen.Return(cgen.Call(cgen.GetVar('aize_mem_ret'), [cgen.GetVar("mem")])),
+            # cgen.Return(cgen.GetVar("mem")),
         ])
 
         methods = []
@@ -318,7 +350,7 @@ class CGenerator:
         if self.in_main_main:
             return cgen.Return(self.visit(obj.val))
         val = self.visit(obj.val)
-        if isinstance(obj.val.ret, ClassType):
+        if isinstance(obj.val.ret, ClassType) and False:
             ret = cgen.Call(cgen.GetVar("aize_mem_ret"), [val])
             return cgen.Return(ret)
         else:

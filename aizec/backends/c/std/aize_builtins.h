@@ -32,10 +32,14 @@ AizeBase* AizeList_get(struct AizeList*, size_t);
 
 extern uint32_t aize_mem_depth;
 
+void aize_mem_init();
+
 void* aize_mem_malloc(size_t);
 
 void aize_mem_enter();
 
 void aize_mem_exit();
+
+AizeBase* aize_mem_ret(AizeBase*);
 
 #endif

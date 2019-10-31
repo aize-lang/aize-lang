@@ -16,7 +16,6 @@ class Person {
 
 
 def main() -> int {
-    var list: List = List::new();
     var person: Person = Person::new(10, 10);
     person.print_age();
     var cloned_person: Person = person.copy();

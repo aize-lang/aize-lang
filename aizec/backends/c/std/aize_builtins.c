@@ -70,7 +70,7 @@ struct AizeArrayList aize_mem_bound = {0, 0, 0};
 
 
 void aize_mem_init() {
-    aize_mem_bound.arr = malloc(START_SIZE);
+    aize_mem_bound.arr = calloc(START_SIZE, sizeof(AizeBase**));
     aize_mem_bound.capacity = START_SIZE;
 }
 
@@ -82,7 +82,8 @@ void aize_mem_enter() {
 
 void aize_mem_add_mem(void* mem) {
     if (aize_mem_bound.len == aize_mem_bound.capacity) {
-        aize_mem_bound.arr = realloc(aize_mem_bound.arr, aize_mem_bound.capacity * SCALE_FACTOR);
+        // printf("Resizing\n");
+        aize_mem_bound.arr = realloc(aize_mem_bound.arr, aize_mem_bound.capacity * SCALE_FACTOR * sizeof(AizeBase**));
         aize_mem_bound.capacity *= SCALE_FACTOR;
     }
     aize_mem_bound.arr[aize_mem_bound.len] = mem;
@@ -91,13 +92,14 @@ void aize_mem_add_mem(void* mem) {
 
 
 void aize_mem_pop_mem(size_t num) {
-    memset(aize_mem_bound.arr + (aize_mem_bound.len-num), 0, num*sizeof(AizeBase**));
+    // memset(aize_mem_bound.arr + (aize_mem_bound.len-num), 0, num*sizeof(AizeBase**));
     aize_mem_bound.len -= num;
-    if (aize_mem_bound.capacity > SCALE_FACTOR * START_SIZE &&
-        aize_mem_bound.len - num < aize_mem_bound.capacity / SHRINK_WHEN)
+    if (aize_mem_bound.capacity >= SHRINK_FACTOR * START_SIZE &&
+        aize_mem_bound.len < aize_mem_bound.capacity / SHRINK_WHEN)
     {
-        aize_mem_bound.arr = realloc(aize_mem_bound.arr, aize_mem_bound.capacity / SCALE_FACTOR);
-        aize_mem_bound.capacity /= SCALE_FACTOR;
+        // printf("Resizing\n");
+        aize_mem_bound.arr = realloc(aize_mem_bound.arr, aize_mem_bound.capacity / SHRINK_FACTOR);
+        aize_mem_bound.capacity /= SHRINK_FACTOR;
     }
 }
 
@@ -116,17 +118,19 @@ void aize_mem_collect() {
     int num_to_pop = 0;
     AizeBase* ret_obj = NULL;
     for (int i = aize_mem_bound.len-1; i >= 0; i--) {
+        // printf("On %i\n", i);
         AizeBase* obj = aize_mem_bound.arr[i];
         if (obj->depth >= aize_mem_depth) {
             if (obj->ref_count != 0) {
+                // printf("Floating: %p at depth %i\n", obj, obj->depth);
                 // TODO handle 'floating' objects eventually
             } else {
                 // printf("Freed: %p at depth %i\n", obj, obj->depth);
-                free(obj);
+                // free(obj);
             }
         } else if (obj->depth == 0) {  // returned object
-            obj->depth = aize_mem_depth - 1;
             ret_obj = obj;
+            // printf("Ret Obj: %p, %p\n", obj, ret_obj);
         } else {
             break;
         }
@@ -134,8 +138,11 @@ void aize_mem_collect() {
     }
     aize_mem_pop_mem(num_to_pop);
     if (ret_obj) {
+        // printf("Returning %p\n", ret_obj);
+        ret_obj->depth = aize_mem_depth - 1;
         aize_mem_add_mem(ret_obj);
     }
+    // printf("Popped: %i\n", num_to_pop);
 }
 
 
@@ -150,5 +157,6 @@ AizeBase* aize_mem_ret(AizeBase* obj) {
         obj->depth = 0;
     }
     aize_mem_exit();
+    // printf("Ret depth: %i\n", obj->depth);
     return obj;
 }

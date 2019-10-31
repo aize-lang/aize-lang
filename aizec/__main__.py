@@ -1,3 +1,4 @@
+import os
 import sys
 import argparse
 
@@ -35,7 +36,10 @@ if __name__ == '__main__':
     file = Path(args.file).absolute()
     if args.out is None:
         # TODO support other OS's
-        args.out = file.with_suffix(".exe")
+        if os.name == 'nt':
+            args.out = file.with_suffix(".exe")
+        else:
+            args.out = file.with_suffix("")
     if args.config is None:
         args.config = Path(__file__).parent / "aizec_cfg.json"
     with Config(args.config) as args.config:
