@@ -1,6 +1,5 @@
 import subprocess
 import os
-import sys
 
 from aizec.common.error import AizeError
 from aizec.common.aize_ast import *
@@ -110,6 +109,29 @@ class GCC(CCompiler):
         return check
 
 
+class Clang(CCompiler):
+    name = "clang"
+
+    @classmethod
+    def exists(cls):
+        if os.name == 'posix':
+            check = subprocess.run(["clang", "--version"], stdout=subprocess.PIPE)
+            return check.returncode == 0
+        return False
+
+    @classmethod
+    def create(cls, config: Config):
+        return cls()
+
+    def __init__(self):
+        pass
+
+    def call(self, args: List[str]):
+        # os.environ["PATH"] = str(self.bin) + os.pathsep + os.environ["PATH"]
+        check = subprocess.run(["clang"] + args, check=False)
+        return check
+
+
 class CGenerator:
     def __init__(self, header: IO, source: IO, debug: bool):
         self.header = header
@@ -135,7 +157,7 @@ class CGenerator:
 
     @classmethod
     def available_compilers(cls):
-        return [compiler for compiler in [MinGW, GCC] if compiler.exists()]
+        return [compiler for compiler in [MinGW, GCC, Clang] if compiler.exists()]
 
     @classmethod
     def find_c_compiler(cls, config):
@@ -275,12 +297,8 @@ class CGenerator:
         for i in range(obj.temp_count):
             body.append(cgen.Declare(cgen.void_ptr(), f"AT{i}", None))
 
-        if obj.unique != 'main':
-            body.append(cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])))
-            self.in_main_main = False
-        else:
-            body.append(cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_init"), [])))
-            self.in_main_main = True
+        body.append(cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])))
+        self.in_main_main = False
 
         for stmt in obj.body:
             ret = self.visit(stmt)
