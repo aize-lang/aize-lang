@@ -19,6 +19,7 @@ C_STD = {
 
 
 AIZE_BASE = cgen.PointerType(cgen.NameType('AizeBase'))
+AIZE_OBJECT_REF = cgen.NameType('AizeObjectRef')
 
 
 class CompilationError(AizeError):
@@ -279,10 +280,11 @@ class CGenerator:
         new_func = cgen.Function(new_unique, new_attrs, cls_ptr, [
             cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])),
             cgen.Declare(cls_ptr, "mem",
-                         cgen.Call(cgen.GetVar("aize_mem_malloc"), [cgen.SizeOf(cls_struct.struct_type)])),
-            cgen.ExprStmt(cgen.SetArrow(cgen.Cast(cgen.GetVar('mem'), AIZE_BASE), "vtable", cgen.GetVar(vtable.name))),
+                         cgen.ArrayInit([cgen.Constant(0),
+                                         cgen.Call(cgen.GetVar("aize_mem_malloc"), [cgen.SizeOf(cls_struct.struct_type)])])),
+            cgen.ExprStmt(cgen.SetAttr(cgen.GetVar('mem'), "vtable", cgen.GetVar(vtable.name))),
             *(set_attr(attr) for attr in obj.attrs.values()),
-            cgen.ExprStmt(cgen.SetArrow(cgen.Cast(cgen.GetVar('mem'), AIZE_BASE), "ref_count", cgen.Constant(0))),
+            cgen.ExprStmt(cgen.SetArrow(cgen.GetAttr(cgen.GetVar('mem'), 'obj'), "ref_count", cgen.Constant(0))),
             cgen.Return(cgen.Call(cgen.GetVar('aize_mem_ret'), [cgen.GetVar("mem")])),
             # cgen.Return(cgen.GetVar("mem")),
         ])
@@ -294,13 +296,15 @@ class CGenerator:
         return [cls_struct, new_func, *methods, vtable]
 
     def visit_ClassType(self, obj: ClassType):
-        return cgen.PointerType(cgen.StructType(obj.structs))
+        # return cgen.PointerType(cgen.StructType(obj.structs))
+        # TODO Make specific types which replace the AizeBase* with their own class for more optimizations
+        return AIZE_OBJECT_REF
 
     def visit_Method(self, obj: Method):
         body = []
 
         for i in range(obj.temp_count):
-            body.append(cgen.Declare(cgen.void_ptr(), f"AT{i}", None))
+            body.append(cgen.Declare(AIZE_OBJECT_REF, f"AT{i}", None))
 
         body.append(cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])))
         self.in_main_main = False
@@ -327,7 +331,7 @@ class CGenerator:
         body = []
 
         for i in range(obj.temp_count):
-            body.append(cgen.Declare(cgen.void_ptr(), f"AT{i}", None))
+            body.append(cgen.Declare(AIZE_OBJECT_REF, f"AT{i}", None))
 
         if obj.unique != 'main':
             body.append(cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])))
@@ -390,8 +394,7 @@ class CGenerator:
         left = self.visit(obj.obj)
         left = cgen.SetVar(f"AT{obj.depth}", left)
         # noinspection PyTypeChecker
-        left = cgen.Cast(left, AIZE_BASE)
-        left = cgen.GetArrow(left, 'vtable')
+        left = cgen.GetAttr(left, 'vtable')
         left = cgen.GetItem(left, obj.index)
         left = cgen.Cast(left, self.visit(obj.pointed.type))
         left = cgen.Call(left, [cgen.GetVar(f"AT{obj.depth}")] + [self.visit(arg) for arg in obj.args])

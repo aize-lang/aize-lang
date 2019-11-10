@@ -1,6 +1,11 @@
 import std:"io";
 
 
+class Person {
+
+}
+
+
 def main() -> int {
     var obj: List = List::new();
     obj.add(obj);

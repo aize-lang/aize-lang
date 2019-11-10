@@ -13,5 +13,5 @@ def time() -> int {
 }
 
 def print(li: List) -> void {
-    return aizeio::print(li);
+    aizeio::print(li);
 }

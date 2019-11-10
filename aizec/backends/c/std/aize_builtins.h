@@ -8,24 +8,32 @@ struct AizeObject {
     struct AizeBase base;
 };
 
+
 extern void* AizeObject_vtable[0];
+
+
+typedef struct AizeListRef {
+    void** vtable;
+    struct AizeList* obj;
+} AizeListRef;
+
 
 struct AizeList {
     struct AizeObject base;
     size_t len;
     size_t capacity;
-    AizeBase** arr;
+    AizeObjectRef* arr;
 };
 
 
 extern void* AizeList_vtable[2];
 
 
-struct AizeList* AizeList_new();
+AizeObjectRef AizeList_new();
 
-void AizeList_append(struct AizeList*, AizeBase*);
+void AizeList_append(AizeObjectRef, AizeObjectRef);
 
-AizeBase* AizeList_get(struct AizeList*, size_t);
+AizeObjectRef AizeList_get(AizeObjectRef, size_t);
 
 
 /***** MEMORY MANAGEMENT *****/
@@ -34,12 +42,12 @@ extern uint32_t aize_mem_depth;
 
 void aize_mem_init();
 
-void* aize_mem_malloc(size_t);
+AizeBase* aize_mem_malloc(size_t);
 
 void aize_mem_enter();
 
 void aize_mem_exit();
 
-AizeBase* aize_mem_ret(AizeBase*);
+AizeObjectRef aize_mem_ret(AizeObjectRef);
 
 #endif

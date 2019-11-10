@@ -23,6 +23,6 @@ int get_time() {
     return clock();
 }
 
-void print(void* obj) {
-    printf("%p\n", obj);
+void print(AizeObjectRef obj) {
+    printf("%p\n", obj.obj);
 }

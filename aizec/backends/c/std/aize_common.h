@@ -4,10 +4,15 @@
 
 
 typedef struct AizeBase {
-    void** vtable;
     uint32_t depth;
     size_t ref_count;
 } AizeBase;
+
+
+typedef struct AizeObjectRef {
+    void** vtable;
+    AizeBase* obj;
+} AizeObjectRef;
 
 
 #endif

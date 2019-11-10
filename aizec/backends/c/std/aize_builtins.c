@@ -7,12 +7,12 @@ uint32_t aize_mem_depth = 1;
 void* AizeObject_vtable[0] = { };
 
 
-struct AizeObject* AizeObject_new_AizeObject(struct AizeObject* mem) {
-    if (mem == NULL) {
-        mem = (struct AizeObject*) malloc(sizeof(struct AizeObject));
+AizeObjectRef AizeObject_new_AizeObject(AizeObjectRef mem) {
+    if (mem.obj == NULL) {
+        mem.obj = malloc(sizeof(struct AizeObject));
     }
-    (*mem).base.vtable = AizeObject_vtable;
-    (*mem).base.depth = aize_mem_depth;
+    mem.vtable = AizeObject_vtable;
+    mem.obj->depth = aize_mem_depth;
     return mem;
 }
 
@@ -26,17 +26,17 @@ struct AizeObject* AizeObject_new_AizeObject(struct AizeObject* mem) {
 void* AizeList_vtable[2] = {&AizeList_append, &AizeList_get};
 
 
-struct AizeList* AizeList_new() {
+AizeObjectRef AizeList_new() {
     struct AizeList* mem = aize_mem_malloc(sizeof(struct AizeList));
-    (((AizeBase*) mem)->vtable = AizeList_vtable);
-    (mem->len = 0);
-    (mem->capacity = LIST_START_SIZE);
-    (mem->arr = calloc(LIST_START_SIZE, sizeof(AizeBase*)));
-    return mem;
+    mem->len = 0;
+    mem->capacity = LIST_START_SIZE;
+    mem->arr = calloc(LIST_START_SIZE, sizeof(AizeObjectRef));
+    return (AizeObjectRef) {AizeList_vtable, mem};
 }
 
 
-void AizeList_append(struct AizeList* list, AizeBase* obj) {
+void AizeList_append(AizeObjectRef li, AizeObjectRef obj) {
+    struct AizeList* list = li.obj;
     if (list->len == list->capacity) {
         list->arr = realloc(list->arr, list->capacity * LIST_SCALE_FACTOR);
         list->capacity *= LIST_SCALE_FACTOR;
@@ -46,11 +46,12 @@ void AizeList_append(struct AizeList* list, AizeBase* obj) {
 }
 
 
-AizeBase* AizeList_get(struct AizeList* list, size_t item) {
+AizeObjectRef AizeList_get(AizeObjectRef li, size_t item) {
+    struct AizeList* list = li.obj;
     if (item >= 0 && item < list->len) {
-        return list->arr[item];
+        return (AizeObjectRef) list->arr[item];
     } else {
-        return NULL;
+        return (AizeObjectRef) {NULL, NULL};
     }
 }
 
@@ -84,7 +85,7 @@ void aize_mem_enter() {
 }
 
 
-void aize_mem_add_mem(void* mem) {
+void aize_mem_add_mem(AizeBase* mem) {
     if (aize_mem_bound.len == aize_mem_bound.capacity) {
         // printf("Resizing\n");
         aize_mem_bound.arr = realloc(aize_mem_bound.arr, aize_mem_bound.capacity * SCALE_FACTOR * sizeof(AizeBase**));
@@ -108,7 +109,7 @@ void aize_mem_pop_mem(size_t num) {
 }
 
 
-void* aize_mem_malloc(size_t bytes) {
+AizeBase* aize_mem_malloc(size_t bytes) {
     AizeBase* mem = malloc(bytes);
     // printf("Malloc'ed: %p at depth %i\n", mem, aize_mem_depth);
     mem->depth = aize_mem_depth;
@@ -130,7 +131,7 @@ void aize_mem_collect() {
                 // TODO handle 'floating' objects eventually
             } else {
                 // printf("Freed: %p at depth %i\n", obj, obj->depth);
-                // free(obj);
+                free(obj);
             }
         } else if (obj->depth == 0) {  // returned object
             ret_obj = obj;
@@ -156,9 +157,9 @@ void aize_mem_exit() {
 }
 
 
-AizeBase* aize_mem_ret(AizeBase* obj) {
-    if (obj->depth >= aize_mem_depth) {
-        obj->depth = 0;
+AizeObjectRef aize_mem_ret(AizeObjectRef obj) {
+    if (obj.obj->depth >= aize_mem_depth) {
+        obj.obj->depth = 0;
     }
     aize_mem_exit();
     // printf("Ret depth: %i\n", obj->depth);
