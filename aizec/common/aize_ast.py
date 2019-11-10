@@ -284,7 +284,7 @@ class MethodCall(Expr):
     def make_method_call(cls, obj: Call, depth: int):
         obj_node, name, meth = cls.is_method(obj)
         kls: ClassType = obj_node.ret
-        if meth:
+        if name:
             call = cls(obj_node, name, kls.get_index(name), obj.args, depth).place(obj.pos)
             call.pointed = meth
             obj.method_call = call
@@ -399,9 +399,16 @@ class Method(Node, NameDecl):
     type: FuncType = field(init=False, repr=False)
     table: Table = field(init=False, repr=False)
 
+    @classmethod
+    def fake(cls, name: str, args: List[Type], ret: Type):
+        meth = cls(name, None, None, None, None)
+        meth.temp_count = 0
+        meth.type = FuncType(args, ret)
+        return meth
 
 @dataclass()
 class ClassType(Type):
+    name: str
     base: ClassType
     attrs: Dict[str, Attr]
     methods: Dict[str, Method]

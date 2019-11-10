@@ -11,3 +11,7 @@ def print_space() -> void {
 def time() -> int {
     return aizeio::get_time();
 }
+
+def print(li: List) -> void {
+    return aizeio::print(li);
+}

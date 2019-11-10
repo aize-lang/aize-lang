@@ -47,7 +47,11 @@ void AizeList_append(struct AizeList* list, AizeBase* obj) {
 
 
 AizeBase* AizeList_get(struct AizeList* list, size_t item) {
-    return list->arr[item];
+    if (item >= 0 && item < list->len) {
+        return list->arr[item];
+    } else {
+        return NULL;
+    }
 }
 
 

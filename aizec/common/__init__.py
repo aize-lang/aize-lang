@@ -22,10 +22,7 @@ class Config:
             try:
                 json.loads(self.file.read())
             except json.JSONDecodeError:
-                print(f"Corrupted Configuration File ({path}). Resetting.")
-                self.file.seek(0)
-                self.file.truncate(0)
-                self.file.write(json.dumps(self.DEFAULT_DATA, indent='    '))
+                self.reset()
         self.file: IO = open(path, "r+")
 
     def __setitem__(self, key: str, value):
@@ -49,4 +46,11 @@ class Config:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self.file.close()
         return
+
+    def reset(self):
+        print(f"Corrupted Configuration File ({self.path}). Resetting.")
+        self.file.seek(0)
+        self.file.truncate(0)
+        self.file.write(json.dumps(self.DEFAULT_DATA, indent='    '))

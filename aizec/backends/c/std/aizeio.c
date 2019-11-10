@@ -22,3 +22,7 @@ void print_space() {
 int get_time() {
     return clock();
 }
+
+void print(void* obj) {
+    printf("%p\n", obj);
+}

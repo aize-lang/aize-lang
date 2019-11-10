@@ -10,12 +10,13 @@ from aizec.common import new
 AIZEIO = Table.new(TableType.C_FILE, {
     'test': NameDecl('test', FuncTypeNode([], Name('void'))).defined(FuncType([], VoidType()), 'test'),
     'print_int': NameDecl.direct('print_int', 'print_int', FuncType([IntType(), IntType()], VoidType())),
+    'print': NameDecl.direct('print', 'print', FuncType([VoidType()], VoidType())),
     'print_space': NameDecl.direct('print_space', 'print_space', FuncType([], VoidType())),
     'get_time': NameDecl.direct("get_time", "get_time", FuncType([], IntType()))
 }, {}, {})
 
 # noinspection PyTypeChecker
-ObjectType = ClassType(None, {}, {})
+ObjectType = ClassType('Object', None, {}, {})
 ObjectType.structs = 'AizeObject'
 ObjectType.cls_namespace = Table.new(TableType.CLASS, {}, {}, {})
 # TODO finish Obj_namespace
@@ -26,12 +27,19 @@ ObjectType.cls_namespace = Table.new(TableType.CLASS, {}, {}, {})
 #     'new': NameDecl.direct('new', 'AizeString_new', FuncType([], ))
 # })
 
-ListType = ClassType(ObjectType, {}, {})
+ListType = ClassType('List', ObjectType, {}, {})
+ListType.methods = {
+    'add': Method.fake('add', [ListType, ObjectType], VoidType()),
+    'get': Method.fake('Get', [ListType], ObjectType)
+}
 ListType.structs = 'AizeList'
 ListType.cls_namespace = Table.new(TableType.CLASS, {
     'new': NameDecl.direct('new', 'AizeList_new', FuncType([], ListType))
 }, {}, {})
-ListType.obj_namespace = Table.new(TableType.OBJECT, {}, {}, {})
+ListType.obj_namespace = Table.new(TableType.OBJECT, {
+    'add': NameDecl.direct('add', 'AizeList_append', FuncType([ListType, ObjectType], VoidType())),
+    'get': NameDecl.direct('get', 'AizeList_get', FuncType([ListType], ObjectType))
+}, {}, {})
 
 
 class SemanticError(AizeError):
@@ -121,6 +129,7 @@ class SemanticAnalysis:
                 for top in file.tops:
                     if isinstance(top, Class):
                         cls_type = new(ClassType)
+                        cls_type.name = top.name
                         top.type = cls_type
                         self.table.add_type(top.name, cls_type)
 
@@ -367,7 +376,10 @@ class SemanticAnalysis:
 
     def visit_GetAttr(self, obj: GetAttr):
         left: ClassType = self.visit(obj.left)
-        attr = left.obj_namespace.get_name(obj.attr)
+        try:
+            attr = left.obj_namespace.get_name(obj.attr)
+        except KeyError:
+            raise SemanticError(f"Object of type '{left.name}' does not have attribute '{obj.attr}'", obj)
         obj.pointed = attr
         obj.ret = attr.type
         return attr.type
@@ -382,7 +394,10 @@ class SemanticAnalysis:
 
     def visit_GetNamespaceName(self, obj: GetNamespaceName):
         namespace: Table = self.visit(obj.namespace)
-        name = namespace.get_name(obj.attr)
+        try:
+            name = namespace.get_name(obj.attr)
+        except KeyError:
+            raise SemanticError(f"Namespace doesn't have the name '{obj.attr}'", obj)
         obj.pointed = name
         obj.ret = name.type
         return name.type
