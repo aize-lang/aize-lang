@@ -112,6 +112,8 @@ class SemanticAnalysis:
         if isinstance(obj, Stmt):
             self.max_methcall = max(self.max_methcall, self.curr_methcall)
             self.curr_methcall = 0
+        elif isinstance(obj, Expr):
+            obj.ret = val
         return val
 
     def visit_Program(self, obj: Program):

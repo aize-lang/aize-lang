@@ -368,7 +368,14 @@ class CGenerator:
         return cgen.While(self.visit(obj.cond), self.visit(obj.body))
 
     def visit_Block(self, obj: Block):
-        return cgen.Block([self.visit(stmt) for stmt in obj.stmts])
+        body = []
+        for stmt in obj.stmts:
+            ret = self.visit(stmt)
+            if isinstance(ret, (list, tuple)):
+                body.extend(ret)
+            elif ret is not None:
+                body.append(ret)
+        return cgen.Block(body)
 
     def visit_VarDecl(self, obj: VarDecl):
         return cgen.Declare(self.visit(obj.type), obj.unique, self.visit(obj.val))
