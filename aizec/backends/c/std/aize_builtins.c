@@ -4,6 +4,9 @@
 uint32_t aize_mem_depth = 1;
 
 
+/******* Aize Object *******/
+
+
 void* AizeObject_vtable[0] = { };
 
 
@@ -15,6 +18,9 @@ AizeObjectRef AizeObject_new_AizeObject(AizeObjectRef mem) {
     mem.obj->depth = aize_mem_depth;
     return mem;
 }
+
+
+/******* Aize List *******/
 
 
 #define LIST_START_SIZE 16
@@ -56,7 +62,10 @@ AizeObjectRef AizeList_get(AizeObjectRef li, size_t item) {
 }
 
 
-//====== Memory Management ======
+/******* Aize String *******/
+
+
+/******* Memory Management *******/
 
 
 #define START_SIZE 256

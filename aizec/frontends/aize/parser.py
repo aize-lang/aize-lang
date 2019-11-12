@@ -20,7 +20,7 @@ BASIC_TOKENS = sorted(["+", "+=",
                        "@", "::"],
                       key=len, reverse=True)
 
-KEYWORDS = ['class', 'def', 'method', 'attr', 'var', 'while', 'if', 'return', 'else', 'import', 'cimport']
+KEYWORDS = ['class', 'trait', 'def', 'method', 'attr', 'var', 'while', 'if', 'return', 'else', 'import', 'cimport']
 
 BIN = '01'
 OCT = BIN + '234567'

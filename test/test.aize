@@ -2,13 +2,17 @@ import std:"io";
 
 
 class Person {
+    attr age: int;
+    attr weight: int;
 
+    method copy(this: Person) -> Person {
+        return Person::new(this.age, this.weight);
+    }
 }
 
 
 def main() -> int {
-    var obj: List = List::new();
-    obj.add(obj);
-    io::print(obj.get());
+    var person: Person = Person::new(10, 10);
+    var clone: Person = person.copy();
     return 0;
 }

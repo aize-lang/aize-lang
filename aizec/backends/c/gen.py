@@ -4,6 +4,7 @@ import subprocess
 import os
 
 from aizec.common.error import AizeError
+from aizec.common.sematics import SemanticError  # TODO actually use this in the right place
 from aizec.common.aize_ast import *
 from aizec.common import *
 from aizec.backends.c import _cgen as cgen
@@ -109,6 +110,8 @@ class GCC(CCompiler):
     def call(self, args: List[str]):
         # os.environ["PATH"] = str(self.bin) + os.pathsep + os.environ["PATH"]
         check = subprocess.run(["gcc"] + args, check=False)
+        # process = subprocess.Popen(["gcc"] + args)
+
         return check
 
 
@@ -196,9 +199,12 @@ class CGenerator:
         source, header, gen = cls.gen(tree, debug=False)  # args.for_ == 'debug')
         call_args = []
         call_args += ["-Wall"]
-        if args.for_ != 'compiler-debug':
+        # TODO clean up this section of options corellating to options (dict? Option classes?)
+        if args.for_ in ('debug', 'normal', 'release'):
             call_args += ["-Wno-sequence-point"]
             call_args += ["-Wno-incompatible-pointer-types"]
+            if args.for_ in ('normal', 'release'):
+                call_args += ['-Wno-unused-variable']
 
         if args.for_ in ('compiler-debug', 'debug', 'normal'):
             call_args += ["-O0"]
@@ -221,11 +227,26 @@ class CGenerator:
             raise CompilationError(f"Compilation of generated C code failed (Exit Code {hex(check.returncode)})")
 
         if args.run:
-            ret = subprocess.run(args.out.as_posix(), check=False)
-            if ret.returncode == 0xc0000005:
-                raise CompilationError(f"Running of generated executable failed (Segmentation Fault)")
-            elif ret.returncode != 0:
-                raise CompilationError(f"Running of generated executable failed ({hex(ret.returncode)})")
+            ret = subprocess.Popen(args.out.as_posix())
+            ret.communicate("")
+            try:
+                if ret.returncode == 0xc0000005:
+                    raise CompilationError(f"Running of generated executable failed (Segmentation Fault)")
+                elif ret.returncode != 0:
+                    raise CompilationError(f"Running of generated executable failed ({hex(ret.returncode)})")
+            finally:
+                ret.terminate()
+
+    @classmethod
+    def get_cls_ptr(cls, obj: cgen.Expression, cls_obj: ClassType):
+        return cgen.Cast(cgen.GetAttr(obj, 'obj'), cgen.PointerType(cgen.StructType(cls_obj.structs)))
+
+    @classmethod
+    def ensure_cls(cls, obj: Expr):
+        if isinstance(obj.ret, ClassType):
+            return obj.ret
+        else:
+            raise SemanticError("Expected a Class", obj)
 
     def visit(self, obj):
         return getattr(self, "visit_"+obj.__class__.__name__)(obj)
@@ -275,14 +296,16 @@ class CGenerator:
         new_attrs = {attr.unique: self.visit(attr.type) for attr in obj.attrs.values()}
 
         def set_attr(attr):
-            return cgen.ExprStmt(cgen.SetArrow(cgen.GetVar("mem"), attr.unique, cgen.GetVar(attr.unique)))
+            return cgen.ExprStmt(cgen.SetArrow(self.get_cls_ptr(cgen.GetVar('mem'), obj.type), attr.unique,
+                                               cgen.GetVar(attr.unique)))
 
         new_func = cgen.Function(new_unique, new_attrs, cls_ptr, [
             cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])),
             cgen.Declare(cls_ptr, "mem",
-                         cgen.ArrayInit([cgen.Constant(0),
-                                         cgen.Call(cgen.GetVar("aize_mem_malloc"), [cgen.SizeOf(cls_struct.struct_type)])])),
-            cgen.ExprStmt(cgen.SetAttr(cgen.GetVar('mem'), "vtable", cgen.GetVar(vtable.name))),
+                         cgen.ArrayInit([cgen.GetVar(vtable.name),
+                                         cgen.Call(cgen.GetVar("aize_mem_malloc"),
+                                                   [cgen.SizeOf(cls_struct.struct_type)])])),
+            # cgen.ExprStmt(cgen.SetAttr(cgen.GetVar('mem'), "vtable", )),
             *(set_attr(attr) for attr in obj.attrs.values()),
             cgen.ExprStmt(cgen.SetArrow(cgen.GetAttr(cgen.GetVar('mem'), 'obj'), "ref_count", cgen.Constant(0))),
             cgen.Return(cgen.Call(cgen.GetVar('aize_mem_ret'), [cgen.GetVar("mem")])),
@@ -423,17 +446,15 @@ class CGenerator:
         return cgen.SetVar(obj.ref.unique, self.visit(obj.val))
 
     def visit_GetAttr(self, obj: GetAttr):
-        return cgen.GetArrow(self.visit(obj.left), obj.pointed.unique)
+        cls: ClassType = self.ensure_cls(obj.left)
+        return cgen.GetArrow(self.get_cls_ptr(self.visit(obj.left), cls), obj.pointed.unique)
 
     def visit_SetAttr(self, obj: SetAttr):
-        return cgen.SetArrow(self.visit(obj.left), obj.pointed.unique, self.visit(obj.val))
+        cls: ClassType = self.ensure_cls(obj.left)
+        return cgen.SetArrow(self.get_cls_ptr(self.visit(obj.left), cls), obj.pointed.unique, self.visit(obj.val))
 
     def visit_Num(self, obj: Num):
         return cgen.Constant(obj.num)
-
-    # TODO for this and SemAnal, Make expr visitors and stmt visitors sep
-    #  OR
-    #  Make GetNamespaceAttr expr only, and make something else for getting types
 
     def visit_GetNamespaceName(self, obj: GetNamespaceName):
         return cgen.GetVar(obj.pointed.unique)

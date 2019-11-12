@@ -16,3 +16,4 @@ Enter in the following command, assuming the correct Python is available on you 
 ```commandline
 python -m aizec test/fibo.aize --run
 ```
+You should see the first 20 fibonacci numbers printed.

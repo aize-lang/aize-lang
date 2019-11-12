@@ -375,6 +375,23 @@ class Top(Node):
 
 
 @dataclass()
+class Trait(Top, NameDecl):
+    name: str
+    methods: Dict[str, FuncType]
+
+    type: TraitType = field(init=False, repr=False)
+
+    obj_namespace: Table = field(init=False, repr=False)
+    cls_namespace: Table = field(init=False, repr=False)
+
+
+@dataclass()
+class TraitType(Type):
+    name: str
+    methods: Dict[str, FuncType]
+
+
+@dataclass()
 class Class(Top, NameDecl):
     base: Union[TypeNode, None]
 
@@ -405,6 +422,7 @@ class Method(Node, NameDecl):
         meth.temp_count = 0
         meth.type = FuncType(args, ret)
         return meth
+
 
 @dataclass()
 class ClassType(Type):
