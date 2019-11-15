@@ -14,7 +14,7 @@ AizeObjectRef AizeObject_new_AizeObject(AizeObjectRef mem) {
     if (mem.obj == NULL) {
         mem.obj = malloc(sizeof(struct AizeObject));
     }
-    mem.vtable = AizeObject_vtable;
+    mem.typeid = 0;
     mem.obj->depth = aize_mem_depth;
     return mem;
 }
@@ -37,7 +37,7 @@ AizeObjectRef AizeList_new() {
     mem->len = 0;
     mem->capacity = LIST_START_SIZE;
     mem->arr = calloc(LIST_START_SIZE, sizeof(AizeObjectRef));
-    return (AizeObjectRef) {AizeList_vtable, mem};
+    return (AizeObjectRef) {mem, 1};
 }
 
 
@@ -57,7 +57,7 @@ AizeObjectRef AizeList_get(AizeObjectRef li, size_t item) {
     if (item >= 0 && item < list->len) {
         return (AizeObjectRef) list->arr[item];
     } else {
-        return (AizeObjectRef) {NULL, NULL};
+        return (AizeObjectRef) {NULL, 0};
     }
 }
 

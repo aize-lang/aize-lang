@@ -10,8 +10,8 @@ typedef struct AizeBase {
 
 
 typedef struct AizeObjectRef {
-    void** vtable;
     AizeBase* obj;
+    uint32_t typeid;
 } AizeObjectRef;
 
 

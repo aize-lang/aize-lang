@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Tuple
+from typing import Tuple, ClassVar
 
 from aizec.common import *
 
@@ -114,7 +114,17 @@ class TypeNode(Node):
 
 @dataclass()
 class Type:
-    pass
+    def __le__(self, other: Type):
+        raise NotImplementedError()
+
+    def __ge__(self, other: Type):
+        raise NotImplementedError()
+
+    def __eq__(self, other: Type):
+        raise NotImplementedError()
+
+    def __str__(self):
+        raise NotImplementedError()
 
 
 @dataclass()
@@ -270,7 +280,8 @@ class MethodCall(Expr):
     args: List[Expr]
     depth: int
 
-    pointed: NameDecl = field(init=False, repr=False)
+    pointed: Method = field(init=False, repr=False)
+    pointed_cls: ClassType = field(init=False, repr=False)
 
     @classmethod
     def is_method(cls, obj: Call):
@@ -287,6 +298,7 @@ class MethodCall(Expr):
         if name:
             call = cls(obj_node, name, kls.get_index(name), obj.args, depth).place(obj.pos)
             call.pointed = meth
+            call.pointed_cls = obj_node.ret
             obj.method_call = call
         else:
             raise Exception()
@@ -418,6 +430,7 @@ class Method(Node, NameDecl):
 
     @classmethod
     def fake(cls, name: str, args: List[Type], ret: Type):
+        # noinspection PyTypeChecker
         meth = cls(name, None, None, None, None)
         meth.temp_count = 0
         meth.type = FuncType(args, ret)
@@ -431,10 +444,13 @@ class ClassType(Type):
     attrs: Dict[str, Attr]
     methods: Dict[str, Method]
 
+    ttable: str = field(init=False, repr=False)
     structs: str = field(init=False, repr=False)
 
     obj_namespace: Table = field(init=False, repr=False)
     cls_namespace: Table = field(init=False, repr=False)
+
+    children: List[ClassType] = field(init=False, repr=False, default_factory=list)
 
     @property
     def vtable(self):
@@ -450,6 +466,22 @@ class ClassType(Type):
             return self.vtable.index(method)
         else:
             raise KeyError(method)
+
+    def __le__(self, other):
+        if isinstance(other, ClassType):
+            return other is self
+        return False
+
+    def __ge__(self, other):
+        if isinstance(other, ClassType):
+            return other is self
+        return False
+
+    def __eq__(self, other: Type):
+        return other is self
+
+    def __str__(self):
+        return f"{self.name}"
 
 
 @dataclass()
@@ -491,25 +523,75 @@ class FuncType(Type):
     args: List[Type]
     ret: Type
 
+    def __le__(self, other):
+        if isinstance(other, FuncType):
+            if len(self.args) == len(other.args) and self.ret <= other.ret:
+                for arg, other_arg in zip(self.args, other.args):
+                    if not arg >= other_arg:
+                        break
+                else:
+                    return True
+        return False
+
+    def __ge__(self, other):
+        if isinstance(other, FuncType):
+            if len(self.args) == len(other.args) and self.ret >= other.ret:
+                for arg, other_arg in zip(self.args, other.args):
+                    if not arg <= other_arg:
+                        break
+                else:
+                    return True
+        return False
+
+    def __eq__(self, other):
+        if isinstance(other, FuncType):
+            if len(self.args) == len(other.args) and self.ret == other.ret:
+                for arg in self.args:
+                    if not arg == other:
+                        break
+                else:
+                    return True
+        return False
+
+    def __str__(self):
+        return f"({', '.join(str(arg) for arg in self.args)}) -> {self.ret}"
+
 
 @dataclass()
-class IntType(Type):
-    pass
+class DataType(Type):
+    name: ClassVar[str]
+
+    def __le__(self, other):
+        return type(self) == type(other)
+
+    def __ge__(self, other):
+        return type(self) == type(other)
+
+    def __eq__(self, other):
+        return type(self) == type(other)
+
+    def __str__(self):
+        return self.name
 
 
 @dataclass()
-class VoidType(Type):
-    pass
+class IntType(DataType):
+    name = "int"
 
 
 @dataclass()
-class LongType(Type):
-    pass
+class VoidType(DataType):
+    name = "void"
 
 
 @dataclass()
-class BoolType(Type):
-    pass
+class LongType(DataType):
+    name = "long"
+
+
+@dataclass()
+class BoolType(DataType):
+    name = "bool"
 
 
 @dataclass()
@@ -531,6 +613,7 @@ class Program(Node):
     files: List[File]
     # [(header, source), ...]
     needed_std: List[str] = field(init=False, repr=False, default_factory=list)
+    classes: List[ClassType] = field(init=False, repr=False, default_factory=list)
 
     main: NameDecl = field(init=False, repr=False)
 

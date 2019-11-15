@@ -412,8 +412,10 @@ class AizeParser:
     def parse_var(self):
         start = self.match("var")
         var = self.match_exc("ident").text
-        self.match_exc(":")
-        type = self.parse_type()
+        if self.match(":"):
+            type = self.parse_type()
+        else:
+            type = None
         self.match_exc("=")
         val = self.parse_expr()
         self.match_exc(";")

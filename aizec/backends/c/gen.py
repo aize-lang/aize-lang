@@ -135,7 +135,9 @@ class Clang(CCompiler):
 
 
 class CGenerator:
-    def __init__(self, header: IO, source: IO, debug: bool):
+    def __init__(self, program: Program, header: IO, source: IO, debug: bool):
+        self.program = program
+
         self.header = header
         self.source = source
 
@@ -151,7 +153,7 @@ class CGenerator:
         main_file = next(file.path for file in tree.files if file.is_main).with_suffix("")
         with main_file.with_suffix(".h").open("w") as header:
             with main_file.with_suffix(".c").open("w") as source:
-                generator = cls(header, source, **kwargs)
+                generator = cls(tree, header, source, **kwargs)
                 tops = generator.visit_Program(tree)
                 program = cgen.Program(tops, main_file)
                 program.generate(main_file.name.replace(".", "_"), header, source)
@@ -227,15 +229,16 @@ class CGenerator:
             raise CompilationError(f"Compilation of generated C code failed (Exit Code {hex(check.returncode)})")
 
         if args.run:
-            ret = subprocess.Popen(args.out.as_posix())
-            ret.communicate("")
-            try:
-                if ret.returncode == 0xc0000005:
-                    raise CompilationError(f"Running of generated executable failed (Segmentation Fault)")
-                elif ret.returncode != 0:
-                    raise CompilationError(f"Running of generated executable failed ({hex(ret.returncode)})")
-            finally:
-                ret.terminate()
+            os.system(args.out.as_posix())
+            # ret = subprocess.Popen(args.out.as_posix())
+            # ret.communicate("")
+            # try:
+            #     if ret.returncode == 0xc0000005:
+            #         raise CompilationError(f"Running of generated executable failed (Segmentation Fault)")
+            #     elif ret.returncode != 0:
+            #         raise CompilationError(f"Running of generated executable failed ({hex(ret.returncode)})")
+            # finally:
+            #     ret.terminate()
 
     @classmethod
     def get_cls_ptr(cls, obj: cgen.Expression, cls_obj: ClassType):
@@ -257,6 +260,9 @@ class CGenerator:
         for header, source in (C_STD[std] for std in obj.needed_std):
             self.links.append(source)
             tops.append(cgen.Include(header.as_posix()))
+
+        cls_enum = cgen.Enum("AizeClasses", [cls.structs.upper() for cls in obj.classes])
+        tops.append(cls_enum)
         for file in obj.files:
             tops.extend(self.visit(file))
         return tops
@@ -288,9 +294,16 @@ class CGenerator:
         cls_struct = cgen.Struct(obj.unique, attrs)
 
         vtable_items = [cgen.Ref(cgen.GetVar(meth.unique)) for meth in obj.methods.values()]
-        vtable = cgen.GlobalArray(f"{obj.unique}_vtable", cgen.void_ptr(),
-                                  len(vtable_items),
-                                  cgen.ArrayInit(vtable_items))
+        # vtable = cgen.GlobalArray(f"{obj.unique}_vtable", cgen.void_ptr(),
+        #                           len(vtable_items),
+        #                           cgen.ArrayInit(vtable_items))
+
+        ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
+                                  (len(self.program.classes), len(obj.methods)),
+                                  cgen.ArrayInit({cls.structs.upper(): cgen.ArrayInit({str(n): cgen.Ref(cgen.GetVar(meth.unique))
+                                                                      for n, meth in enumerate(cls.methods.values())})
+                                                  for cls in [obj.type, *obj.type.children]})
+                                  )
 
         new_unique = obj.type.cls_namespace.get_name("new").unique
         new_attrs = {attr.unique: self.visit(attr.type) for attr in obj.attrs.values()}
@@ -302,9 +315,10 @@ class CGenerator:
         new_func = cgen.Function(new_unique, new_attrs, cls_ptr, [
             cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])),
             cgen.Declare(cls_ptr, "mem",
-                         cgen.ArrayInit([cgen.GetVar(vtable.name),
-                                         cgen.Call(cgen.GetVar("aize_mem_malloc"),
-                                                   [cgen.SizeOf(cls_struct.struct_type)])])),
+                         cgen.StructInit([cgen.Call(cgen.GetVar("aize_mem_malloc"),
+                                                   [cgen.SizeOf(cls_struct.struct_type)]),
+                                         cgen.GetVar(cls_struct.name.upper())
+                                         ])),
             # cgen.ExprStmt(cgen.SetAttr(cgen.GetVar('mem'), "vtable", )),
             *(set_attr(attr) for attr in obj.attrs.values()),
             cgen.ExprStmt(cgen.SetArrow(cgen.GetAttr(cgen.GetVar('mem'), 'obj'), "ref_count", cgen.Constant(0))),
@@ -316,7 +330,7 @@ class CGenerator:
         for meth in obj.methods.values():
             methods.append(self.visit(meth))
 
-        return [cls_struct, new_func, *methods, vtable]
+        return [cls_struct, new_func, *methods, ttable]
 
     def visit_ClassType(self, obj: ClassType):
         # return cgen.PointerType(cgen.StructType(obj.structs))
@@ -407,12 +421,13 @@ class CGenerator:
         if self.in_main_main:
             return cgen.Return(self.visit(obj.val))
         val = self.visit(obj.val)
-        if isinstance(obj.val.ret, ClassType) and False:
+        if isinstance(obj.val.ret, ClassType):
             ret = cgen.Call(cgen.GetVar("aize_mem_ret"), [val])
             return cgen.Return(ret)
         else:
+            ret = cgen.Declare(self.visit(obj.val.ret), 'ATR', val)
             exit_call = cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_exit"), []))
-            return [exit_call, cgen.Return(val)]
+            return [ret, exit_call, cgen.Return(cgen.GetVar('ATR'))]
 
     def visit_Call(self, obj: Call):
         if obj.method_call is not None:
@@ -424,8 +439,9 @@ class CGenerator:
         left = self.visit(obj.obj)
         left = cgen.SetVar(f"AT{obj.depth}", left)
         # noinspection PyTypeChecker
-        left = cgen.GetAttr(left, 'vtable')
-        left = cgen.GetItem(left, obj.index)
+        left = cgen.GetAttr(left, 'typeid')
+        left = cgen.GetItem(cgen.GetVar(obj.pointed_cls.ttable), left)
+        left = cgen.GetItem(left, cgen.Constant(obj.index))
         left = cgen.Cast(left, self.visit(obj.pointed.type))
         left = cgen.Call(left, [cgen.GetVar(f"AT{obj.depth}")] + [self.visit(arg) for arg in obj.args])
         return left

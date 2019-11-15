@@ -6,15 +6,6 @@ from aizec.common.aize_ast import *
 from aizec.common.error import AizeError
 from aizec.common import new
 
-
-AIZEIO = Table.new(TableType.C_FILE, {
-    'test': NameDecl('test', FuncTypeNode([], Name('void'))).defined(FuncType([], VoidType()), 'test'),
-    'print_int': NameDecl.direct('print_int', 'print_int', FuncType([IntType(), IntType()], VoidType())),
-    'print': NameDecl.direct('print', 'print', FuncType([VoidType()], VoidType())),
-    'print_space': NameDecl.direct('print_space', 'print_space', FuncType([], VoidType())),
-    'get_time': NameDecl.direct("get_time", "get_time", FuncType([], IntType()))
-}, {}, {})
-
 # noinspection PyTypeChecker
 ObjectType = ClassType('Object', None, {}, {})
 ObjectType.structs = 'AizeObject'
@@ -42,6 +33,15 @@ ListType.obj_namespace = Table.new(TableType.OBJECT, {
 }, {}, {})
 
 
+AIZEIO = Table.new(TableType.C_FILE, {
+    'test': NameDecl('test', FuncTypeNode([], Name('void'))).defined(FuncType([], VoidType()), 'test'),
+    'print_int': NameDecl.direct('print_int', 'print_int', FuncType([IntType(), IntType()], VoidType())),
+    'print': NameDecl.direct('print', 'print', FuncType([ObjectType], VoidType())),
+    'print_space': NameDecl.direct('print_space', 'print_space', FuncType([], VoidType())),
+    'get_time': NameDecl.direct("get_time", "get_time", FuncType([], IntType()))
+}, {}, {})
+
+
 class SemanticError(AizeError):
     def __init__(self, msg: str, node: Node):
         self.msg = msg
@@ -54,6 +54,23 @@ class SemanticError(AizeError):
         pos = text_pos.pos
         file.write(f"In {text_pos.file}:\n")
         file.write(f"Analysis Error: {self.msg}:\n")
+        file.write(f"{line_no:>6} | {line}\n")
+        file.write(f"         {' ' * pos[0]}{'^'*(pos[1]-pos[0])}")
+
+
+class TypeCheckError(AizeError):
+    def __init__(self, expected: Type, got: Type, node: Node):
+        self.expected = expected
+        self.got = got
+        self.node = node
+
+    def display(self, file: IO):
+        text_pos = self.node.pos
+        line_no = text_pos.line
+        line = text_pos.text.splitlines()[line_no-1]
+        pos = text_pos.pos
+        file.write(f"In {text_pos.file}:\n")
+        file.write(f"Type Checking Error: Expected type {self.expected}, got {self.got}:\n")
         file.write(f"{line_no:>6} | {line}\n")
         file.write(f"         {' ' * pos[0]}{'^'*(pos[1]-pos[0])}")
 
@@ -86,6 +103,7 @@ class SemanticAnalysis:
 
         self.max_methcall: int = 0
         self.curr_methcall: int = 0
+        self.classes: List[ClassType] = [ObjectType, ListType]
 
         self.scope_names: List[str] = []
 
@@ -134,6 +152,7 @@ class SemanticAnalysis:
                         cls_type.name = top.name
                         top.type = cls_type
                         self.table.add_type(top.name, cls_type)
+                        self.classes.append(cls_type)
 
                         cls_namespace = Table.empty(TableType.CLASS)
                         cls_type.cls_namespace = cls_namespace
@@ -145,6 +164,10 @@ class SemanticAnalysis:
                         mangled = f"A{self.mangled_path()}C{len(top.name)}{top.name}"
                         top.unique = mangled
                         cls_type.structs = top.unique
+
+                        cls_type.ttable = mangled + "_ttable"
+
+                        cls_type.children = []
 
                         classes.append((file, top))
 
@@ -166,8 +189,9 @@ class SemanticAnalysis:
                         with self.enter(func_table):
                             params = []
                             for param in top.args:
-                                self.visit(param)
+                                arg_ret = self.visit(param)
                                 self.table.add_name(param.name, param)
+                                params.append(arg_ret)
                             ret = self.visit(top.ret)
                         top.type = FuncType(params, ret)
 
@@ -218,6 +242,8 @@ class SemanticAnalysis:
         self.main_file.tops.append(Function('main', FuncTypeNode([], Name('int')), [], Name('int'), [
             Return(Call(GetVar(self.program.main.unique).define(ref=self.program.main), []))
         ]).defined(FuncType([], IntType()), 'main'))
+
+        obj.classes = self.classes
 
     def visit_File(self, obj: File):
         with self.enter(obj.table):
@@ -318,10 +344,17 @@ class SemanticAnalysis:
         self.visit(obj.val)
 
     def visit_VarDecl(self, obj: VarDecl):
-        obj.type = self.visit(obj.type_ref)
+        ret = self.visit(obj.val)
+        if obj.type_ref is None:
+            obj.type = ret
+        else:
+            obj.type = self.visit(obj.type_ref)
+            # TODO equate types
+            if obj.type != ret:
+                raise TypeCheckError(obj.type, ret, obj)
+                # raise SemanticError(f"Expected type {obj.type}, got {ret}", obj)
         obj.unique = self.mangled_var(obj.name)
         self.table.add_name(obj.name, obj)
-        self.visit(obj.val)
 
     def visit_ExprStmt(self, obj: ExprStmt):
         self.visit(obj.expr)
@@ -335,8 +368,12 @@ class SemanticAnalysis:
             self.curr_methcall += 1
         else:
             args = []
-        for arg in obj.args:
-            args.append(self.visit(arg))
+        if len(obj.args + args) != len(func.args):
+            raise SemanticError(f"Function requires {len(func.args)} arguments, passed {len(obj.args)}", obj)
+        for arg, func_arg in zip(obj.args, func.args):
+            arg_ret = self.visit(arg)
+            if not arg_ret <= func_arg:
+                raise TypeCheckError(func_arg, arg_ret, obj)
         obj.ret = func.ret
         return func.ret
 
@@ -373,7 +410,9 @@ class SemanticAnalysis:
     def visit_SetVar(self, obj: SetVar):
         decl = self.table.get_name(obj.name)
         obj.ref = decl
-        self.visit(obj.val)
+        val = self.visit(obj.val)
+        if not val <= decl.type:
+            raise TypeCheckError(decl.type, val, obj)
         return decl.type
 
     def visit_GetAttr(self, obj: GetAttr):

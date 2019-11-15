@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, List, Dict, IO, ClassVar, cast, Iterable, Union
+from typing import Any, List, Dict, IO, ClassVar, cast, Iterable, Union, Tuple
 
 
 class Node(ABC):
@@ -80,10 +80,10 @@ class GetArrow(Expression):
 @dataclass()
 class GetItem(Expression):
     array_p: Expression
-    item: int
+    item: Expression
 
     def generate(self):
-        return f"{self.array_p.generate()}[{self.item}]"
+        return f"{self.array_p.generate()}[{self.item.generate()}]"
 
 
 @dataclass()
@@ -153,11 +153,19 @@ class Constant(Expression):
 
 
 @dataclass()
-class ArrayInit(Expression):
+class StructInit(Expression):
     items: List[Expression]
 
     def generate(self):
-        return f"{{ {', '.join(item.generate() for item in self.items)} }}"
+        return "{" + ', '.join(item.generate() for item in self.items) + "}"
+
+
+@dataclass()
+class ArrayInit(Expression):
+    items: Dict[str, Expression]
+
+    def generate(self):
+        return f"{{ {', '.join(f'[{place}]=' + item.generate() for place, item in self.items.items())} }}"
 
 
 @dataclass()
@@ -475,6 +483,22 @@ class Struct(TopLevel):
 
 
 @dataclass()
+class Enum(TopLevel):
+    name: str
+    items: List[str]
+
+    def declaration(self) -> str:
+        return f"enum {self.name}" + " {\n" + ",\n".join([f"    {item}" for item in self.items]) + "\n};\n"
+
+    def definition(self) -> str:
+        return f"enum {self.name};\n"
+
+
+
+
+
+
+@dataclass()
 class Function(TopLevel):
     name: str
     args: Dict[str, Type]
@@ -519,14 +543,14 @@ class Global(TopLevel):
 class GlobalArray(TopLevel):
     name: str
     contained: Type
-    num: int
+    num: Tuple[int, ...]
     val: ArrayInit
 
     def definition(self) -> str:
-        return f"{self.contained.with_name(self.name)}[{self.num}] = {self.val.generate()};"
+        return f"{self.contained.with_name(self.name)}{''.join(f'[{num}]' for num in self.num)} = {self.val.generate()};"
 
     def declaration(self) -> str:
-        return f"extern {self.contained.with_name(self.name)}[{self.num}];"
+        return f"extern {self.contained.with_name(self.name)}{''.join(f'[{num}]' for num in self.num)};"
 
 
 class Program:

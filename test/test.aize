@@ -1,4 +1,4 @@
-import std:"io";
+# import std:"io";
 
 
 class Person {
@@ -12,7 +12,7 @@ class Person {
 
 
 def main() -> int {
-    var person: Person = Person::new(10, 10);
-    var clone: Person = person.copy();
+    var person = Person::new(10, 10);
+    var clone = person.copy();
     return 0;
 }
