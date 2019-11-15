@@ -288,8 +288,16 @@ class MethodCall(Expr):
     def is_method(cls, obj: Call):
         if isinstance(obj, Call):
             if isinstance(obj.left, GetAttr):
-                if isinstance(obj.left.left.ret, ClassType) and obj.left.attr in obj.left.left.ret.methods:
-                    return obj.left.left, obj.left.attr, obj.left.left.ret.methods[obj.left.attr]
+
+                if isinstance(obj.left.left.ret, (ClassType, TraitType)):
+                    cls_type = obj.left.left.ret
+                    try:
+                        method = cls_type.get_method(obj.left.attr)
+                    except KeyError:
+                        pass
+                    else:
+                        # if obj.left.attr in obj.left.left.ret.methods:
+                        return obj.left.left, obj.left.attr, method
         return None, None, None
 
     @classmethod
@@ -420,7 +428,6 @@ class TraitType(Type):
         if meth in self.methods:
             return self
         else:
-            print(self.methods)
             raise KeyError(meth)
 
     def get_method(self, meth: str):
@@ -428,6 +435,10 @@ class TraitType(Type):
             return self.methods[meth]
         else:
             raise KeyError()
+
+    def get_index(self, meth: str):
+        owner = self.get_owner(meth)
+        return owner.indices.index(meth)
 
     def __str__(self):
         return f"{self.name}"

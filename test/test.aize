@@ -3,6 +3,10 @@
 
 trait Sized {
     method length(this: Sized) -> int;
+
+    method get_size(this: Sized) -> int {
+        return this.length();
+    }
 }
 
 
@@ -12,11 +16,17 @@ class Stick : Sized {
     method length(this: Stick) -> int {
         return this.size;
     }
+
+    method throw(this: Stick) -> void {
+        this.size = this.size / 2;
+    }
 }
 
 
 def main() -> int {
     var stick = Stick::new(10);
     stick.length();
+    stick.get_size();
+    stick.throw();
     return 0;
 }

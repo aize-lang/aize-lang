@@ -235,6 +235,13 @@ class SemanticAnalysis:
 
                     self.scope_names.append(f"{len(cls.name)}C{cls.name}")
                     for name, attr in cls.attrs.items():
+                        try:
+                            owner = cls_type.get_owner(attr.name)
+                        except KeyError:
+                            pass
+                        else:
+                            if owner is not cls_type:
+                                raise SemanticError(f"Name '{attr.name}' is already defined for {cls.name} in {owner.name}", attr)
                         self.visit(attr)
                         cls_type.attrs[name] = attr
                         cls_type.obj_namespace.add_name(name, attr)
@@ -436,9 +443,13 @@ class SemanticAnalysis:
             # noinspection PyUnresolvedReferences
             args = [obj.left.left.ret]
             MethodCall.make_method_call(obj, self.curr_methcall)
+            func = obj.method_call.pointed.type
             self.curr_methcall += 1
         else:
+            if not isinstance(func, FuncType):
+                raise SemanticError(f"Cannot call {func}", obj)
             args = []
+
         if len(obj.args + args) != len(func.args):
             raise SemanticError(f"Function requires {len(func.args)} arguments, passed {len(obj.args)}", obj)
         for arg, func_arg in zip(obj.args, func.args):
@@ -469,6 +480,11 @@ class SemanticAnalysis:
         self.visit(obj.right)
         return IntType()
 
+    def visit_Div(self, obj: Div):
+        self.visit(obj.left)
+        self.visit(obj.right)
+        return IntType()
+
     def visit_GetVar(self, obj: GetVar):
         try:
             decl = self.table.get_name(obj.name)
@@ -491,7 +507,10 @@ class SemanticAnalysis:
         try:
             attr = left.obj_namespace.get_name(obj.attr)
         except KeyError:
-            raise SemanticError(f"Object of type '{left.name}' does not have attribute '{obj.attr}'", obj)
+            try:
+                attr = left.get_method(obj.attr)
+            except KeyError:
+                raise SemanticError(f"Object of type '{left.name}' does not have attribute '{obj.attr}'", obj)
         obj.pointed = attr
         obj.ret = attr.type
         return attr.type

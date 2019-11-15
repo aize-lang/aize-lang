@@ -301,8 +301,8 @@ class CGenerator:
         for n, meth_proto in enumerate(obj.methods.values()):
             meth = obj.type.get_method(meth_proto.name)
             if meth.owner is obj.type:
+                methods[str(len(owned_methods))] = cgen.Ref(cgen.GetVar(meth.unique))
                 owned_methods.append(meth_proto)
-                methods[str(n)] = cgen.Ref(cgen.GetVar(meth.unique))
         implementers[obj.type.structs.upper()] = cgen.ArrayInit(methods)
         ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
                                   (len(self.program.classes), len(owned_methods)),
@@ -377,6 +377,9 @@ class CGenerator:
     def visit_ClassType(self, obj: ClassType):
         # return cgen.PointerType(cgen.StructType(obj.structs))
         # TODO Make specific types which replace the AizeBase* with their own class for more optimizations
+        return AIZE_OBJECT_REF
+
+    def visit_TraitType(self, obj: TraitType):
         return AIZE_OBJECT_REF
 
     def visit_Method(self, obj: Method):
@@ -496,6 +499,9 @@ class CGenerator:
 
     def visit_Sub(self, obj: Sub):
         return cgen.BinOp(self.visit(obj.left), '-', self.visit(obj.right))
+
+    def visit_Div(self, obj: Div):
+        return cgen.BinOp(self.visit(obj.left), '/', self.visit(obj.right))
 
     def visit_GetVar(self, obj: GetVar):
         return cgen.GetVar(obj.ref.unique)
