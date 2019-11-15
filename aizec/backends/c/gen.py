@@ -229,7 +229,12 @@ class CGenerator:
             raise CompilationError(f"Compilation of generated C code failed (Exit Code {hex(check.returncode)})")
 
         if args.run:
-            os.system(args.out.as_posix())
+            ret = os.system(args.out.as_posix()) & 2**32-1
+            if ret == 0xc0000005:
+                raise CompilationError(f"Running of generated executable failed (Segmentation Fault)")
+            elif ret != 0:
+                raise CompilationError(f"Running of generated executable failed ({hex(ret)})")
+
             # ret = subprocess.Popen(args.out.as_posix())
             # ret.communicate("")
             # try:
@@ -286,24 +291,29 @@ class CGenerator:
     def visit_Class(self, obj: Class):
         # TODO when types are a thing, a mechanism to add that to main?
         cls_ptr = self.visit(obj.type)
-        if obj.base is None:
-            attrs = {'base': cgen.StructType('AizeBase')}
-        else:
-            attrs = {'base': self.visit(obj.type.base)}
+        attrs = {}
         attrs.update({attr.unique: self.visit(attr.type) for attr in obj.attrs.values()})
         cls_struct = cgen.Struct(obj.unique, attrs)
 
-        vtable_items = [cgen.Ref(cgen.GetVar(meth.unique)) for meth in obj.methods.values()]
-        # vtable = cgen.GlobalArray(f"{obj.unique}_vtable", cgen.void_ptr(),
-        #                           len(vtable_items),
-        #                           cgen.ArrayInit(vtable_items))
-
+        implementers = {}
+        owned_methods = []
+        methods = {}
+        for n, meth_proto in enumerate(obj.methods.values()):
+            meth = obj.type.get_method(meth_proto.name)
+            if meth.owner is obj.type:
+                owned_methods.append(meth_proto)
+                methods[str(n)] = cgen.Ref(cgen.GetVar(meth.unique))
+        implementers[obj.type.structs.upper()] = cgen.ArrayInit(methods)
         ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
-                                  (len(self.program.classes), len(obj.methods)),
-                                  cgen.ArrayInit({cls.structs.upper(): cgen.ArrayInit({str(n): cgen.Ref(cgen.GetVar(meth.unique))
-                                                                      for n, meth in enumerate(cls.methods.values())})
-                                                  for cls in [obj.type, *obj.type.children]})
-                                  )
+                                  (len(self.program.classes), len(owned_methods)),
+                                  cgen.ArrayInit(implementers))
+
+        # ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
+        #                           (len(self.program.classes), len(obj.methods)),
+        #                           cgen.ArrayInit({cls.structs.upper(): cgen.ArrayInit({str(n): cgen.Ref(cgen.GetVar(meth.unique))
+        #                                                               for n, meth in enumerate(cls.methods.values())})
+        #                                           for cls in [obj.type, *obj.type.children]})
+        #                           )
 
         new_unique = obj.type.cls_namespace.get_name("new").unique
         new_attrs = {attr.unique: self.visit(attr.type) for attr in obj.attrs.values()}
@@ -331,6 +341,38 @@ class CGenerator:
             methods.append(self.visit(meth))
 
         return [cls_struct, new_func, *methods, ttable]
+
+    def visit_Trait(self, obj: Trait):
+        # TODO when types are a thing, a mechanism to add that to main?
+
+        implementers = {}
+        for cls in obj.type.iter_children():
+            methods = {}
+            for n, meth_proto in enumerate(obj.methods.values()):
+                meth = cls.get_method(meth_proto.name)
+                if meth.owner is obj.type:
+                    methods[str(n)] = cgen.Ref(cgen.GetVar(meth.unique))
+            implementers[cls.structs.upper()] = cgen.ArrayInit(methods)
+        ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
+                                  (len(self.program.classes), len(obj.methods)),
+                                  cgen.ArrayInit(implementers))
+
+
+        # ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
+        #                           (len(self.program.classes), len(obj.methods)),
+        #                           cgen.ArrayInit(
+        #                               {cls.structs.upper(): cgen.ArrayInit({str(n): cgen.Ref(cgen.GetVar(meth.unique))
+        #                                                                     for n, meth in
+        #                                                                     enumerate(cls.methods.values())})
+        #                                for cls in obj.type.iter_children()})
+        #                           )
+
+        methods = []
+        for meth in obj.methods.values():
+            if meth.body is not None:
+                methods.append(self.visit(meth))
+
+        return [*methods, ttable]
 
     def visit_ClassType(self, obj: ClassType):
         # return cgen.PointerType(cgen.StructType(obj.structs))
@@ -440,7 +482,7 @@ class CGenerator:
         left = cgen.SetVar(f"AT{obj.depth}", left)
         # noinspection PyTypeChecker
         left = cgen.GetAttr(left, 'typeid')
-        left = cgen.GetItem(cgen.GetVar(obj.pointed_cls.ttable), left)
+        left = cgen.GetItem(cgen.GetVar(obj.pointed.owner.ttable), left)
         left = cgen.GetItem(left, cgen.Constant(obj.index))
         left = cgen.Cast(left, self.visit(obj.pointed.type))
         left = cgen.Call(left, [cgen.GetVar(f"AT{obj.depth}")] + [self.visit(arg) for arg in obj.args])

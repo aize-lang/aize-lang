@@ -246,6 +246,8 @@ class AizeParser:
         while self.pos < len(self.tokens):
             if self.curr_is("class"):
                 tops.append(self.parse_class())
+            elif self.curr_is("trait"):
+                tops.append(self.parse_trait())
             elif self.curr_is("def"):
                 tops.append(self.parse_function())
             elif self.curr_is("import"):
@@ -262,8 +264,19 @@ class AizeParser:
         start = self.match_exc("class")
 
         name = self.match_exc("ident").text
-        # TODO inheritance, generics
-        self.match_exc("{")
+
+        if self.match(":"):
+            traits = []
+            while not self.match("{"):
+                trait = self.parse_type()
+                traits.append(trait)
+                if not self.match(","):
+                    self.match_exc("{")
+                    break
+        else:
+            traits = []
+            self.match_exc("{")
+
         attrs = {}
         methods = {}
         while not self.match("}"):
@@ -272,11 +285,29 @@ class AizeParser:
                 attrs[attr.name] = attr
             elif self.curr_is("method"):
                 method = self.parse_method()
+                if method.body is None:
+                    raise ParseError("Methods of a class must have a body", method)
                 methods[method.name] = method
             else:
                 raise ParseError("Not a valid class-statement", self.curr)
 
-        return Class(name, Name(name), None, attrs, methods).place(start.pos)
+        return Class(name, Name(name), traits, attrs, methods).place(start.pos)
+
+    def parse_trait(self):
+        start = self.match_exc("trait")
+
+        name = self.match_exc("ident").text
+
+        self.match_exc("{")
+        methods = {}
+        while not self.match("}"):
+            if self.curr_is("method"):
+                method = self.parse_method()
+                methods[method.name] = method
+            else:
+                raise ParseError("Not a valid trait-statement", self.curr)
+
+        return Trait(name, Name(name), methods).place(start.pos)
 
     def parse_attr(self):
         start = self.match("attr")
@@ -286,9 +317,9 @@ class AizeParser:
         self.match_exc(";")
         return Attr(name, type).place(start.pos)
 
-    def parse_method(self):
+    def parse_method_sig(self):
         start = self.match("method")
-        name = self.match_exc("ident")
+        name = self.match_exc("ident").text
         self.match_exc("(")
         args = []
         while not self.match(")"):
@@ -301,12 +332,18 @@ class AizeParser:
                 break
         self.match_exc("->")
         ret = self.parse_type()
-        self.match_exc("{")
-        body = []
-        while not self.match("}"):
-            body.append(self.parse_stmt())
-        return Method(name.text,
-                      FuncTypeNode([arg_type for _, arg_type in args], ret),
+        return start, name, args, ret
+
+    def parse_method(self):
+        start, name, args, ret = self.parse_method_sig()
+        if self.match("{"):
+            body = []
+            while not self.match("}"):
+                body.append(self.parse_stmt())
+        else:
+            self.match_exc(";")
+            body = None
+        return Method(name, FuncTypeNode([arg_type for _, arg_type in args], ret),
                       [Param(arg_name.text, arg_type) for arg_name, arg_type in args], ret, body).place(start.pos)
 
     def parse_import(self):

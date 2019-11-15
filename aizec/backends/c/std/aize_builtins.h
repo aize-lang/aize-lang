@@ -12,10 +12,11 @@ struct AizeObject {
 extern void* AizeObject_vtable[0];
 
 
-typedef struct AizeListRef {
-    void** vtable;
-    struct AizeList* obj;
-} AizeListRef;
+struct AizeString {
+    struct AizeObject base;
+    size_t len;
+    char* str;
+};
 
 
 struct AizeList {

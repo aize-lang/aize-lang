@@ -1,18 +1,22 @@
 # import std:"io";
 
 
-class Person {
-    attr age: int;
-    attr weight: int;
+trait Sized {
+    method length(this: Sized) -> int;
+}
 
-    method copy(this: Person) -> Person {
-        return Person::new(this.age, this.weight);
+
+class Stick : Sized {
+    attr size: int;
+
+    method length(this: Stick) -> int {
+        return this.size;
     }
 }
 
 
 def main() -> int {
-    var person = Person::new(10, 10);
-    var clone = person.copy();
+    var stick = Stick::new(10);
+    stick.length();
     return 0;
 }

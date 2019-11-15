@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Tuple, ClassVar
+from typing import Tuple, ClassVar, Iterable
 
 from aizec.common import *
 
@@ -13,7 +13,8 @@ class TableType(Enum):
     C_FILE = 2
     SCOPE = 3
     CLASS = 4
-    OBJECT = 5
+    TRAIT = 5
+    OBJECT = 6
 
 
 class Table:
@@ -389,23 +390,52 @@ class Top(Node):
 @dataclass()
 class Trait(Top, NameDecl):
     name: str
-    methods: Dict[str, FuncType]
+    methods: Dict[str, Method]
 
     type: TraitType = field(init=False, repr=False)
-
-    obj_namespace: Table = field(init=False, repr=False)
-    cls_namespace: Table = field(init=False, repr=False)
 
 
 @dataclass()
 class TraitType(Type):
     name: str
-    methods: Dict[str, FuncType]
+    unique: str
+    methods: Dict[str, Method]
+
+    ttable: str = field(init=False, repr=False)
+    indices: List[str] = field(init=False, repr=False)
+
+    obj_namespace: Table = field(init=False, repr=False)
+    cls_namespace: Table = field(init=False, repr=False)
+
+    children: List[Union[ClassType, TraitType]] = field(init=False, repr=False, default_factory=list)
+
+    def iter_children(self) -> Iterable[ClassType]:
+        for child in self.children:
+            if isinstance(child, ClassType):
+                yield child
+            else:
+                yield from child.iter_children()
+
+    def get_owner(self, meth: str):
+        if meth in self.methods:
+            return self
+        else:
+            print(self.methods)
+            raise KeyError(meth)
+
+    def get_method(self, meth: str):
+        if meth in self.methods:
+            return self.methods[meth]
+        else:
+            raise KeyError()
+
+    def __str__(self):
+        return f"{self.name}"
 
 
 @dataclass()
 class Class(Top, NameDecl):
-    base: Union[TypeNode, None]
+    traits: List[Type]
 
     attrs: Dict[str, Attr]
     methods: Dict[str, Method]
@@ -425,14 +455,16 @@ class Method(Node, NameDecl):
     body: List[Stmt]
 
     temp_count: int = field(init=False, repr=False)
+    owner: Union[TraitType, ClassType] = field(init=False, repr=False)
     type: FuncType = field(init=False, repr=False)
     table: Table = field(init=False, repr=False)
 
     @classmethod
-    def fake(cls, name: str, args: List[Type], ret: Type):
+    def fake(cls, name: str, args: List[Type], ret: Type, owner: TraitType = None):
         # noinspection PyTypeChecker
         meth = cls(name, None, None, None, None)
         meth.temp_count = 0
+        meth.owner = owner
         meth.type = FuncType(args, ret)
         return meth
 
@@ -440,12 +472,13 @@ class Method(Node, NameDecl):
 @dataclass()
 class ClassType(Type):
     name: str
-    base: ClassType
+    traits: List[TraitType]
     attrs: Dict[str, Attr]
     methods: Dict[str, Method]
 
     ttable: str = field(init=False, repr=False)
     structs: str = field(init=False, repr=False)
+    indices: List[int] = field(init=False, repr=False)
 
     obj_namespace: Table = field(init=False, repr=False)
     cls_namespace: Table = field(init=False, repr=False)
@@ -457,15 +490,28 @@ class ClassType(Type):
         return list(self.methods)
 
     def get_index(self, method: str):
-        if self.base is not None:
+        owner = self.get_owner(method)
+        return owner.indices.index(method)
+
+    def get_owner(self, meth: str):
+        for trait in self.traits:
             try:
-                return self.base.get_index(method)
+                return trait.get_owner(meth)
             except KeyError:
                 pass
-        if method in self.methods:
-            return self.vtable.index(method)
         else:
-            raise KeyError(method)
+            return self
+
+    def get_method(self, meth: str):
+        if meth in self.methods:
+            return self.methods[meth]
+        for trait in self.traits:
+            try:
+                return trait.get_method(meth)
+            except KeyError:
+                pass
+        else:
+            raise KeyError()
 
     def __le__(self, other):
         if isinstance(other, ClassType):
