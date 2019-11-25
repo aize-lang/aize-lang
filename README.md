@@ -1,7 +1,7 @@
-# Aizelang
+# Aize-lang
 
 ## Getting Started
-To use the programming language aize, first download this repository onto your computer somehow.
+To use the programming language Aize, first download this repository onto your computer somehow.
 
 ### Requirements
 * Python 3.7 exactly
