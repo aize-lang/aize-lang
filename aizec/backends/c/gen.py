@@ -19,7 +19,7 @@ C_STD = {
 }
 
 
-AIZE_BASE = cgen.PointerType(cgen.NameType('AizeBase'))
+AIZE_BASE = cgen.NameType('AizeBase')
 AIZE_OBJECT_REF = cgen.NameType('AizeObjectRef')
 
 
@@ -120,10 +120,10 @@ class Clang(CCompiler):
 
     @classmethod
     def create(cls, config: Config):
-        if subprocess.run(["clang", "--version"], stdout=subprocess.PIPE).returncode != 0:
-            return cls()
-        else:
-            return None
+        if os.name != 'nt':
+            if subprocess.run(["clang", "--version"], stdout=subprocess.PIPE).returncode != 0:
+                return cls()
+        return None
 
     def __init__(self):
         pass
@@ -202,7 +202,7 @@ class CGenerator:
         call_args = []
         call_args += ["-Wall"]
         # TODO clean up this section of options corellating to options (dict? Option classes?)
-        if args.for_ in ('debug', 'normal', 'release'):
+        if args.for_ in ('debug', 'normal', 'release') or True:
             call_args += ["-Wno-sequence-point"]
             call_args += ["-Wno-incompatible-pointer-types"]
             if args.for_ in ('normal', 'release'):
@@ -291,7 +291,7 @@ class CGenerator:
     def visit_Class(self, obj: Class):
         # TODO when types are a thing, a mechanism to add that to main?
         cls_ptr = self.visit(obj.type)
-        attrs = {}
+        attrs = {'base': AIZE_BASE}
         attrs.update({attr.unique: self.visit(attr.type) for attr in obj.attrs.values()})
         cls_struct = cgen.Struct(obj.unique, attrs)
 
@@ -308,13 +308,6 @@ class CGenerator:
                                   (len(self.program.classes), len(owned_methods)),
                                   cgen.ArrayInit(implementers))
 
-        # ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
-        #                           (len(self.program.classes), len(obj.methods)),
-        #                           cgen.ArrayInit({cls.structs.upper(): cgen.ArrayInit({str(n): cgen.Ref(cgen.GetVar(meth.unique))
-        #                                                               for n, meth in enumerate(cls.methods.values())})
-        #                                           for cls in [obj.type, *obj.type.children]})
-        #                           )
-
         new_unique = obj.type.cls_namespace.get_name("new").unique
         new_attrs = {attr.unique: self.visit(attr.type) for attr in obj.attrs.values()}
 
@@ -326,14 +319,12 @@ class CGenerator:
             cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])),
             cgen.Declare(cls_ptr, "mem",
                          cgen.StructInit([cgen.Call(cgen.GetVar("aize_mem_malloc"),
-                                                   [cgen.SizeOf(cls_struct.struct_type)]),
+                                                    [cgen.SizeOf(cls_struct.struct_type)]),
                                          cgen.GetVar(cls_struct.name.upper())
-                                         ])),
-            # cgen.ExprStmt(cgen.SetAttr(cgen.GetVar('mem'), "vtable", )),
+                                          ])),
             *(set_attr(attr) for attr in obj.attrs.values()),
             cgen.ExprStmt(cgen.SetArrow(cgen.GetAttr(cgen.GetVar('mem'), 'obj'), "ref_count", cgen.Constant(0))),
             cgen.Return(cgen.Call(cgen.GetVar('aize_mem_ret'), [cgen.GetVar("mem")])),
-            # cgen.Return(cgen.GetVar("mem")),
         ])
 
         methods = []
@@ -356,16 +347,6 @@ class CGenerator:
         ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
                                   (len(self.program.classes), len(obj.methods)),
                                   cgen.ArrayInit(implementers))
-
-
-        # ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
-        #                           (len(self.program.classes), len(obj.methods)),
-        #                           cgen.ArrayInit(
-        #                               {cls.structs.upper(): cgen.ArrayInit({str(n): cgen.Ref(cgen.GetVar(meth.unique))
-        #                                                                     for n, meth in
-        #                                                                     enumerate(cls.methods.values())})
-        #                                for cls in obj.type.iter_children()})
-        #                           )
 
         methods = []
         for meth in obj.methods.values():

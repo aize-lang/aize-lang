@@ -193,7 +193,7 @@ class AizeParser:
             if curr in visited:
                 continue
             parser = cls(Scanner.scan(curr), curr)
-            parsed, imps = parser.parse_file(curr)
+            parsed, imps = parser.parse_file()
             files.append(parsed)
             visited.add(curr)
             to_parse.extend(imp.abs_path for imp in imps)
@@ -240,7 +240,7 @@ class AizeParser:
                 raise ParseError("Location can only be 'std' currently", self.prev)
         return FilePath(loc, Path(file))
 
-    def parse_file(self, file: Path):
+    def parse_file(self):
         tops = []
         imps = []
         while self.pos < len(self.tokens):
@@ -258,10 +258,19 @@ class AizeParser:
                 tops.append(self.parse_nativeimport())
             else:
                 raise ParseError("Not a valid top-level", self.curr)
-        return File(file, False, tops), imps
+        return File(self.file, False, tops), imps
 
     def parse_class(self):
         start = self.match_exc("class")
+
+        type_vars = []
+        if self.match("<"):
+            while not self.match(">"):
+                type_var = self.parse_type()
+                type_vars.append(type_var)
+                if not self.match(","):
+                    self.match_exc(">")
+                    break
 
         name = self.match_exc("ident").text
 
@@ -298,7 +307,18 @@ class AizeParser:
 
         name = self.match_exc("ident").text
 
-        self.match_exc("{")
+        if self.match(":"):
+            traits = []
+            while not self.match("{"):
+                trait = self.parse_type()
+                traits.append(trait)
+                if not self.match(","):
+                    self.match_exc("{")
+                    break
+        else:
+            traits = []
+            self.match_exc("{")
+
         methods = {}
         while not self.match("}"):
             if self.curr_is("method"):
@@ -307,7 +327,7 @@ class AizeParser:
             else:
                 raise ParseError("Not a valid trait-statement", self.curr)
 
-        return Trait(name, Name(name), methods).place(start.pos)
+        return Trait(name, Name(name), traits, methods).place(start.pos)
 
     def parse_attr(self):
         start = self.match("attr")
@@ -492,7 +512,7 @@ class AizeParser:
 
     def parse_cmp(self):
         expr = self.parse_add()
-        while self.curr.type in ("<", ">"):
+        if self.curr.type in ("<", ">"):
             start = self.curr
             if self.curr.type == "<":
                 self.match("<")
@@ -588,13 +608,6 @@ class AizeParser:
                 # TODO maybe also match number for tuples?
                 attr = self.match_exc("ident")
                 expr = GetAttr(expr, attr.text).place(start.pos)
-            elif self.match("::"):
-                start = self.prev
-                attr = self.match_exc("ident")
-                if isinstance(expr, GetVar):
-                    expr = GetNamespaceName(GetNamespace(expr.name).place(expr.pos), attr.text).place(start.pos)
-                else:
-                    raise ParseError("Cannot get an attribute from the left", start)
             else:
                 break
         return expr

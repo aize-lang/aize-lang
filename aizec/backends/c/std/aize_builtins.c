@@ -4,22 +4,6 @@
 uint32_t aize_mem_depth = 1;
 
 
-/******* Aize Object *******/
-
-
-void* AizeObject_vtable[0] = { };
-
-
-AizeObjectRef AizeObject_new_AizeObject(AizeObjectRef mem) {
-    if (mem.obj == NULL) {
-        mem.obj = malloc(sizeof(struct AizeObject));
-    }
-    mem.typeid = 0;
-    mem.obj->depth = aize_mem_depth;
-    return mem;
-}
-
-
 /******* Aize List *******/
 
 
@@ -62,11 +46,20 @@ AizeObjectRef AizeList_get(AizeObjectRef li, size_t item) {
 }
 
 
-/******* Aize String *******/
+/******* Aize Array *******/
+
+AizeObjectRef AizeArray_new(size_t len) {
+    AizeObjectRef mem = { malloc(sizeof(struct AizeArray)), 0 };
+    mem.obj->depth = aize_mem_depth;
+
+    struct AizeArray* arr = mem.obj;
+    arr->len = len;
+    arr->arr = calloc(len, sizeof(AizeObjectRef));
+    return mem;
+}
 
 
 /******* Memory Management *******/
-
 
 #define START_SIZE 256
 #define SCALE_FACTOR 2

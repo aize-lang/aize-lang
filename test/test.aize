@@ -1,32 +1,18 @@
 # import std:"io";
 
 
-trait Sized {
-    method length(this: Sized) -> int;
-
-    method get_size(this: Sized) -> int {
-        return this.length();
-    }
+class Person {
+    attr age: int;
 }
 
 
-class Stick : Sized {
-    attr size: int;
-
-    method length(this: Stick) -> int {
-        return this.size;
-    }
-
-    method throw(this: Stick) -> void {
-        this.size = this.size / 2;
-    }
+class <T> Holder {
+    attr held: T;
 }
 
 
 def main() -> int {
-    var stick = Stick::new(10);
-    stick.length();
-    stick.get_size();
-    stick.throw();
+    var person = Person::new(10);
+    var pointer = <Person> Holder.parent()::<Person> new(person);
     return 0;
 }

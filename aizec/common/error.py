@@ -18,6 +18,14 @@ class AizeError(Exception):
         raise NotImplementedError()
 
     @classmethod
+    def get_error_file(cls):
+        return ERROR_FILE
+
+    @classmethod
+    def get_is_debug(cls):
+        return DEBUG
+
+    @classmethod
     def message(cls, msg: str):
         ERROR_FILE.write(msg + "\n")
 

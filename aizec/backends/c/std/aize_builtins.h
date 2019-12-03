@@ -4,23 +4,19 @@
 #include "aize_common.h"
 
 
-struct AizeObject {
-    struct AizeBase base;
-};
-
-
-extern void* AizeObject_vtable[0];
-
+/******* Aize String *******/
 
 struct AizeString {
-    struct AizeObject base;
+    AizeBase base;
     size_t len;
     char* str;
 };
 
 
+/******* Aize List *******/
+
 struct AizeList {
-    struct AizeObject base;
+    AizeBase base;
     size_t len;
     size_t capacity;
     AizeObjectRef* arr;
@@ -35,6 +31,20 @@ AizeObjectRef AizeList_new();
 void AizeList_append(AizeObjectRef, AizeObjectRef);
 
 AizeObjectRef AizeList_get(AizeObjectRef, size_t);
+
+
+/******* Aize Array *******/
+
+
+struct AizeArray {
+    AizeBase base;
+    size_t len;
+    AizeObjectRef* arr;
+};
+
+AizeObjectRef AizeArray_new(size_t);
+
+AizeObjectRef AizeArray_get(AizeObjectRef, size_t);
 
 
 /***** MEMORY MANAGEMENT *****/

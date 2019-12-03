@@ -7,10 +7,6 @@ from aizec.common.error import AizeError
 from aizec.common import new
 
 # noinspection PyTypeChecker
-ObjectType = ClassType('Object', [], {}, {})
-ObjectType.structs = 'AizeObject'
-ObjectType.cls_namespace = Table.new(TableType.CLASS, {}, {}, {})
-# TODO finish Obj_namespace
 
 StringType = ClassType('String', [], {}, {})
 StringType.structs = 'AizeString'
@@ -18,34 +14,30 @@ StringType.cls_namespace = Table.new(TableType.CLASS, {
     'new': NameDecl.direct('new', 'AizeString_new', FuncType([], StringType))
 }, {}, {})
 
-ListType = ClassType('List', [], {}, {})
-ListType.methods = {
-    'add': Method.fake('add', [ListType, ObjectType], VoidType()),
-    'get': Method.fake('Get', [ListType], ObjectType)
-}
-ListType.structs = 'AizeList'
-ListType.cls_namespace = Table.new(TableType.CLASS, {
-    'new': NameDecl.direct('new', 'AizeList_new', FuncType([], ListType))
+
+ArrayType = ClassType('Array', [], {}, {})
+ArrayType.structs = 'AizeArray'
+ArrayType.cls_namespace = Table.new(TableType.CLASS, {
+    'new': NameDecl.direct('new', 'AizeArray_new', FuncType([IntType()], ArrayType))
 }, {}, {})
-ListType.obj_namespace = Table.new(TableType.OBJECT, {
-    'add': NameDecl.direct('add', 'AizeList_append', FuncType([ListType, ObjectType], VoidType())),
-    'get': NameDecl.direct('get', 'AizeList_get', FuncType([ListType], ObjectType))
+ArrayType.obj_namespace = Table.new(TableType.OBJECT, {
+    'get': NameDecl.direct('get', 'AizeArray_get', FuncType([ArrayType, IntType()], IntType()))
 }, {}, {})
 
 
 AIZEIO = Table.new(TableType.C_FILE, {
     'test': NameDecl('test', FuncTypeNode([], Name('void'))).defined(FuncType([], VoidType()), 'test'),
     'print_int': NameDecl.direct('print_int', 'print_int', FuncType([IntType(), IntType()], VoidType())),
-    'print': NameDecl.direct('print', 'print', FuncType([ObjectType], VoidType())),
     'print_space': NameDecl.direct('print_space', 'print_space', FuncType([], VoidType())),
     'get_time': NameDecl.direct("get_time", "get_time", FuncType([], IntType()))
 }, {}, {})
 
 
 class SemanticError(AizeError):
-    def __init__(self, msg: str, node: Node):
+    def __init__(self, msg: str, node: Node, notes: Dict[str, Node] = None):
         self.msg = msg
         self.node = node
+        self.notes = {} if notes is None else notes
 
     def display(self, file: IO):
         text_pos = self.node.pos
@@ -55,7 +47,16 @@ class SemanticError(AizeError):
         file.write(f"In {text_pos.file}:\n")
         file.write(f"Analysis Error: {self.msg}:\n")
         file.write(f"{line_no:>6} | {line}\n")
-        file.write(f"         {' ' * pos[0]}{'^'*(pos[1]-pos[0])}")
+        file.write(f"         {' ' * pos[0]}{'^'*(pos[1]-pos[0])}\n")
+        for msg, node in self.notes.items():
+            text_pos = node.pos
+            line_no = text_pos.line
+            line = text_pos.text.splitlines()[line_no - 1]
+            pos = text_pos.pos
+            file.write(f"In {text_pos.file}:\n")
+            file.write(f"{msg}\n")
+            file.write(f"{line_no:>6} | {line}\n")
+            file.write(f"         {' ' * pos[0]}{'^' * (pos[1] - pos[0])}\n")
 
 
 class TypeCheckError(AizeError):
@@ -85,10 +86,10 @@ class SemanticAnalysis:
                 "int": IntType(),
                 'void': VoidType(),
                 'long': LongType(),
-                'List': ListType
+                'Array': ArrayType,
             },
             {
-                'List': ListType.cls_namespace
+                'Array': ArrayType.cls_namespace,
             }
         )
 
@@ -103,7 +104,7 @@ class SemanticAnalysis:
 
         self.max_methcall: int = 0
         self.curr_methcall: int = 0
-        self.classes: List[ClassType] = [ObjectType, ListType]
+        self.classes: List[ClassType] = [ArrayType]
 
         self.scope_names: List[str] = []
 
@@ -126,6 +127,13 @@ class SemanticAnalysis:
 
     def visit(self, obj, *args, **kwargs):
         name = obj.__class__.__name__
+
+        # if isinstance(obj, Node):
+        #     if not hasattr(obj, 'pos'):
+        #         if AizeError.get_is_debug() or True:
+        #             breakpoint()
+        #         raise Exception()
+
         val = getattr(self, "visit_"+name)(obj, *args, **kwargs)
         if isinstance(obj, Stmt):
             self.max_methcall = max(self.max_methcall, self.curr_methcall)
@@ -179,7 +187,7 @@ class SemanticAnalysis:
                         self.table.add_type(top.name, trait_type)
 
                         trait_namespace = Table.empty(TableType.TRAIT)
-                        trait_type.trait_namespace = trait_namespace
+                        trait_type.cls_namespace = trait_namespace
                         self.table.add_namespace(top.name, trait_namespace)
 
                         obj_namespace = Table.empty(TableType.OBJECT)
@@ -192,6 +200,7 @@ class SemanticAnalysis:
                         trait_type.ttable = mangled + "_ttable"
                         trait_type.indices = []
 
+                        trait_type.traits = []
                         trait_type.children = []
 
                         types.append((file, top))
@@ -279,8 +288,10 @@ class SemanticAnalysis:
                 trait_type.methods = {}
                 self.file = file
                 with self.enter(file.table):
-                    # for trait in cls.traits:
-                    #     cls_type.traits.append(self.visit(trait))
+                    for parent_trait in typ.traits:
+                        parent_trait_type = self.visit(parent_trait)
+                        trait_type.traits.append(parent_trait_type)
+                        parent_trait_type.children.append(trait_type)
 
                     self.scope_names.append(f"C{len(trait.name)}{trait.name}")
 
@@ -290,10 +301,12 @@ class SemanticAnalysis:
 
                         params = []
                         with self.enter(method.table):
-                            for param in method.args:
-                                self.visit(param)
+                            for n, param in enumerate(method.args):
+                                param_type = self.visit(param)
                                 self.table.add_name(param.name, param)
                                 params.append(param.type)
+                        if len(params) == 0 or not params[0] == trait_type:
+                            raise SemanticError("The first argument of a method must be its class's type", method)
 
                         method.type = FuncType(params, self.visit(method.ret))
                         trait_type.obj_namespace.add_name(name, method)
@@ -322,6 +335,14 @@ class SemanticAnalysis:
                 self.visit(top)
 
     def visit_Class(self, obj: Class):
+        for trait in obj.type.iter_parents():
+            for method in trait.methods.values():
+                if method.body is None:
+                    impl_method = obj.type.get_method(method.name)
+                    if impl_method.body is None:
+                        raise SemanticError(f"Class {obj.type} does not implement {impl_method.name} of {trait}", obj, {
+                            f"Note: {impl_method.name} defined here:": impl_method
+                        })
         self.scope_names.append(f"C{len(obj.name)}{obj.name}")
         for method in obj.methods.values():
             self.visit(method)
@@ -451,6 +472,7 @@ class SemanticAnalysis:
             args = []
 
         if len(obj.args + args) != len(func.args):
+            # print(repr(func))
             raise SemanticError(f"Function requires {len(func.args)} arguments, passed {len(obj.args)}", obj)
         for arg, func_arg in zip(obj.args, func.args):
             arg_ret = self.visit(arg)

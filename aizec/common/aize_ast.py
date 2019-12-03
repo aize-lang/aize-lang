@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Tuple, ClassVar, Iterable
+from typing import ClassVar, Iterable
 
 from aizec.common import *
 
@@ -108,6 +108,7 @@ class Node:
         return self
 
 
+# region Type Nodes
 @dataclass()
 class TypeNode(Node):
     pass
@@ -150,7 +151,10 @@ class NameDecl:
 class Name(TypeNode):
     name: str
 
+# endregion
 
+
+# region Expressions
 @dataclass()
 class Expr(Node):
     ret: Type = field(init=False, repr=False)
@@ -348,7 +352,10 @@ class Lambda(Expr):
     ret: Type
     body: List[Stmt]
 
+# endregion Expressions
 
+
+# region Statements
 @dataclass()
 class Stmt(Node):
     pass
@@ -388,8 +395,10 @@ class Return(Stmt):
 @dataclass()
 class ExprStmt(Stmt):
     expr: Expr
+# endregion
 
 
+# region Top Levels
 @dataclass()
 class Top(Node):
     pass
@@ -397,7 +406,8 @@ class Top(Node):
 
 @dataclass()
 class Trait(Top, NameDecl):
-    name: str
+    traits: List[Type]
+
     methods: Dict[str, Method]
 
     type: TraitType = field(init=False, repr=False)
@@ -407,6 +417,7 @@ class Trait(Top, NameDecl):
 class TraitType(Type):
     name: str
     unique: str
+    traits: List[TraitType]
     methods: Dict[str, Method]
 
     ttable: str = field(init=False, repr=False)
@@ -424,17 +435,34 @@ class TraitType(Type):
             else:
                 yield from child.iter_children()
 
+    def iter_parents(self) -> Iterable[TraitType]:
+        for trait in self.traits:
+            yield from trait.iter_parents()
+            yield trait
+
     def get_owner(self, meth: str):
-        if meth in self.methods:
-            return self
+        for trait in self.traits:
+            try:
+                return trait.get_owner(meth)
+            except KeyError:
+                pass
         else:
-            raise KeyError(meth)
+            if meth in self.methods:
+                return self
+            else:
+                raise KeyError()
 
     def get_method(self, meth: str):
         if meth in self.methods:
             return self.methods[meth]
         else:
-            raise KeyError()
+            for trait in self.traits:
+                try:
+                    return trait.get_method(meth)
+                except KeyError:
+                    pass
+            else:
+                raise KeyError()
 
     def get_index(self, meth: str):
         owner = self.get_owner(meth)
@@ -496,9 +524,18 @@ class ClassType(Type):
 
     children: List[ClassType] = field(init=False, repr=False, default_factory=list)
 
+    @classmethod
+    def builtin(cls, name: str, attrs: Dict[str, Type]):
+        pass
+
     @property
     def vtable(self):
         return list(self.methods)
+
+    def iter_parents(self) -> Iterable[TraitType]:
+        for trait in self.traits:
+            yield from trait.iter_parents()
+            yield trait
 
     def get_index(self, method: str):
         owner = self.get_owner(method)
@@ -562,6 +599,7 @@ class Import(Top):
 @dataclass()
 class NativeImport(Top):
     name: str
+# endregion
 
 
 @dataclass()
@@ -575,6 +613,7 @@ class FilePath:
         return hash((self.where, self.rel_path))
 
 
+# region More Types
 @dataclass()
 class FuncType(Type):
     args: List[Type]
@@ -655,6 +694,7 @@ class BoolType(DataType):
 class FuncTypeNode(TypeNode):
     args: List[TypeNode]
     ret: TypeNode
+# endregion
 
 
 @dataclass()
