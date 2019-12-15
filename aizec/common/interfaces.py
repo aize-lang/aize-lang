@@ -12,7 +12,13 @@ class Frontend:
 
 class Backend:
     @classmethod
-    def generate(cls, ast: Program, args):
+    def generate(cls, ast: Program, out: Path, config, level: str) -> 'Backend':
+        raise NotImplementedError()
+
+    def delete_temp(self):
+        raise NotImplementedError()
+
+    def run(self):
         raise NotImplementedError()
 
 

@@ -6,7 +6,13 @@ from aizec.backends.c import C
 
 class NoBackend(Backend):
     @classmethod
-    def generate(cls, ast: Program, args):
+    def generate(cls, ast: Program, out, config, level):
+        return cls()
+
+    def delete_temp(self):
+        pass
+
+    def run(self):
         pass
 
 
@@ -17,9 +23,4 @@ def get_backend(language: str) -> Cls[Backend]:
         return NoBackend
     else:
         raise CompilerError(f"Language '{language}' not recognized.")
-
-
-def apply_backend(language: str, program: Program, args):
-    backend = get_backend(language)
-    backend.generate(program, args)
 

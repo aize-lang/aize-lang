@@ -4,6 +4,7 @@ import subprocess
 import os
 
 from aizec.common.error import AizeError
+from aizec.common.interfaces import Backend
 from aizec.common.sematics import SemanticError  # TODO actually use this in the right place
 from aizec.common.aize_ast import *
 from aizec.common import *
@@ -206,49 +207,38 @@ class CGenerator:
         return compiler.create(config)
 
     @classmethod
-    def compile(cls, tree: Program, args):
-        compiler = cls.find_c_compiler(args.config)
+    def compile(cls, tree: Program, out: Path, config: Config, level: str):
+        compiler = cls.find_c_compiler(config)
         source, header, gen = cls.gen(tree, debug=False)  # args.for_ == 'debug')
         call_args = []
         call_args += ["-Wall"]
         # TODO clean up this section of options corellating to options (dict? Option classes?)
-        if args.for_ in ('debug', 'normal', 'release'):
+        if level in ('debug', 'normal', 'release'):
             call_args += ["-Wno-sequence-point"]
             call_args += ["-Wno-incompatible-pointer-types"]
-            if args.for_ in ('normal', 'release'):
+            if level in ('normal', 'release'):
                 call_args += ['-Wno-unused-variable']
 
-        if args.for_ in ('compiler-debug', 'debug', 'normal'):
+        if level in ('compiler-debug', 'debug', 'normal'):
             call_args += ["-O0"]
         else:
             call_args += ["-O3"]
-        if args.for_ in ('debug', 'compiler-debug'):
+        if level in ('debug', 'compiler-debug'):
             call_args += ['-g']
-        if args.for_ in ('compiler-debug', ):
+        if level in ('compiler-debug', ):
             call_args += ['-DDEBUG']
 
-        call_args += [f"-o{args.out.as_posix()}"]
+        call_args += [f"-o{out.as_posix()}"]
         call_args += [f"{source}"]
         call_args += [str(path) for path in gen.links]
 
         check = compiler.call(call_args)
-        if args.for_ == 'compiler-debug':
+        if level == 'compiler-debug':
             AizeError.message(f"Called arguments:\n{' '.join(check.args)}")
-        if args.delete_temp:
-            source.unlink()
-            header.unlink()
         if check.returncode != 0:
             raise CompilationError(f"Compilation of generated C code failed (Exit Code {hex(check.returncode)})")
 
-        if args.run:
-            process = subprocess.Popen([args.out.as_posix()])
-            process.wait()
-            process.terminate()
-            ret = process.returncode
-            if ret == 0xc0000005:
-                raise CompilationError(f"Running of generated executable failed (Segmentation Fault)")
-            elif ret != 0:
-                raise CompilationError(f"Running of generated executable failed ({hex(ret)})")
+        return out, [source, header]
 
     @classmethod
     def get_cls_ptr(cls, obj: cgen.Expression, cls_obj: ClassType):
@@ -313,13 +303,6 @@ class CGenerator:
                                   (len(self.program.classes), len(owned_methods)),
                                   cgen.ArrayInit(implementers))
 
-        # ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
-        #                           (len(self.program.classes), len(obj.methods)),
-        #                           cgen.ArrayInit({cls.structs.upper(): cgen.ArrayInit({str(n): cgen.Ref(cgen.GetVar(meth.unique))
-        #                                                               for n, meth in enumerate(cls.methods.values())})
-        #                                           for cls in [obj.type, *obj.type.children]})
-        #                           )
-
         new_unique = obj.type.cls_namespace.get_name("new").unique
         new_attrs = {attr.unique: self.visit(attr.type) for attr in obj.attrs.values()}
 
@@ -331,9 +314,8 @@ class CGenerator:
             cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_enter"), [])),
             cgen.Declare(cls_ptr, "mem",
                          cgen.StructInit([cgen.Call(cgen.GetVar("aize_mem_malloc"),
-                                                   [cgen.SizeOf(cls_struct.struct_type)]),
-                                         cgen.GetVar(cls_struct.name.upper())
-                                         ])),
+                                                    [cgen.SizeOf(cls_struct.struct_type)]),
+                                          cgen.GetVar(cls_struct.name.upper())])),
             # cgen.ExprStmt(cgen.SetAttr(cgen.GetVar('mem'), "vtable", )),
             *(set_attr(attr) for attr in obj.attrs.values()),
             cgen.ExprStmt(cgen.SetArrow(cgen.GetAttr(cgen.GetVar('mem'), 'obj'), "ref_count", cgen.Constant(0))),
@@ -430,6 +412,7 @@ class CGenerator:
         if len(obj.body) == 0 or not isinstance(obj.body[-1], Return):
             body.append(cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_exit"), [])))
 
+        # noinspection PyUnresolvedReferences
         return cgen.Function(obj.unique,
                              {param.unique: self.visit(param.type) for param in obj.args},
                              self.visit(obj.type.ret),
@@ -523,3 +506,28 @@ class CGenerator:
 
     def visit_FuncType(self, obj: FuncType):
         return cgen.FunctionType([self.visit(arg) for arg in obj.args], self.visit(obj.ret))
+
+
+class C(Backend):
+    def __init__(self, out: Path, temps: List[Path]):
+        self.out = out
+        self.temps = temps
+
+    @classmethod
+    def generate(cls, ast, out: Path, config, level: str):
+        out, temps = CGenerator.compile(ast, out, config, level)
+        return cls(out, temps)
+
+    def delete_temp(self):
+        for temp in self.temps:
+            temp.unlink()
+
+    def run(self):
+        process = subprocess.Popen([self.out.as_posix()])
+        process.wait()
+        process.terminate()
+        ret = process.returncode
+        if ret == 0xc0000005:
+            raise CompilationError(f"Running of generated executable failed (Segmentation Fault)")
+        elif ret != 0:
+            raise CompilationError(f"Running of generated executable failed ({hex(ret)})")

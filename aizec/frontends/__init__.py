@@ -11,7 +11,7 @@ def get_frontend(language: str) -> Cls[Frontend]:
         raise CompilerError(f"Language {language} not recognized")
 
 
-def apply_frontend(language: str, path: Path, args):
+def apply_frontend(language: str, path: Path):
     frontend = get_frontend(language)
     return frontend.make_ast(path)
 

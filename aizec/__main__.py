@@ -7,7 +7,7 @@ from aizec.common.error import AizeError
 from aizec.common import *
 from aizec.common import error
 from aizec.frontends import apply_frontend
-from aizec.backends import apply_backend
+from aizec.backends import get_backend
 
 
 arg_parser = argparse.ArgumentParser(prog="aizec")
@@ -36,6 +36,7 @@ def run(*passed_args):
     if args.out is None:
         # TODO support other OS's
         if os.name == 'nt':
+            # TODO put this in backend instead to check for the right file extension
             args.out = file.with_suffix(".exe")
         else:
             args.out = file.with_suffix("")
@@ -46,9 +47,16 @@ def run(*passed_args):
         start_time = time.time()
 
     with Config(args.config) as args.config:
-        ast = apply_frontend(args.frontend, file, args)
+        ast = apply_frontend(args.frontend, file)
 
-        apply_backend(args.backend, ast, args)
+        backend = get_backend(args.backend)
+        result = backend.generate(ast, args.out, args.config, args.for_)
+
+        if args.delete_temp:
+            result.delete_temp()
+
+        if args.run:
+            result.run()
 
     if args.time:
         end_time = time.time()
