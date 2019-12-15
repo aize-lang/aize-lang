@@ -1,0 +1,12 @@
+
+class List {
+    attr obj: int;
+
+    method add(self: List, item: int) -> void {
+        self.obj = item;
+    }
+
+    method get(self: List) -> int {
+        return self.obj;
+    }
+}

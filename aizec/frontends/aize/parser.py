@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 
 from aizec.common.error import AizeError
-from aizec.common.interfaces import AIZE_STD
 from aizec.common.aize_ast import *
 from aizec.common import *
 
@@ -28,6 +27,8 @@ DEC = OCT + '89'
 HEX = DEC + 'ABCDEF'
 IDENT_START = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_'
 IDENT = IDENT_START + DEC
+
+BUILTIN_FILE = Path()
 
 
 class ScanningError(AizeError):
@@ -185,7 +186,7 @@ class AizeParser:
 
     @classmethod
     def parse(cls, file: Path):
-        to_parse = [file]
+        to_parse = [AIZE_STD / "__builtins__.aize", file]
         visited = set()
         files = []
         while len(to_parse) > 0:
@@ -291,7 +292,7 @@ class AizeParser:
             else:
                 raise ParseError("Not a valid class-statement", self.curr)
 
-        return Class(name, Name(name), traits, attrs, methods).place(start.pos)
+        return Class(name, GetType(name), traits, attrs, methods).place(start.pos)
 
     def parse_trait(self):
         start = self.match_exc("trait")
@@ -307,7 +308,7 @@ class AizeParser:
             else:
                 raise ParseError("Not a valid trait-statement", self.curr)
 
-        return Trait(name, Name(name), methods).place(start.pos)
+        return Trait(name, GetType(name), methods).place(start.pos)
 
     def parse_attr(self):
         start = self.match("attr")
@@ -336,15 +337,16 @@ class AizeParser:
 
     def parse_method(self):
         start, name, args, ret = self.parse_method_sig()
+        func_type = FuncTypeNode([arg_type for _, arg_type in args], ret)
+        params = [Param(arg_name.text, arg_type) for arg_name, arg_type in args]
         if self.match("{"):
             body = []
             while not self.match("}"):
                 body.append(self.parse_stmt())
+            return ConcreteMethod(name, func_type, params, ret, body).place(start.pos)
         else:
             self.match_exc(";")
-            body = None
-        return Method(name, FuncTypeNode([arg_type for _, arg_type in args], ret),
-                      [Param(arg_name.text, arg_type) for arg_name, arg_type in args], ret, body).place(start.pos)
+            return Method(name, func_type, params, ret)
 
     def parse_import(self):
         start = self.match("import")
@@ -403,7 +405,7 @@ class AizeParser:
 
     def parse_name(self):
         ident = self.match_exc("ident")
-        return Name(ident.text).place(ident.pos)
+        return GetType(ident.text).place(ident.pos)
 
     def parse_stmt(self):
         if self.curr_is("return"):
@@ -592,7 +594,7 @@ class AizeParser:
                 start = self.prev
                 attr = self.match_exc("ident")
                 if isinstance(expr, GetVar):
-                    expr = GetNamespaceName(GetNamespace(expr.name).place(expr.pos), attr.text).place(start.pos)
+                    expr = GetNamespaceExpr(GetNamespace(expr.name).place(expr.pos), attr.text).place(start.pos)
                 else:
                     raise ParseError("Cannot get an attribute from the left", start)
             else:

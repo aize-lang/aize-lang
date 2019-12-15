@@ -7,6 +7,7 @@ from typing import Tuple, ClassVar, Iterable
 from aizec.common import *
 
 
+# region Table
 class TableType(Enum):
     GLOBAL = 0
     FILE = 1
@@ -92,8 +93,10 @@ class Table:
 
     def __repr__(self):
         return f"Table(type={self.type})"
+# endregion
 
 
+# region Node
 @dataclass()
 class Node:
     pos: TextPos = field(init=False, repr=False)
@@ -103,37 +106,34 @@ class Node:
         return self
 
     def define(self, **kwargs):
-        for key, val in kwargs.items():
-            setattr(self, key, val)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
         return self
 
 
-@dataclass()
-class TypeNode(Node):
-    pass
+class TextPos:
+    def __init__(self, text: str, line: int, pos: Tuple[int, int], file: Path):
+        self.text = text
+        self.line = line
+        self.pos = pos
+        self.file = file
+
+    def get_line(self):
+        return self.text.splitlines()[self.line-1]
+
+    def __repr__(self):
+        return f"TextPos({self.text!r}, {self.line}, {self.pos})"
+# endregion
 
 
-@dataclass()
-class Type:
-    def __le__(self, other: Type):
-        raise NotImplementedError()
-
-    def __ge__(self, other: Type):
-        raise NotImplementedError()
-
-    def __eq__(self, other: Type):
-        raise NotImplementedError()
-
-    def __str__(self):
-        raise NotImplementedError()
-
-
+# region Name Declaration
 @dataclass()
 class NameDecl:
     name: str
+    unique: str = field(init=False, repr=False)
+
     type_ref: TypeNode
     type: Type = field(init=False, repr=False)
-    unique: str = field(init=False, repr=False)
 
     @classmethod
     def direct(cls, name: str, unique: str, type: Type):
@@ -147,208 +147,319 @@ class NameDecl:
 
 
 @dataclass()
-class Name(TypeNode):
-    name: str
-
-
-@dataclass()
-class Expr(Node):
-    ret: Type = field(init=False, repr=False)
-
-
-@dataclass()
-class GetVar(Expr):
-    name: str
-    ref: NameDecl = field(init=False, repr=False)
-
-
-@dataclass()
-class SetVar(Expr):
-    name: str
-    val: Expr
-    ref: NameDecl = field(init=False, repr=False)
-
-
-@dataclass()
-class Add(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class Sub(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class Mul(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class Div(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class Mod(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class LT(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class GT(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class LE(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class GE(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class EQ(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class NE(Expr):
-    left: Expr
-    right: Expr
-
-
-@dataclass()
-class Neg(Expr):
-    right: Expr
-
-
-@dataclass()
-class Not(Expr):
-    right: Expr
-
-
-@dataclass()
-class Inv(Expr):
-    right: Expr
-
-
-@dataclass()
-class Call(Expr):
-    left: Expr
-    args: List[Expr]
-
-    method_call: Union[MethodCall, None] = field(init=False, default=None, repr=False)
-
-
-@dataclass()
-class GetAttr(Expr):
-    left: Expr
-    attr: str
-    pointed: NameDecl = field(init=False, repr=False)
-
-
-@dataclass()
-class SetAttr(Expr):
-    left: Expr
-    attr: str
-    val: Expr
-    pointed: NameDecl = field(init=False, repr=False)
-
-
-@dataclass()
-class MethodCall(Expr):
-    obj: Expr
-    method: str
-    index: int
-    args: List[Expr]
-    depth: int
-
-    pointed: Method = field(init=False, repr=False)
-    pointed_cls: ClassType = field(init=False, repr=False)
-
-    @classmethod
-    def is_method(cls, obj: Call):
-        if isinstance(obj, Call):
-            if isinstance(obj.left, GetAttr):
-
-                if isinstance(obj.left.left.ret, (ClassType, TraitType)):
-                    cls_type = obj.left.left.ret
-                    try:
-                        method = cls_type.get_method(obj.left.attr)
-                    except KeyError:
-                        pass
-                    else:
-                        # if obj.left.attr in obj.left.left.ret.methods:
-                        return obj.left.left, obj.left.attr, method
-        return None, None, None
-
-    @classmethod
-    def make_method_call(cls, obj: Call, depth: int):
-        obj_node, name, meth = cls.is_method(obj)
-        kls: ClassType = obj_node.ret
-        if name:
-            call = cls(obj_node, name, kls.get_index(name), obj.args, depth).place(obj.pos)
-            call.pointed = meth
-            call.pointed_cls = obj_node.ret
-            obj.method_call = call
-        else:
-            raise Exception()
-
-
-@dataclass()
-class GetNamespaceName(Expr):
-    namespace: Expr
-    attr: str
-    pointed: NameDecl = field(init=False, repr=False)
-
-
-@dataclass()
-class GetNamespace(Expr):
-    namespace: str
-
-    table: Table = field(init=False, repr=False)
-
-
-@dataclass()
-class Num(Expr):
-    num: int
-
-
-@dataclass()
-class Str(Expr):
-    string: str
-
-
-@dataclass()
 class Param(NameDecl):
+    pass
+# endregion
+
+
+# region AST Types
+@dataclass()
+class TypeNode(Node):
     pass
 
 
 @dataclass()
-class Lambda(Expr):
-    args: List[Param]
+class GetType(TypeNode):
+    name: str
+
+
+@dataclass()
+class FuncTypeNode(TypeNode):
+    args: List[TypeNode]
+    ret: TypeNode
+
+# endregion
+
+
+# region Actual Types
+@dataclass()
+class Type:
+    def __le__(self, other: Type):
+        """t1 <= t2 means that t1 is t2 or a subclass"""
+        raise NotImplementedError()
+
+    def __eq__(self, other: Type):
+        raise NotImplementedError()
+
+    def __str__(self):
+        raise NotImplementedError()
+
+
+# region Interfaced Types
+@dataclass()
+class InterfacedType(Type):
+    name: str
+    unique: str = field(init=False, repr=False)
+    parents: List[InterfacedType]
+
+    ttable: str = field(init=False, repr=False)
+    interface: Dict[str, Method]
+
+    obj_namespace: Table = field(init=False, repr=False, default_factory=lambda: Table(TableType.OBJECT))
+    cls_namespace: Table = field(init=False, repr=False, default_factory=lambda: Table(TableType.CLASS))
+
+    def define(self, unique: str, ttable: str):
+        self.unique = unique
+        self.ttable = ttable
+        return self
+
+    def get_owner(self, meth: str):
+        for parent in self.parents:
+            try:
+                return parent.get_owner(meth)
+            except KeyError:
+                pass
+        else:
+            if meth in self.interface:
+                return self
+            else:
+                raise KeyError(meth)
+
+    def get_method(self, meth: str):
+        if meth in self.interface:
+            return self.interface[meth]
+        for parent in self.parents:
+            try:
+                return parent.get_method(meth)
+            except KeyError:
+                pass
+        else:
+            raise KeyError(meth)
+
+    def get_index(self, meth: str):
+        return list(self.interface.keys()).index(meth)
+
+    def __le__(self, other: Type):
+        """t1 <= t2 means that t1 is t2 or a subclass"""
+        if self == other:
+            return True
+        elif isinstance(other, InterfacedType):
+            for parent in other.parents:
+                if self <= parent:
+                    return True
+        return False
+
+    def __eq__(self, other: Type):
+        return other is self
+
+    def __str__(self):
+        raise NotImplementedError()
+
+
+@dataclass()
+class TraitType(InterfacedType):
+    children: List[InterfacedType] = field(init=False, repr=False, default_factory=list)
+
+    def iter_children(self) -> Iterable[ClassType]:
+        for child in self.children:
+            if isinstance(child, ClassType):
+                yield child
+            elif isinstance(child, TraitType):
+                yield from child.iter_children()
+
+    def __str__(self):
+        return f"{self.name}"
+
+
+@dataclass()
+class ClassType(InterfacedType):
+    attrs: Dict[str, Attr]
+
+    def add_method(self, name: str, unique: str, args: List[Type], ret: Type):
+        meth = Method.fake(self, name, unique, args, ret)
+        self.obj_namespace.add_name(name, meth)
+        self.interface[name] = meth
+
+    def add_clsmethod(self, name: str, unique: str, args: List[Type], ret: Type):
+        cls_meth = NameDecl.direct(name, unique, FuncType(args, ret))
+        self.cls_namespace.add_name(name, cls_meth)
+
+    def calculate(self):
+        obj_dict = self.attrs.copy()
+        obj_dict.update({key: value for key, value in self.interface.items()})
+        for key, value in obj_dict.items():
+            self.obj_namespace.add_name(key, value)
+
+    def __str__(self):
+        return f"{self.name}"
+# endregion
+
+
+@dataclass()
+class FuncType(Type):
+    args: List[Type]
     ret: Type
+
+    def __le__(self, other):
+        if isinstance(other, FuncType):
+            if len(self.args) == len(other.args) and self.ret <= other.ret:
+                for arg, other_arg in zip(self.args, other.args):
+                    if not arg >= other_arg:
+                        break
+                else:
+                    return True
+        return False
+
+    def __eq__(self, other):
+        if isinstance(other, FuncType):
+            if len(self.args) == len(other.args) and self.ret == other.ret:
+                for arg in self.args:
+                    if not arg == other:
+                        break
+                else:
+                    return True
+        return False
+
+    def __str__(self):
+        return f"({', '.join(str(arg) for arg in self.args)}) -> {self.ret}"
+
+
+# region Data Types
+@dataclass()
+class DataType(Type):
+    name: ClassVar[str]
+
+    def __le__(self, other):
+        return type(self) == type(other)
+
+    def __eq__(self, other):
+        return type(self) == type(other)
+
+    def __str__(self):
+        return self.name
+
+
+@dataclass()
+class IntType(DataType):
+    name = "int"
+
+
+@dataclass()
+class VoidType(DataType):
+    name = "void"
+
+
+@dataclass()
+class LongType(DataType):
+    name = "long"
+
+
+@dataclass()
+class BoolType(DataType):
+    name = "bool"
+# endregion
+# endregion
+
+
+# region Namespace
+@dataclass()
+class Namespace(Node):
+    pass
+
+
+@dataclass()
+class GetNamespace(Namespace):
+    namespace: str
+
+
+@dataclass()
+class GetNamespaceName(Namespace):
+    namespace: Namespace
+    name: str
+# endregion
+
+
+# region Top Level
+@dataclass()
+class Top(Node):
+    pass
+
+
+@dataclass()
+class Trait(Top, NameDecl):
+    name: str
+    methods: Dict[str, Method]
+
+    type: TraitType = field(init=False, repr=False)
+
+
+@dataclass()
+class Class(Top, NameDecl):
+    traits: List[Type]
+
+    attrs: Dict[str, Attr]
+    methods: Dict[str, ConcreteMethod]
+
+    type: ClassType = field(init=False, repr=False)
+
+
+@dataclass()
+class Function(Top, NameDecl):
+    args: List[Param]
+    ret: TypeNode
     body: List[Stmt]
 
+    table: Table = field(init=False, repr=False)
 
+    temp_count: int = field(init=False, default=0, repr=False)
+
+
+@dataclass()
+class FilePath:
+    where: str
+    rel_path: Path
+
+    abs_path: Path = field(init=False, repr=False)
+
+    def __hash__(self):
+        return hash((self.where, self.rel_path))
+
+
+@dataclass()
+class Import(Top):
+    file: FilePath
+    as_name: str
+
+
+@dataclass()
+class NativeImport(Top):
+    name: str
+# endregion
+
+
+# region Class Body
+@dataclass()
+class Attr(Node, NameDecl):
+    pass
+
+
+@dataclass()
+class Method(Node, NameDecl):
+    args: List[Param]
+    ret: TypeNode
+
+    owner: InterfacedType = field(init=False, repr=False)
+    type: FuncType = field(init=False, repr=False)
+
+    @classmethod
+    def fake(cls, meth_cls: InterfacedType, name: str, unique: str, args: List[Type], ret: Type):
+        # noinspection PyTypeChecker
+        meth = cls(name, None, None, None)
+        meth = meth.defined(FuncType([meth_cls] + args, ret), unique)
+        meth.owner = meth_cls
+        return meth
+
+
+@dataclass()
+class ConcreteMethod(Method):
+    body: List[Stmt]
+
+    temp_count: int = field(init=False, repr=False)
+    table: Table = field(init=False, repr=False)
+# endregion
+
+
+# region Statement
 @dataclass()
 class Stmt(Node):
     pass
@@ -388,275 +499,202 @@ class Return(Stmt):
 @dataclass()
 class ExprStmt(Stmt):
     expr: Expr
+# endregion
+
+
+# region Expression
+@dataclass()
+class Expr(Node):
+    ret: Type = field(init=False, repr=False)
 
 
 @dataclass()
-class Top(Node):
-    pass
-
-
-@dataclass()
-class Trait(Top, NameDecl):
-    name: str
-    methods: Dict[str, Method]
-
-    type: TraitType = field(init=False, repr=False)
-
-
-@dataclass()
-class TraitType(Type):
-    name: str
-    unique: str
-    methods: Dict[str, Method]
-
-    ttable: str = field(init=False, repr=False)
-    indices: List[str] = field(init=False, repr=False)
-
-    obj_namespace: Table = field(init=False, repr=False)
-    cls_namespace: Table = field(init=False, repr=False)
-
-    children: List[Union[ClassType, TraitType]] = field(init=False, repr=False, default_factory=list)
-
-    def iter_children(self) -> Iterable[ClassType]:
-        for child in self.children:
-            if isinstance(child, ClassType):
-                yield child
-            else:
-                yield from child.iter_children()
-
-    def get_owner(self, meth: str):
-        if meth in self.methods:
-            return self
-        else:
-            raise KeyError(meth)
-
-    def get_method(self, meth: str):
-        if meth in self.methods:
-            return self.methods[meth]
-        else:
-            raise KeyError()
-
-    def get_index(self, meth: str):
-        owner = self.get_owner(meth)
-        return owner.indices.index(meth)
-
-    def __str__(self):
-        return f"{self.name}"
-
-
-@dataclass()
-class Class(Top, NameDecl):
-    traits: List[Type]
-
-    attrs: Dict[str, Attr]
-    methods: Dict[str, Method]
-
-    type: ClassType = field(init=False, repr=False)
-
-
-@dataclass()
-class Attr(Node, NameDecl):
-    pass
-
-
-@dataclass()
-class Method(Node, NameDecl):
+class Lambda(Expr):
     args: List[Param]
-    ret: TypeNode
+    ret: Type
     body: List[Stmt]
 
-    temp_count: int = field(init=False, repr=False)
-    owner: Union[TraitType, ClassType] = field(init=False, repr=False)
-    type: FuncType = field(init=False, repr=False)
-    table: Table = field(init=False, repr=False)
 
-    @classmethod
-    def fake(cls, name: str, args: List[Type], ret: Type, owner: TraitType = None):
-        # noinspection PyTypeChecker
-        meth = cls(name, None, None, None, None)
-        meth.temp_count = 0
-        meth.owner = owner
-        meth.type = FuncType(args, ret)
-        return meth
+# region Arithmetic
+@dataclass()
+class Add(Expr):
+    left: Expr
+    right: Expr
 
 
 @dataclass()
-class ClassType(Type):
-    name: str
-    traits: List[TraitType]
-    attrs: Dict[str, Attr]
-    methods: Dict[str, Method]
+class Sub(Expr):
+    left: Expr
+    right: Expr
 
-    ttable: str = field(init=False, repr=False)
-    structs: str = field(init=False, repr=False)
-    indices: List[int] = field(init=False, repr=False)
 
-    obj_namespace: Table = field(init=False, repr=False)
-    cls_namespace: Table = field(init=False, repr=False)
+@dataclass()
+class Mul(Expr):
+    left: Expr
+    right: Expr
 
-    children: List[ClassType] = field(init=False, repr=False, default_factory=list)
+
+@dataclass()
+class Div(Expr):
+    left: Expr
+    right: Expr
+
+
+@dataclass()
+class Mod(Expr):
+    left: Expr
+    right: Expr
+# endregion
+
+
+# region Compare
+@dataclass()
+class LT(Expr):
+    left: Expr
+    right: Expr
+
+
+@dataclass()
+class GT(Expr):
+    left: Expr
+    right: Expr
+
+
+@dataclass()
+class LE(Expr):
+    left: Expr
+    right: Expr
+
+
+@dataclass()
+class GE(Expr):
+    left: Expr
+    right: Expr
+
+
+@dataclass()
+class EQ(Expr):
+    left: Expr
+    right: Expr
+
+
+@dataclass()
+class NE(Expr):
+    left: Expr
+    right: Expr
+# endregion
+
+
+# region Unary
+@dataclass()
+class Neg(Expr):
+    right: Expr
+
+
+@dataclass()
+class Not(Expr):
+    right: Expr
+
+
+@dataclass()
+class Inv(Expr):
+    right: Expr
+# endregion
+
+
+# region Call / Item Access / Attribute Access
+@dataclass()
+class Call(Expr):
+    left: Expr
+    args: List[Expr]
+
+    method_data: Union[MethodData, None] = field(init=False, default=None)
+
+    def convert(self, depth: int):
+        if isinstance(self.left, GetAttr):
+            if isinstance(self.left.left.ret, InterfacedType):
+                cls_type = self.left.left.ret
+                try:
+                    method = cls_type.get_method(self.left.attr)
+                except KeyError:
+                    pass
+                else:
+                    # if obj.left.attr in obj.left.left.ret.methods:
+                    self.method_data = MethodData(self.left.left, self.left.attr, depth)
+                    self.method_data.pointed = method
+                    self.method_data.pointed_cls = cls_type
+                    return True
+        return False
+
+
+@dataclass()
+class MethodData:
+    obj: Expr
+    method: str
+    depth: int
+
+    pointed: Method = field(init=False, repr=False)
+    pointed_cls: InterfacedType = field(init=False, repr=False)
 
     @property
-    def vtable(self):
-        return list(self.methods)
-
-    def get_index(self, method: str):
-        owner = self.get_owner(method)
-        return owner.indices.index(method)
-
-    def get_owner(self, meth: str):
-        for trait in self.traits:
-            try:
-                return trait.get_owner(meth)
-            except KeyError:
-                pass
-        else:
-            return self
-
-    def get_method(self, meth: str):
-        if meth in self.methods:
-            return self.methods[meth]
-        for trait in self.traits:
-            try:
-                return trait.get_method(meth)
-            except KeyError:
-                pass
-        else:
-            raise KeyError()
-
-    def __le__(self, other):
-        if isinstance(other, ClassType):
-            return other is self
-        return False
-
-    def __ge__(self, other):
-        if isinstance(other, ClassType):
-            return other is self
-        return False
-
-    def __eq__(self, other: Type):
-        return other is self
-
-    def __str__(self):
-        return f"{self.name}"
+    def index(self):
+        return self.pointed_cls.get_index(self.method)
 
 
 @dataclass()
-class Function(Top, NameDecl):
-    args: List[Param]
-    ret: TypeNode
-    body: List[Stmt]
-
-    type: FuncType = field(init=False, repr=False)
-    table: Table = field(init=False, repr=False)
-
-    temp_count: int = field(init=False, default=0, repr=False)
+class GetAttr(Expr):
+    left: Expr
+    attr: str
+    pointed: NameDecl = field(init=False, repr=False)
 
 
 @dataclass()
-class Import(Top):
-    file: FilePath
-    as_name: str
+class SetAttr(Expr):
+    left: Expr
+    attr: str
+    val: Expr
+    pointed: NameDecl = field(init=False, repr=False)
 
 
 @dataclass()
-class NativeImport(Top):
+class GetNamespaceExpr(Expr):
+    namespace: Namespace
+    attr: str
+
+    pointed: NameDecl = field(init=False, repr=False)
+
+# endregion
+
+
+# region Variable Access
+@dataclass()
+class GetVar(Expr):
     name: str
+    ref: NameDecl = field(init=False, repr=False)
 
 
 @dataclass()
-class FilePath:
-    where: str
-    rel_path: Path
+class SetVar(Expr):
+    name: str
+    val: Expr
+    ref: NameDecl = field(init=False, repr=False)
+# endregion
 
-    abs_path: Path = field(init=False, repr=False)
 
-    def __hash__(self):
-        return hash((self.where, self.rel_path))
+# region Constants
+@dataclass()
+class Num(Expr):
+    num: int
 
 
 @dataclass()
-class FuncType(Type):
-    args: List[Type]
-    ret: Type
-
-    def __le__(self, other):
-        if isinstance(other, FuncType):
-            if len(self.args) == len(other.args) and self.ret <= other.ret:
-                for arg, other_arg in zip(self.args, other.args):
-                    if not arg >= other_arg:
-                        break
-                else:
-                    return True
-        return False
-
-    def __ge__(self, other):
-        if isinstance(other, FuncType):
-            if len(self.args) == len(other.args) and self.ret >= other.ret:
-                for arg, other_arg in zip(self.args, other.args):
-                    if not arg <= other_arg:
-                        break
-                else:
-                    return True
-        return False
-
-    def __eq__(self, other):
-        if isinstance(other, FuncType):
-            if len(self.args) == len(other.args) and self.ret == other.ret:
-                for arg in self.args:
-                    if not arg == other:
-                        break
-                else:
-                    return True
-        return False
-
-    def __str__(self):
-        return f"({', '.join(str(arg) for arg in self.args)}) -> {self.ret}"
+class Str(Expr):
+    string: str
+# endregion
+# endregion
 
 
-@dataclass()
-class DataType(Type):
-    name: ClassVar[str]
-
-    def __le__(self, other):
-        return type(self) == type(other)
-
-    def __ge__(self, other):
-        return type(self) == type(other)
-
-    def __eq__(self, other):
-        return type(self) == type(other)
-
-    def __str__(self):
-        return self.name
-
-
-@dataclass()
-class IntType(DataType):
-    name = "int"
-
-
-@dataclass()
-class VoidType(DataType):
-    name = "void"
-
-
-@dataclass()
-class LongType(DataType):
-    name = "long"
-
-
-@dataclass()
-class BoolType(DataType):
-    name = "bool"
-
-
-@dataclass()
-class FuncTypeNode(TypeNode):
-    args: List[TypeNode]
-    ret: TypeNode
-
-
+# region Programs / Files
 @dataclass()
 class File(Node):
     path: Path
@@ -673,17 +711,4 @@ class Program(Node):
     classes: List[ClassType] = field(init=False, repr=False, default_factory=list)
 
     main: NameDecl = field(init=False, repr=False)
-
-
-class TextPos:
-    def __init__(self, text: str, line: int, pos: Tuple[int, int], file: Path):
-        self.text = text
-        self.line = line
-        self.pos = pos
-        self.file = file
-
-    def get_line(self):
-        return self.text.splitlines()[self.line-1]
-
-    def __repr__(self):
-        return f"TextPos({self.text!r}, {self.line}, {self.pos})"
+# endregion

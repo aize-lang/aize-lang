@@ -4,39 +4,10 @@ import contextlib
 
 from aizec.common.aize_ast import *
 from aizec.common.error import AizeError
-from aizec.common import new
-
-# noinspection PyTypeChecker
-ObjectType = ClassType('Object', [], {}, {})
-ObjectType.structs = 'AizeObject'
-ObjectType.cls_namespace = Table.new(TableType.CLASS, {}, {}, {})
-# TODO finish Obj_namespace
-
-StringType = ClassType('String', [], {}, {})
-StringType.structs = 'AizeString'
-StringType.cls_namespace = Table.new(TableType.CLASS, {
-    'new': NameDecl.direct('new', 'AizeString_new', FuncType([], StringType))
-}, {}, {})
-
-ListType = ClassType('List', [], {}, {})
-ListType.methods = {
-    'add': Method.fake('add', [ListType, ObjectType], VoidType()),
-    'get': Method.fake('Get', [ListType], ObjectType)
-}
-ListType.structs = 'AizeList'
-ListType.cls_namespace = Table.new(TableType.CLASS, {
-    'new': NameDecl.direct('new', 'AizeList_new', FuncType([], ListType))
-}, {}, {})
-ListType.obj_namespace = Table.new(TableType.OBJECT, {
-    'add': NameDecl.direct('add', 'AizeList_append', FuncType([ListType, ObjectType], VoidType())),
-    'get': NameDecl.direct('get', 'AizeList_get', FuncType([ListType], ObjectType))
-}, {}, {})
-
+from aizec.common import AIZE_STD
 
 AIZEIO = Table.new(TableType.C_FILE, {
-    'test': NameDecl('test', FuncTypeNode([], Name('void'))).defined(FuncType([], VoidType()), 'test'),
     'print_int': NameDecl.direct('print_int', 'print_int', FuncType([IntType(), IntType()], VoidType())),
-    'print': NameDecl.direct('print', 'print', FuncType([ObjectType], VoidType())),
     'print_space': NameDecl.direct('print_space', 'print_space', FuncType([], VoidType())),
     'get_time': NameDecl.direct("get_time", "get_time", FuncType([], IntType()))
 }, {}, {})
@@ -85,13 +56,11 @@ class SemanticAnalysis:
                 "int": IntType(),
                 'void': VoidType(),
                 'long': LongType(),
-                'List': ListType
             },
-            {
-                'List': ListType.cls_namespace
-            }
+            {}
         )
 
+        self.global_table: Table = self.table
         self.file_table: Table = None
 
         self.files: Dict[Path, File] = {}
@@ -103,7 +72,7 @@ class SemanticAnalysis:
 
         self.max_methcall: int = 0
         self.curr_methcall: int = 0
-        self.classes: List[ClassType] = [ObjectType, ListType]
+        self.classes: List[ClassType] = []
 
         self.scope_names: List[str] = []
 
@@ -136,185 +105,211 @@ class SemanticAnalysis:
 
     def visit_Program(self, obj: Program):
         obj.needed_std.append('builtins')
+
+        self.init_files(obj)
+
+        types = []
+        for file in obj.files:
+            types += self.init_interfaced(file)
+
+        for file in obj.files:
+            self.init_funcs(file)
+
+        for file, typ in types:
+            if isinstance(typ, Class):
+                self.finish_class(typ, file)
+            elif isinstance(typ, Trait):
+                self.finish_trait(typ, file)
+
+        for file in obj.files:
+            self.file = file
+            self.visit(file)
+
+        self.create_main()
+
+        obj.classes = self.classes
+
+    # region Program Init
+    def init_files(self, obj: Program):
         for file in obj.files:
             self.files[file.path] = file
             file.table = self.table.child(TableType.FILE)
             if file.is_main:
                 self.main_file = file
 
+    def init_interfaced(self, file: File):
         types = []
-        for file in obj.files:
-            self.file = file
-            with self.enter(file.table):
-                for top in file.tops:
-                    if isinstance(top, Class):
-                        cls_type = new(ClassType)
-                        cls_type.name = top.name
-                        top.type = cls_type
-                        self.table.add_type(top.name, cls_type)
-                        self.classes.append(cls_type)
+        self.file = file
+        if file.path == AIZE_STD / "__builtins__.aize":
+            file_table = self.global_table
+        else:
+            file_table = file.table
+        with self.enter(file_table):
+            for top in file.tops:
+                if isinstance(top, Class):
+                    self.init_class(top)
+                elif isinstance(top, Trait):
+                    self.init_trait(top)
+                else:
+                    continue
+                types.append((file, top))
+        return types
 
-                        cls_namespace = Table.empty(TableType.CLASS)
-                        cls_type.cls_namespace = cls_namespace
-                        self.table.add_namespace(top.name, cls_namespace)
+    def init_class(self, cls: Class):
+        cls_type = ClassType(cls.name, [], {}, {})
 
-                        obj_namespace = Table.empty(TableType.OBJECT)
-                        cls_type.obj_namespace = obj_namespace
+        self.table.add_type(cls.name, cls_type)
+        self.classes.append(cls_type)
+        cls.type = cls_type
 
-                        mangled = f"A{self.mangled_path()}C{len(top.name)}{top.name}"
-                        top.unique = mangled
-                        cls_type.structs = top.unique
+        cls_namespace = Table.empty(TableType.CLASS)
+        cls_type.cls_namespace = cls_namespace
+        self.table.add_namespace(cls.name, cls_namespace)
 
-                        cls_type.ttable = mangled + "_ttable"
-                        cls_type.indices = []
+        obj_namespace = Table.empty(TableType.OBJECT)
+        cls_type.obj_namespace = obj_namespace
 
-                        cls_type.traits = []
-                        cls_type.children = []
+        mangled = f"A{self.mangled_path()}C{len(cls.name)}{cls.name}"
+        cls.unique = mangled
+        cls_type.unique = cls.unique
 
-                        types.append((file, top))
-                    elif isinstance(top, Trait):
-                        trait_type = new(TraitType)
-                        trait_type.name = top.name
-                        top.type = trait_type
-                        self.table.add_type(top.name, trait_type)
+        cls_type.ttable = mangled + "_ttable"
+        cls_type.indices = []
 
-                        trait_namespace = Table.empty(TableType.TRAIT)
-                        trait_type.trait_namespace = trait_namespace
-                        self.table.add_namespace(top.name, trait_namespace)
+        cls_type.parents = []
+        cls_type.children = []
 
-                        obj_namespace = Table.empty(TableType.OBJECT)
-                        trait_type.obj_namespace = obj_namespace
+    def init_trait(self, trait: Trait):
+        trait_type = TraitType(trait.name, [], {})
+        trait.type = trait_type
+        self.table.add_type(trait.name, trait_type)
 
-                        mangled = f"A{self.mangled_path()}T{len(top.name)}{top.name}"
-                        top.unique = mangled
-                        trait_type.unique = mangled
+        trait_namespace = Table.empty(TableType.TRAIT)
+        trait_type.trait_namespace = trait_namespace
+        self.table.add_namespace(trait.name, trait_namespace)
 
-                        trait_type.ttable = mangled + "_ttable"
-                        trait_type.indices = []
+        obj_namespace = Table.empty(TableType.OBJECT)
+        trait_type.obj_namespace = obj_namespace
 
-                        trait_type.children = []
+        mangled = f"A{self.mangled_path()}T{len(trait.name)}{trait.name}"
+        trait.unique = mangled
+        trait_type.unique = mangled
 
-                        types.append((file, top))
+        trait_type.ttable = mangled + "_ttable"
+        trait_type.indices = []
 
-        for file in obj.files:
-            self.file = file
-            with self.enter(file.table):
-                for top in file.tops:
-                    if isinstance(top, Function):
-                        self.function = top
-                        self.file_table.add_name(top.name, top)
-                        mangled = f"A{self.mangled_path()}F{len(top.name)}{top.name}"
-                        top.unique = mangled
+        trait_type.children = []
 
-                        if self.file.is_main and top.name == "main":
-                            self.program.main = top
+    def init_funcs(self, file: File):
+        self.file = file
+        with self.enter(file.table):
+            for top in file.tops:
+                if isinstance(top, Function):
+                    self.function = top
+                    self.file_table.add_name(top.name, top)
+                    mangled = f"A{self.mangled_path()}F{len(top.name)}{top.name}"
+                    top.unique = mangled
 
-                        func_table = self.table.child(TableType.SCOPE)
-                        top.table = func_table
-                        with self.enter(func_table):
-                            params = []
-                            for param in top.args:
-                                arg_ret = self.visit(param)
-                                self.table.add_name(param.name, param)
-                                params.append(arg_ret)
-                            ret = self.visit(top.ret)
-                        top.type = FuncType(params, ret)
+                    if self.file.is_main and top.name == "main":
+                        self.program.main = top
 
-        for file, typ in types:
-            if isinstance(typ, Class):
-                cls = typ
-                cls_type = cls.type
-                cls_type.attrs = {}
-                cls_type.methods = {}
-                self.file = file
-                with self.enter(file.table):
-                    for trait in cls.traits:
-                        trait_type = self.visit(trait)
-                        cls_type.traits.append(trait_type)
-                        trait_type.children.append(cls_type)
-
-                    self.scope_names.append(f"{len(cls.name)}C{cls.name}")
-                    for name, attr in cls.attrs.items():
-                        try:
-                            owner = cls_type.get_owner(attr.name)
-                        except KeyError:
-                            pass
-                        else:
-                            if owner is not cls_type:
-                                raise SemanticError(f"Name '{attr.name}' is already defined for {cls.name} in {owner.name}", attr)
-                        self.visit(attr)
-                        cls_type.attrs[name] = attr
-                        cls_type.obj_namespace.add_name(name, attr)
-
-                    for i, (name, method) in enumerate(cls.methods.items()):
-                        method.unique = self.mangled_var(name, "M")
-                        method.table = self.table.child(TableType.SCOPE)
-
-                        method.owner = cls_type.get_owner(method.name)
-                        if method.owner is cls_type:
-                            cls_type.indices.append(method.name)
-
+                    func_table = self.table.child(TableType.SCOPE)
+                    top.table = func_table
+                    with self.enter(func_table):
                         params = []
-                        with self.enter(method.table):
-                            for param in method.args:
-                                self.visit(param)
-                                self.table.add_name(param.name, param)
-                                params.append(param.type)
+                        for param in top.args:
+                            arg_ret = self.visit(param)
+                            self.table.add_name(param.name, param)
+                            params.append(arg_ret)
+                        ret = self.visit(top.ret)
+                    top.type = FuncType(params, ret)
 
-                        method.type = FuncType(params, self.visit(method.ret))
-                        cls_type.obj_namespace.add_name(name, method)
+    def finish_class(self, cls: Class, file: File):
+        cls_type = cls.type
+        cls_type.attrs = {}
+        cls_type.methods = {}
+        self.file = file
+        with self.enter(file.table):
+            for trait in cls.traits:
+                trait_type = self.visit(trait)
+                cls_type.parents.append(trait_type)
+                trait_type.children.append(cls_type)
 
-                        cls_type.methods[name] = method
-                        # cls_type.ttable.append(method.name)
+            self.scope_names.append(f"{len(cls.name)}C{cls.name}")
+            for name, attr in cls.attrs.items():
+                try:
+                    owner = cls_type.get_owner(attr.name)
+                except KeyError:
+                    pass
+                else:
+                    if owner is not cls_type:
+                        raise SemanticError(f"Name '{attr.name}' is already defined for {cls.name} in {owner.name}",
+                                            attr)
+                self.visit(attr)
+                cls_type.attrs[name] = attr
+                cls_type.obj_namespace.add_name(name, attr)
 
-                    with self.enter(cls_type.cls_namespace):
-                        new_type = FuncType([attr.type for attr in cls_type.attrs.values()], cls_type)
-                        new_decl = NameDecl.direct("new", self.mangled_var("new", "S"), new_type)
+            for i, (name, method) in enumerate(cls.methods.items()):
+                cls_type.interface[name] = method
 
-                        self.table.add_name("new", new_decl)
-                    self.scope_names.pop()
-            elif isinstance(typ, Trait):
-                trait = typ
-                trait_type = trait.type
-                trait_type.methods = {}
-                self.file = file
-                with self.enter(file.table):
-                    # for trait in cls.traits:
-                    #     cls_type.traits.append(self.visit(trait))
+                method.unique = self.mangled_var(name, "M")
+                method.table = self.table.child(TableType.SCOPE)
 
-                    self.scope_names.append(f"C{len(trait.name)}{trait.name}")
+                method.owner = cls_type.get_owner(method.name)
 
-                    for i, (name, method) in enumerate(trait.methods.items()):
-                        method.unique = self.mangled_var(name, "M")
-                        method.table = self.table.child(TableType.SCOPE)
+                params = []
+                with self.enter(method.table):
+                    for param in method.args:
+                        self.visit(param)
+                        self.table.add_name(param.name, param)
+                        params.append(param.type)
 
-                        params = []
-                        with self.enter(method.table):
-                            for param in method.args:
-                                self.visit(param)
-                                self.table.add_name(param.name, param)
-                                params.append(param.type)
+                method.type = FuncType(params, self.visit(method.ret))
+                cls_type.obj_namespace.add_name(name, method)
 
-                        method.type = FuncType(params, self.visit(method.ret))
-                        trait_type.obj_namespace.add_name(name, method)
+            with self.enter(cls_type.cls_namespace):
+                new_type = FuncType([attr.type for attr in cls_type.attrs.values()], cls_type)
+                new_decl = NameDecl.direct("new", self.mangled_var("new", "S"), new_type)
 
-                        trait_type.methods[name] = method
+                self.table.add_name("new", new_decl)
+            self.scope_names.pop()
 
-                        method.owner = trait_type.get_owner(method.name)
-                        if method.owner is trait_type:
-                            trait_type.indices.append(method.name)
+    def finish_trait(self, trait: Trait, file: File):
+        trait_type = trait.type
+        trait_type.methods = {}
+        self.file = file
+        with self.enter(file.table):
+            # for trait in cls.traits:
+            #     cls_type.traits.append(self.visit(trait))
 
-                    self.scope_names.pop()
+            self.scope_names.append(f"C{len(trait.name)}{trait.name}")
 
-        for file in obj.files:
-            self.file = file
-            self.visit(file)
+            for i, (name, method) in enumerate(trait.methods.items()):
+                trait_type.interface[name] = method
 
-        self.main_file.tops.append(Function('main', FuncTypeNode([], Name('int')), [], Name('int'), [
+                method.unique = self.mangled_var(name, "M")
+                method.table = self.table.child(TableType.SCOPE)
+
+                params = []
+                with self.enter(method.table):
+                    for param in method.args:
+                        self.visit(param)
+                        self.table.add_name(param.name, param)
+                        params.append(param.type)
+
+                method.type = FuncType(params, self.visit(method.ret))
+                trait_type.obj_namespace.add_name(name, method)
+
+                method.owner = trait_type.get_owner(method.name)
+
+            self.scope_names.pop()
+
+    def create_main(self):
+        self.main_file.tops.append(Function('main', FuncTypeNode([], GetType('int')), [], GetType('int'), [
             Return(Call(GetVar(self.program.main.unique).define(ref=self.program.main), []))
         ]).defined(FuncType([], IntType()), 'main'))
 
-        obj.classes = self.classes
+    # endregion
 
     def visit_File(self, obj: File):
         with self.enter(obj.table):
@@ -338,7 +333,7 @@ class SemanticAnalysis:
         obj.unique = self.mangled_var(obj.name, typ='A')
         return obj.type
 
-    def visit_Method(self, obj: Method):
+    def visit_ConcreteMethod(self, obj: ConcreteMethod):
         with self.enter(obj.table):
             self.scope_names.append(f"M{len(obj.name)}{obj.name}")
             if obj.body is not None:
@@ -439,20 +434,19 @@ class SemanticAnalysis:
 
     def visit_Call(self, obj: Call):
         func: FuncType = self.visit(obj.left)
-        if MethodCall.is_method(obj)[0]:
+        if obj.convert(self.curr_methcall):
             # noinspection PyUnresolvedReferences
-            args = [obj.left.left.ret]
-            MethodCall.make_method_call(obj, self.curr_methcall)
-            func = obj.method_call.pointed.type
+            args = [obj.method_data.obj]
+            func = obj.method_data.pointed.type
             self.curr_methcall += 1
         else:
             if not isinstance(func, FuncType):
                 raise SemanticError(f"Cannot call {func}", obj)
             args = []
 
-        if len(obj.args + args) != len(func.args):
+        if len(args+obj.args) != len(func.args):
             raise SemanticError(f"Function requires {len(func.args)} arguments, passed {len(obj.args)}", obj)
-        for arg, func_arg in zip(obj.args, func.args):
+        for arg, func_arg in zip(args+obj.args, func.args):
             arg_ret = self.visit(arg)
             if not arg_ret <= func_arg:
                 raise TypeCheckError(func_arg, arg_ret, obj)
@@ -523,7 +517,7 @@ class SemanticAnalysis:
         obj.ret = attr.type
         return attr.type
 
-    def visit_GetNamespaceName(self, obj: GetNamespaceName):
+    def visit_GetNamespaceExpr(self, obj: GetNamespaceExpr):
         namespace: Table = self.visit(obj.namespace)
         try:
             name = namespace.get_name(obj.attr)
@@ -545,11 +539,7 @@ class SemanticAnalysis:
         obj.ret = IntType()
         return IntType()
 
-    def visit_Str(self, obj: Str):
-        obj.ret = StringType
-        return StringType
-
-    def visit_Name(self, obj: Name):
+    def visit_GetType(self, obj: GetType):
         try:
             return self.table.get_type(obj.name)
         except KeyError:

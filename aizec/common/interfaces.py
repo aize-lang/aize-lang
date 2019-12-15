@@ -18,6 +18,3 @@ class Backend:
 
 def analyze_ast(ast: Program):
     SemanticAnalysis(ast).visit(ast)
-
-
-AIZE_STD = Path(__file__).absolute().parent / "std"

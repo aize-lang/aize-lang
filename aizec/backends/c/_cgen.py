@@ -494,10 +494,6 @@ class Enum(TopLevel):
         return f"enum {self.name};\n"
 
 
-
-
-
-
 @dataclass()
 class Function(TopLevel):
     name: str

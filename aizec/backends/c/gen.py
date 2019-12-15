@@ -90,8 +90,15 @@ class MinGW(CCompiler):
 
     def call(self, args: List[str]):
         os.environ["PATH"] = str(self.bin) + os.pathsep + os.environ["PATH"]
-        check = subprocess.run([str(self.bin / "gcc.exe")] + args, check=False)
-        return check
+        for _ in range(5):
+            process = subprocess.Popen([str(self.bin / "gcc.exe")] + args)
+            process.wait()
+            process.terminate()
+            if process.returncode == 0x1:
+                AizeError.message("Trying again.")
+                continue
+            check = subprocess.CompletedProcess([str(self.bin / "gcc.exe")] + args, returncode=process.returncode)
+            return check
 
 
 class GCC(CCompiler):
@@ -120,9 +127,12 @@ class Clang(CCompiler):
 
     @classmethod
     def create(cls, config: Config):
-        if subprocess.run(["clang", "--version"], stdout=subprocess.PIPE).returncode != 0:
-            return cls()
-        else:
+        try:
+            if subprocess.run(["clang", "--version"], stdout=subprocess.PIPE).returncode != 0:
+                return cls()
+            else:
+                return None
+        except FileNotFoundError:
             return None
 
     def __init__(self):
@@ -214,6 +224,8 @@ class CGenerator:
             call_args += ["-O3"]
         if args.for_ in ('debug', 'compiler-debug'):
             call_args += ['-g']
+        if args.for_ in ('compiler-debug', ):
+            call_args += ['-DDEBUG']
 
         call_args += [f"-o{args.out.as_posix()}"]
         call_args += [f"{source}"]
@@ -221,7 +233,7 @@ class CGenerator:
 
         check = compiler.call(call_args)
         if args.for_ == 'compiler-debug':
-            AizeError.message(f"Called arguments: {' '.join(check.args)}")
+            AizeError.message(f"Called arguments:\n{' '.join(check.args)}")
         if args.delete_temp:
             source.unlink()
             header.unlink()
@@ -229,25 +241,18 @@ class CGenerator:
             raise CompilationError(f"Compilation of generated C code failed (Exit Code {hex(check.returncode)})")
 
         if args.run:
-            ret = os.system(args.out.as_posix()) & 2**32-1
+            process = subprocess.Popen([args.out.as_posix()])
+            process.wait()
+            process.terminate()
+            ret = process.returncode
             if ret == 0xc0000005:
                 raise CompilationError(f"Running of generated executable failed (Segmentation Fault)")
             elif ret != 0:
                 raise CompilationError(f"Running of generated executable failed ({hex(ret)})")
 
-            # ret = subprocess.Popen(args.out.as_posix())
-            # ret.communicate("")
-            # try:
-            #     if ret.returncode == 0xc0000005:
-            #         raise CompilationError(f"Running of generated executable failed (Segmentation Fault)")
-            #     elif ret.returncode != 0:
-            #         raise CompilationError(f"Running of generated executable failed ({hex(ret.returncode)})")
-            # finally:
-            #     ret.terminate()
-
     @classmethod
     def get_cls_ptr(cls, obj: cgen.Expression, cls_obj: ClassType):
-        return cgen.Cast(cgen.GetAttr(obj, 'obj'), cgen.PointerType(cgen.StructType(cls_obj.structs)))
+        return cgen.Cast(cgen.GetAttr(obj, 'obj'), cgen.PointerType(cgen.StructType(cls_obj.unique)))
 
     @classmethod
     def ensure_cls(cls, obj: Expr):
@@ -266,7 +271,7 @@ class CGenerator:
             self.links.append(source)
             tops.append(cgen.Include(header.as_posix()))
 
-        cls_enum = cgen.Enum("AizeClasses", [cls.structs.upper() for cls in obj.classes])
+        cls_enum = cgen.Enum("AizeClasses", [cls.unique.upper() for cls in obj.classes])
         tops.append(cls_enum)
         for file in obj.files:
             tops.extend(self.visit(file))
@@ -291,7 +296,7 @@ class CGenerator:
     def visit_Class(self, obj: Class):
         # TODO when types are a thing, a mechanism to add that to main?
         cls_ptr = self.visit(obj.type)
-        attrs = {}
+        attrs = {'ATBASE': AIZE_BASE}
         attrs.update({attr.unique: self.visit(attr.type) for attr in obj.attrs.values()})
         cls_struct = cgen.Struct(obj.unique, attrs)
 
@@ -303,8 +308,8 @@ class CGenerator:
             if meth.owner is obj.type:
                 methods[str(len(owned_methods))] = cgen.Ref(cgen.GetVar(meth.unique))
                 owned_methods.append(meth_proto)
-        implementers[obj.type.structs.upper()] = cgen.ArrayInit(methods)
-        ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
+        implementers[obj.type.unique.upper()] = cgen.ArrayInit(methods)
+        ttable = cgen.GlobalArray(obj.type.ttable, cgen.void_ptr(),
                                   (len(self.program.classes), len(owned_methods)),
                                   cgen.ArrayInit(implementers))
 
@@ -352,24 +357,14 @@ class CGenerator:
                 meth = cls.get_method(meth_proto.name)
                 if meth.owner is obj.type:
                     methods[str(n)] = cgen.Ref(cgen.GetVar(meth.unique))
-            implementers[cls.structs.upper()] = cgen.ArrayInit(methods)
-        ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
+            implementers[cls.unique.upper()] = cgen.ArrayInit(methods)
+        ttable = cgen.GlobalArray(obj.type.ttable, cgen.void_ptr(),
                                   (len(self.program.classes), len(obj.methods)),
                                   cgen.ArrayInit(implementers))
 
-
-        # ttable = cgen.GlobalArray(f"{obj.unique}_ttable", cgen.void_ptr(),
-        #                           (len(self.program.classes), len(obj.methods)),
-        #                           cgen.ArrayInit(
-        #                               {cls.structs.upper(): cgen.ArrayInit({str(n): cgen.Ref(cgen.GetVar(meth.unique))
-        #                                                                     for n, meth in
-        #                                                                     enumerate(cls.methods.values())})
-        #                                for cls in obj.type.iter_children()})
-        #                           )
-
         methods = []
         for meth in obj.methods.values():
-            if meth.body is not None:
+            if isinstance(meth, ConcreteMethod):
                 methods.append(self.visit(meth))
 
         return [*methods, ttable]
@@ -382,7 +377,7 @@ class CGenerator:
     def visit_TraitType(self, obj: TraitType):
         return AIZE_OBJECT_REF
 
-    def visit_Method(self, obj: Method):
+    def visit_ConcreteMethod(self, obj: ConcreteMethod):
         body = []
 
         for i in range(obj.temp_count):
@@ -475,21 +470,15 @@ class CGenerator:
             return [ret, exit_call, cgen.Return(cgen.GetVar('ATR'))]
 
     def visit_Call(self, obj: Call):
-        if obj.method_call is not None:
-            return self.visit(obj.method_call)
+        if obj.method_data is not None:
+            args = obj.args
+            obj = obj.method_data
+            ttable = obj.pointed.owner.ttable
+            left = cgen.StrExpr(f"{ttable}[(AT{obj.depth} = {self.visit(obj.obj)}).typeid][{obj.index}]")
+            left = cgen.Cast(left, self.visit(obj.pointed.type))
+            left = cgen.Call(left, [cgen.GetVar(f"AT{obj.depth}")] + [self.visit(arg) for arg in args])
+            return left
         return cgen.Call(self.visit(obj.left), [self.visit(arg) for arg in obj.args])
-
-    def visit_MethodCall(self, obj: MethodCall):
-        # TODO
-        left = self.visit(obj.obj)
-        left = cgen.SetVar(f"AT{obj.depth}", left)
-        # noinspection PyTypeChecker
-        left = cgen.GetAttr(left, 'typeid')
-        left = cgen.GetItem(cgen.GetVar(obj.pointed.owner.ttable), left)
-        left = cgen.GetItem(left, cgen.Constant(obj.index))
-        left = cgen.Cast(left, self.visit(obj.pointed.type))
-        left = cgen.Call(left, [cgen.GetVar(f"AT{obj.depth}")] + [self.visit(arg) for arg in obj.args])
-        return left
 
     def visit_LT(self, obj: LT):
         return cgen.BinOp(self.visit(obj.left), '<', self.visit(obj.right))
@@ -520,7 +509,7 @@ class CGenerator:
     def visit_Num(self, obj: Num):
         return cgen.Constant(obj.num)
 
-    def visit_GetNamespaceName(self, obj: GetNamespaceName):
+    def visit_GetNamespaceExpr(self, obj: GetNamespaceExpr):
         return cgen.GetVar(obj.pointed.unique)
 
     def visit_IntType(self, obj: IntType):

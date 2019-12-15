@@ -54,3 +54,6 @@ class Config:
         self.file.seek(0)
         self.file.truncate(0)
         self.file.write(json.dumps(self.DEFAULT_DATA, indent='    '))
+
+
+AIZE_STD = Path(__file__).absolute().parent / "std"
