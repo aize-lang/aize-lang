@@ -42,7 +42,6 @@ class Table:
         return table
 
     def add_name(self, name: str, decl: NameDecl):
-        # TODO assert that the decl is fully defined?
         self._names[name] = decl
         return decl
 
@@ -646,6 +645,7 @@ class GetAttr(Expr):
     left: Expr
     attr: str
     pointed: NameDecl = field(init=False, repr=False)
+    pointed_cls: ClassType = field(init=False, repr=False)
 
 
 @dataclass()
@@ -654,6 +654,7 @@ class SetAttr(Expr):
     attr: str
     val: Expr
     pointed: NameDecl = field(init=False, repr=False)
+    pointed_cls: ClassType = field(init=False, repr=False)
 
 
 @dataclass()

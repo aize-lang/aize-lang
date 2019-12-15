@@ -5,7 +5,6 @@ import os
 
 from aizec.common.error import AizeError
 from aizec.common.interfaces import Backend
-from aizec.common.sematics import SemanticError  # TODO actually use this in the right place
 from aizec.common.aize_ast import *
 from aizec.common import *
 from aizec.backends.c import _cgen as cgen
@@ -146,6 +145,13 @@ class Clang(CCompiler):
 
 
 class CGenerator:
+    OPTIONS = {
+        'compiler-debug': ['-Wall', '-O0', '-g', '-DDEBUG'],
+        'debug':          ['-Wall', '-O0', '-g', "-Wno-sequence-point", "-Wno-incompatible-pointer-types"],
+        'normal':         ['-Wall', '-O0', "-Wno-sequence-point", "-Wno-incompatible-pointer-types", '-Wno-unused-variable'],
+        'release':        ['-Wall', '-O3', "-Wno-sequence-point", "-Wno-incompatible-pointer-types", '-Wno-unused-variable'],
+    }
+
     def __init__(self, program: Program, header: IO, source: IO, debug: bool):
         self.program = program
 
@@ -210,27 +216,10 @@ class CGenerator:
     def compile(cls, tree: Program, out: Path, config: Config, level: str):
         compiler = cls.find_c_compiler(config)
         source, header, gen = cls.gen(tree, debug=False)  # args.for_ == 'debug')
-        call_args = []
-        call_args += ["-Wall"]
-        # TODO clean up this section of options corellating to options (dict? Option classes?)
-        if level in ('debug', 'normal', 'release'):
-            call_args += ["-Wno-sequence-point"]
-            call_args += ["-Wno-incompatible-pointer-types"]
-            if level in ('normal', 'release'):
-                call_args += ['-Wno-unused-variable']
 
-        if level in ('compiler-debug', 'debug', 'normal'):
-            call_args += ["-O0"]
-        else:
-            call_args += ["-O3"]
-        if level in ('debug', 'compiler-debug'):
-            call_args += ['-g']
-        if level in ('compiler-debug', ):
-            call_args += ['-DDEBUG']
+        call_args = cls.OPTIONS[level]
 
-        call_args += [f"-o{out.as_posix()}"]
-        call_args += [f"{source}"]
-        call_args += [str(path) for path in gen.links]
+        call_args += [f"-o{out.as_posix()}", f"{source}", *(str(path) for path in gen.links)]
 
         check = compiler.call(call_args)
         if level == 'compiler-debug':
@@ -243,13 +232,6 @@ class CGenerator:
     @classmethod
     def get_cls_ptr(cls, obj: cgen.Expression, cls_obj: ClassType):
         return cgen.Cast(cgen.GetAttr(obj, 'obj'), cgen.PointerType(cgen.StructType(cls_obj.unique)))
-
-    @classmethod
-    def ensure_cls(cls, obj: Expr):
-        if isinstance(obj.ret, ClassType):
-            return obj.ret
-        else:
-            raise SemanticError("Expected a Class", obj)
 
     def visit(self, obj):
         return getattr(self, "visit_"+obj.__class__.__name__)(obj)
@@ -284,7 +266,6 @@ class CGenerator:
         pass
 
     def visit_Class(self, obj: Class):
-        # TODO when types are a thing, a mechanism to add that to main?
         cls_ptr = self.visit(obj.type)
         attrs = {'ATBASE': AIZE_BASE}
         attrs.update({attr.unique: self.visit(attr.type) for attr in obj.attrs.values()})
@@ -330,8 +311,6 @@ class CGenerator:
         return [cls_struct, new_func, *methods, ttable]
 
     def visit_Trait(self, obj: Trait):
-        # TODO when types are a thing, a mechanism to add that to main?
-
         implementers = {}
         for cls in obj.type.iter_children():
             methods = {}
@@ -482,11 +461,11 @@ class CGenerator:
         return cgen.SetVar(obj.ref.unique, self.visit(obj.val))
 
     def visit_GetAttr(self, obj: GetAttr):
-        cls: ClassType = self.ensure_cls(obj.left)
+        cls: ClassType = obj.pointed_cls
         return cgen.GetArrow(self.get_cls_ptr(self.visit(obj.left), cls), obj.pointed.unique)
 
     def visit_SetAttr(self, obj: SetAttr):
-        cls: ClassType = self.ensure_cls(obj.left)
+        cls: ClassType = obj.pointed_cls
         return cgen.SetArrow(self.get_cls_ptr(self.visit(obj.left), cls), obj.pointed.unique, self.visit(obj.val))
 
     def visit_Num(self, obj: Num):

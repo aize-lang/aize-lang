@@ -33,7 +33,6 @@ BUILTIN_FILE = Path()
 
 class ScanningError(AizeError):
     def __init__(self, msg: str, scanner: Scanner):
-        # TODO take a TextPos instead of a Scanner
         self.msg = msg
         self.scanner = scanner
 

@@ -345,7 +345,6 @@ class SemanticAnalysis:
         self.curr_methcall = 0
 
     def visit_NativeImport(self, obj: NativeImport):
-        # TODO some means of reading c files directly
         if obj.name == 'aizeio':
             self.file_table.add_namespace("aizeio", AIZEIO)
             self.program.needed_std.append(obj.name)
@@ -422,8 +421,7 @@ class SemanticAnalysis:
             obj.type = ret
         else:
             obj.type = self.visit(obj.type_ref)
-            # TODO equate types
-            if obj.type != ret:
+            if not obj.type <= ret:
                 raise TypeCheckError(obj.type, ret, obj)
                 # raise SemanticError(f"Expected type {obj.type}, got {ret}", obj)
         obj.unique = self.mangled_var(obj.name)
@@ -498,22 +496,29 @@ class SemanticAnalysis:
 
     def visit_GetAttr(self, obj: GetAttr):
         left: ClassType = self.visit(obj.left)
+        if not isinstance(left, ClassType):
+            raise SemanticError(f"Left hand side must be a class", obj)
         try:
             attr = left.obj_namespace.get_name(obj.attr)
         except KeyError:
-            try:
-                attr = left.get_method(obj.attr)
-            except KeyError:
-                raise SemanticError(f"Object of type '{left.name}' does not have attribute '{obj.attr}'", obj)
+            raise SemanticError(f"Object of type '{left.name}' does not have attribute '{obj.attr}'", obj)
         obj.pointed = attr
+        obj.pointed_cls = left
         obj.ret = attr.type
         return attr.type
 
     def visit_SetAttr(self, obj: SetAttr):
         left: ClassType = self.visit(obj.left)
+        if not isinstance(left, ClassType):
+            raise SemanticError(f"Left hand side must be a class", obj)
+        try:
+            attr = left.obj_namespace.get_name(obj.attr)
+        except KeyError:
+            raise SemanticError(f"Object of type '{left.name}' does not have attribute '{obj.attr}'", obj)
         self.visit(obj.val)
         attr = left.obj_namespace.get_name(obj.attr)
         obj.pointed = attr
+        obj.pointed_cls = left
         obj.ret = attr.type
         return attr.type
 
