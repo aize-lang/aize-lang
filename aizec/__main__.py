@@ -23,7 +23,8 @@ arg_parser.add_argument("-S", action='store_false', dest='compile')
 arg_parser.add_argument("--keep-temp", action='store_false', dest='delete_temp')
 arg_parser.add_argument("--run", action='store_true')
 arg_parser.add_argument("--time", action='store_true')
-arg_parser.add_argument("--for", action='store', choices=['compiler-debug', 'debug', 'normal', 'release'], dest='for_', default='normal')
+arg_parser.add_argument("--level", action='store',
+                        choices=['compiler-debug', 'debug', 'normal', 'release'], default='normal')
 arg_parser.add_argument("--config", action='store', default=None)
 
 
@@ -33,7 +34,7 @@ def run(*passed_args):
     else:
         args = arg_parser.parse_args()
 
-    error.init_errors(sys.stderr, args.for_ == 'compiler-debug')
+    error.init_errors(sys.stderr, args.level == 'compiler-debug')
 
     file = Path(args.file).absolute()
     if args.out is None:
@@ -55,7 +56,7 @@ def run(*passed_args):
         ast = apply_frontend(args.frontend, file)
 
         backend = get_backend(args.backend)
-        result = backend.generate(ast, args.out, args.config, args.for_)
+        result = backend.generate(ast, args.out, args.config, args.level)
 
         if args.delete_temp:
             result.delete_temp()

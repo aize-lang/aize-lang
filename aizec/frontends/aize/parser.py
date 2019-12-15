@@ -617,4 +617,3 @@ class AizeParser:
             return GetVar(var.text).place(self.prev.pos)
         else:
             raise ParseError(f"Cannot parse '{self.curr.type}' token", self.curr)
-

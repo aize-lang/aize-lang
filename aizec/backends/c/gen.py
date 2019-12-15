@@ -297,11 +297,9 @@ class CGenerator:
                          cgen.StructInit([cgen.Call(cgen.GetVar("aize_mem_malloc"),
                                                     [cgen.SizeOf(cls_struct.struct_type)]),
                                           cgen.GetVar(cls_struct.name.upper())])),
-            # cgen.ExprStmt(cgen.SetAttr(cgen.GetVar('mem'), "vtable", )),
             *(set_attr(attr) for attr in obj.attrs.values()),
             cgen.ExprStmt(cgen.SetArrow(cgen.GetAttr(cgen.GetVar('mem'), 'obj'), "ref_count", cgen.Constant(0))),
             cgen.Return(cgen.Call(cgen.GetVar('aize_mem_ret'), [cgen.GetVar("mem")])),
-            # cgen.Return(cgen.GetVar("mem")),
         ])
 
         methods = []
@@ -331,7 +329,6 @@ class CGenerator:
         return [*methods, ttable]
 
     def visit_ClassType(self, obj: ClassType):
-        # return cgen.PointerType(cgen.StructType(obj.structs))
         # TODO Make specific types which replace the AizeBase* with their own class for more optimizations
         return AIZE_OBJECT_REF
 
@@ -391,7 +388,6 @@ class CGenerator:
         if len(obj.body) == 0 or not isinstance(obj.body[-1], Return):
             body.append(cgen.ExprStmt(cgen.Call(cgen.GetVar("aize_mem_exit"), [])))
 
-        # noinspection PyUnresolvedReferences
         return cgen.Function(obj.unique,
                              {param.unique: self.visit(param.type) for param in obj.args},
                              self.visit(obj.type.ret),
