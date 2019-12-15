@@ -4,10 +4,10 @@
 To use the programming language Aize, first download this repository onto your computer somehow.
 
 ### Requirements
-* Python 3.7 exactly
+* Python 3.7+
     * No packages outside the standard library are needed
 * A supported C Compiler somewhere on your computer
-    * Clang or GCC on linux and on the path
+    * Clang or GCC on Linux and on the Path
     * MinGW on Windows, either through the path, in your user directory, or in Program Files
  
 ### Usage
