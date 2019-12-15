@@ -1,12 +1,13 @@
 from aizec.common.error import CompilerError
 from aizec.common.interfaces import Frontend
 from aizec.common import *
-from aizec.frontends.aize import Aize
+from aizec.frontends.aize import Aize, AizeLark
 
 
 def get_frontend(language: str) -> Cls[Frontend]:
     if language in ('aize', 'Aize', 'a', 'A'):
-        return Aize
+        # return Aize
+        return AizeLark
     else:
         raise CompilerError(f"Language {language} not recognized")
 

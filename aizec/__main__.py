@@ -16,6 +16,9 @@ arg_parser.add_argument("-o", dest="out", default=None)
 arg_parser.add_argument("-f", action='store', dest='frontend', default='aize')
 arg_parser.add_argument("-b", action='store', dest='backend', default='c')
 arg_parser.add_argument("-c", action='store', dest='compiler', default=None)
+
+arg_parser.add_argument("-S", action='store_false', dest='compile')
+
 # arg_parser.add_argument("-O", action='store', dest='opt', choices=[0, 1, 2, 3], default=0)
 arg_parser.add_argument("--keep-temp", action='store_false', dest='delete_temp')
 arg_parser.add_argument("--run", action='store_true')
@@ -42,9 +45,11 @@ def run(*passed_args):
             args.out = file.with_suffix("")
     if args.config is None:
         args.config = Path(__file__).parent / "aizec_cfg.json"
+    if not args.compile:
+        args.backend = 'no'
 
-    if args.time:
-        start_time = time.time()
+    start_time = time.time()
+    start_own_time = time.process_time()
 
     with Config(args.config) as args.config:
         ast = apply_frontend(args.frontend, file)
@@ -60,8 +65,10 @@ def run(*passed_args):
 
     if args.time:
         end_time = time.time()
+        end_own_time = time.process_time()
         elasped = end_time - start_time
-        AizeError.message(f"Time Elapsed: {elasped:.2f} sec")
+        elasped_own = end_own_time - start_own_time
+        AizeError.message(f"Time Elapsed: {elasped:.2f} sec (Own {elasped_own:.2f})")
 
 
 if __name__ == '__main__':

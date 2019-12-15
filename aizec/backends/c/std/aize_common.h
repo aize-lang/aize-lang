@@ -3,9 +3,14 @@
 #include "stdint.h"
 
 
+struct AizeObjectRef;
+struct AizeBase;
+
+
 typedef struct AizeBase {
     uint32_t depth;
     size_t ref_count;
+    void (*on_free)(struct AizeObjectRef);
 } AizeBase;
 
 

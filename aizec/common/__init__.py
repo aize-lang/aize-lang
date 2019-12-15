@@ -1,5 +1,5 @@
 import json
-from typing import Type as Cls, TypeVar, IO, List, Dict, Union
+from typing import Type as Cls, TypeVar, IO, List, Dict, Union, Tuple
 from pathlib import Path
 
 T = TypeVar('T')
