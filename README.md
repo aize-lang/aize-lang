@@ -5,14 +5,14 @@ To use the programming language Aize, first download this repository onto your c
 
 ### Requirements
 * Python 3.7+
-    * No packages outside the standard library are needed
-* A supported C Compiler somewhere on your computer
-    * Clang or GCC on Linux and on the Path
-    * MinGW on Windows, either through the path, in your user directory, or in Program Files
+    * No packages outside the standard library are needed.
+* A supported C Compiler somewhere on your computer.
+    * Clang or GCC on Linux. They must be on the path.
+    * MinGW on Windows, either on the path, in your user directory, or in Program Files.
  
 ### Usage
 Go to the `/aizelang` folder, wherever you put it.
-Enter in the following command, assuming the correct Python is available on you path:
+Enter in the following command, assuming the correct Python version is available on you path:
 ```commandline
 python -m aizec test/fibo.aize --run
 ```

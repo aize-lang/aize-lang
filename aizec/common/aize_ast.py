@@ -1,10 +1,48 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, Field, is_dataclass
+from pprint import pprint
 from enum import Enum
-from typing import Tuple, ClassVar, Iterable
+from pathlib import Path
+from typing import ClassVar, Iterable, List, Dict, Tuple, Union
 
-from aizec.common import *
+# from aizec.common import *
+
+
+# region Tools
+
+def convert_builtin(tree):
+    if is_dataclass(tree):
+        d = {}
+        tree_fields: List[Field] = fields(tree)
+        for tree_field in tree_fields:
+            if tree_field.repr:
+                val = getattr(tree, tree_field.name)
+                if isinstance(val, list):
+                    val = [convert_builtin(item) for item in val]
+                elif isinstance(val, tuple):
+                    val = tuple(convert_builtin(item) for item in val)
+                elif isinstance(val, dict):
+                    val = {key: convert_builtin(value) for key, value in val.items()}
+                elif is_dataclass(val):
+                    val = convert_builtin(val)
+                else:
+                    pass
+                d[tree_field.name] = val
+        return d
+    else:
+        return tree
+
+
+def dumps(tree, indent=0):
+    if is_dataclass(tree):
+        s = tree.__class__.__name__ + '('
+        tree_fields = fields(tree)
+        for tree_field in tree_fields:
+            if tree_field.repr:
+                pass
+
+# endregion
 
 
 # region Table
@@ -92,6 +130,17 @@ class Table:
 
     def __repr__(self):
         return f"Table(type={self.type})"
+
+
+class GenericTable(Table):
+    def __init__(self, type_vars: List[str], type: TableType, parent: Table = None):
+        super().__init__(type, parent)
+        self.type_vars = type_vars
+
+    def over(self, type_vars: List[Type]):
+        return
+
+
 # endregion
 
 
@@ -108,6 +157,9 @@ class Node:
         for key, value in kwargs.items():
             setattr(self, key, value)
         return self
+
+    # def pprint(self):
+    #     dumps(self)
 
 
 class TextPos:
@@ -173,8 +225,46 @@ class FuncTypeNode(TypeNode):
 # region Actual Types
 @dataclass()
 class Type:
+    def over(self, type_vars: Dict[str, Type]):
+        return self
+
     def __le__(self, other: Type):
         """t1 <= t2 means that t1 is t2 or a subclass"""
+        raise NotImplementedError()
+
+    def __eq__(self, other: Type):
+        raise NotImplementedError()
+
+    def __str__(self):
+        raise NotImplementedError()
+
+
+@dataclass()
+class GenericVar(Type):
+    name: str
+
+    def over(self, type_vars: Dict[str, Type]):
+        return type_vars[self.name]
+
+    def __le__(self, other: Type):
+        """t1 <= t2 means that t1 is t2 or a subclass"""
+        return other is self
+
+    def __eq__(self, other: Type):
+        return other is self
+
+    def __str__(self):
+        return self.name
+
+
+@dataclass()
+class GenericClassType(Type):
+    cls_proto: GenericClass
+    cls_proto_table: Table
+
+    impls: List[Class] = field(init=False, repr=False, default_factory=list)
+
+    def __le__(self, other: Type):
         raise NotImplementedError()
 
     def __eq__(self, other: Type):
@@ -376,7 +466,6 @@ class Top(Node):
 
 @dataclass()
 class Trait(Top, NameDecl):
-    name: str
     methods: Dict[str, Method]
 
     type: TraitType = field(init=False, repr=False)
@@ -390,6 +479,17 @@ class Class(Top, NameDecl):
     methods: Dict[str, ConcreteMethod]
 
     type: ClassType = field(init=False, repr=False)
+
+
+@dataclass()
+class GenericClass(Top, NameDecl):
+    type_vars: List[str]
+    traits: List[Type]
+
+    attrs: Dict[str, Attr]
+    methods: Dict[str, ConcreteMethod]
+
+    type: GenericClassType = field(init=False, repr=False)
 
 
 @dataclass()

@@ -265,6 +265,16 @@ class AizeParser:
 
         name = self.match_exc("ident").text
 
+        if self.match("["):
+            type_vars = []
+            while not self.match("]"):
+                type_var = self.match("ident").text
+                type_vars.append(type_var)
+                if not self.match(","):
+                    self.match_exc("]")
+                    break
+        else:
+            type_vars = []
         if self.match(":"):
             traits = []
             while not self.match("{"):
@@ -291,7 +301,10 @@ class AizeParser:
             else:
                 raise ParseError("Not a valid class-statement", self.curr)
 
-        return Class(name, GetType(name), traits, attrs, methods).place(start.pos)
+        if type_vars:
+            return GenericClass(name, GetType(name), type_vars, traits, attrs, methods).place(start.pos)
+        else:
+            return Class(name, GetType(name), traits, attrs, methods).place(start.pos)
 
     def parse_trait(self):
         start = self.match_exc("trait")

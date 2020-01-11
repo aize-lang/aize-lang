@@ -1,9 +1,17 @@
 import std:"io";
 
 
+class Person {
+
+}
+
+
+class Holder[T] {
+    attr obj: T;
+}
+
+
 def main() -> int {
-    var li = List::new(0);
-    li.add(40);
-    io::print_int(li.get(), 1);
+    # var holder: Holder = Holder[Person]::new();
     return 0;
 }

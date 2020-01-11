@@ -106,10 +106,10 @@ class GCC(CCompiler):
 
     @classmethod
     def create(cls, config: Config):
-        if subprocess.run(["gcc", "--version"], stdout=subprocess.PIPE).returncode != 0:
-            return cls()
-        else:
-            return None
+        if os.name != 'nt':
+            if subprocess.run(["gcc", "--version"], stdout=subprocess.PIPE).returncode != 0:
+                return cls()
+        return None
 
     def __init__(self):
         pass
@@ -127,13 +127,11 @@ class Clang(CCompiler):
 
     @classmethod
     def create(cls, config: Config):
-        try:
+        if os.name != 'nt':
             if subprocess.run(["clang", "--version"], stdout=subprocess.PIPE).returncode != 0:
                 return cls()
-            else:
-                return None
-        except FileNotFoundError:
-            return None
+
+        return None
 
     def __init__(self):
         pass
@@ -307,6 +305,9 @@ class CGenerator:
             methods.append(self.visit(meth))
 
         return [cls_struct, new_func, *methods, ttable]
+
+    def visit_GenericClass(self, obj: GenericClass):
+        pass
 
     def visit_Trait(self, obj: Trait):
         implementers = {}

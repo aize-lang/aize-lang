@@ -4,7 +4,8 @@ import contextlib
 
 from aizec.common.aize_ast import *
 from aizec.common.error import AizeError
-from aizec.common import AIZE_STD
+from aizec.common import AIZE_STD, IO
+
 
 AIZEIO = Table.new(TableType.C_FILE, {
     'print_int': NameDecl.direct('print_int', 'print_int', FuncType([IntType(), IntType()], VoidType())),
@@ -93,6 +94,12 @@ class SemanticAnalysis:
 
         self.table = old_table
 
+    def ensure_valid(self, typ: Type, node: Node):
+        if not isinstance(typ, (GenericClassType, GenericVar)):
+            return typ
+        else:
+            raise SemanticError(f"Must specify types for Generic Class", node)
+
     def visit(self, obj, *args, **kwargs):
         name = obj.__class__.__name__
         val = getattr(self, "visit_"+name)(obj, *args, **kwargs)
@@ -150,6 +157,8 @@ class SemanticAnalysis:
                     self.init_class(top)
                 elif isinstance(top, Trait):
                     self.init_trait(top)
+                elif isinstance(top, GenericClass):
+                    self.init_generic_class(top)
                 else:
                     continue
                 types.append((file, top))
@@ -178,6 +187,16 @@ class SemanticAnalysis:
 
         cls_type.parents = []
         cls_type.children = []
+
+    def init_generic_class(self, gen_cls: GenericClass):
+        gen_cls_type = GenericClassType(gen_cls, self.table)
+
+        self.table.add_type(gen_cls.name, gen_cls_type)
+        gen_cls.type = gen_cls_type
+
+        gen_cls_namespace = GenericTable(gen_cls.type_vars, TableType.CLASS)
+        gen_cls_type.cls_namespace = gen_cls_namespace
+        self.table.add_namespace(gen_cls.name, gen_cls_namespace)
 
     def init_trait(self, trait: Trait):
         trait_type = TraitType(trait.name, [], {})
@@ -322,6 +341,9 @@ class SemanticAnalysis:
             self.visit(method)
         self.scope_names.pop()
 
+    def visit_GenericClass(self, obj: GenericClass):
+        pass
+
     def visit_Trait(self, obj: Trait):
         self.scope_names.append(f"T{len(obj.name)}{obj.name}")
         for method in obj.methods.values():
@@ -421,6 +443,7 @@ class SemanticAnalysis:
             obj.type = ret
         else:
             obj.type = self.visit(obj.type_ref)
+            self.ensure_valid(obj.type, obj.type_ref)
             if not obj.type <= ret:
                 raise TypeCheckError(obj.type, ret, obj)
                 # raise SemanticError(f"Expected type {obj.type}, got {ret}", obj)
