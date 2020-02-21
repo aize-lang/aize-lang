@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import contextlib
 
-from aizec.common.error import AizeError
-from aizec.common.aize_ast import *
+from aizec.aize_ast import *
 from aizec.common import *
+from aizec.aize_error import AizeError
+
 
 BASIC_TOKENS = sorted(["+", "+=",
                        "-", "-=", "->",
@@ -19,7 +20,7 @@ BASIC_TOKENS = sorted(["+", "+=",
                        "@", "::"],
                       key=len, reverse=True)
 
-KEYWORDS = ['class', 'trait', 'def', 'method', 'attr', 'var', 'while', 'if', 'return', 'else', 'import', 'cimport']
+KEYWORDS = ['class', 'trait', 'def', 'method', 'attr', 'var', 'while', 'if', 'return', 'else', 'import']
 
 BIN = '01'
 OCT = BIN + '234567'
@@ -28,124 +29,120 @@ HEX = DEC + 'ABCDEF'
 IDENT_START = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_'
 IDENT = IDENT_START + DEC
 
-BUILTIN_FILE = Path()
-
-
-class ScanningError(AizeError):
-    def __init__(self, msg: str, scanner: Scanner):
-        self.msg = msg
-        self.scanner = scanner
-
-    def display(self, file: IO):
-        line_no, line = self.scanner.get_line()
-        pos = self.scanner.line_pos
-        file.write(f"In {self.scanner.file}:\n")
-        file.write(f"Lexing Error: {self.msg}:\n")
-        file.write(f"{line_no:>6} | {line}\n")
-        file.write(f"         {' '*pos}^")
-
 
 class ParseError(AizeError):
-    def __init__(self, msg: str, token: Token):
+    def __init__(self, msg: str, token: Token, in_source: Source):
         self.msg = msg
         self.token = token
+        self.in_source = in_source
 
     def display(self, file: IO):
-        line_no = self.token.pos.line
-        line = self.token.pos.text.splitlines()[line_no-1]
-        pos = self.token.pos.pos
-        file.write(f"In {self.token.pos.file}:\n")
+        file.write(f"In {self.in_source.get_name()}:\n")
         file.write(f"Parsing Error: {self.msg}:\n")
-        file.write(f"{line_no:>6} | {line}\n")
-        file.write(f"         {' ' * pos[0]}{'^'*(pos[1]-pos[0])}")
+        file.write(self.token.in_context())
 
 
 class Token:
-    def __init__(self, text: str, type: str, pos: TextPos):
+    def __init__(self, text: str, type: str, source: Source, line_no: int, columns: Tuple[int, int]):
         self.text = text
         self.type = type
-        self.pos = pos
+
+        self.source = source
+        self.line_no = line_no
+        self.columns = columns
+
+    def in_context(self) -> str:
+        return f"{self.line_no:>6} | {self.source.lines[self.line_no-1]}\n" \
+               f"         {' ' * self.columns[0]}{'^'*(self.columns[1]-self.columns[0])}"
 
     def __repr__(self):
-        return f"Token({self.text!r}, {self.type!r}, {self.pos!r})"
+        return f"Token({self.text!r}, {self.type!r})"
 
 
 class Scanner:
-    def __init__(self, file: Path, text: str):
-        self.file = file
-        self.text = text
+    def __init__(self, source: Source):
+        self.source = source
+        self.text = source.text
 
         self.pos = 0
         self.line_pos = 0
-        self.line = 1
+        self.line_no = 1
 
     @classmethod
-    def scan(cls, path: Path):
-        text = path.read_text()
-        scanner = Scanner(path, text)
+    def scan_source(cls, source: Source) -> List[Token]:
+        return list(Scanner(source).iter_tokens())
 
-        tokens: List[Token] = []
+    def iter_tokens(self) -> Iterator[Token]:
+        while not self.is_done():
+            next_token = self.scan_next()
+            if next_token is not None:
+                yield next_token
 
-        while not scanner.is_done():
-            for basic in BASIC_TOKENS:
-                token = scanner.match_token(basic)
-                if token:
-                    tokens += token
-                    break
+    def scan_next(self) -> Union[Token, None]:
+        for basic in BASIC_TOKENS:
+            token = self.match_token(basic)
+            if token:
+                return token
+        else:
+            if self.next() == "0" and self.next(plus=1) in "x":
+                if self.next(plus=1) == "x":
+                    # TODO ERROR REPORTING
+                    assert False
+            elif self.next() in "0123456789":
+                with self.start_token("dec") as token:
+                    while self.next() in "0123456789":
+                        self.advance()
+                return token
+            elif self.next() in IDENT_START:
+                with self.start_token("ident") as token:
+                    while self.next() in IDENT:
+                        self.advance()
+                if token.text in KEYWORDS:
+                    token.type = token.text
+                return token
+            elif self.next() == "\"":
+                with self.start_token("str") as token:
+                    self.advance()
+                    while self.next() != "\"":
+                        if self.next() == "\\":
+                            self.advance()
+                        if self.next() == "\n":
+                            # TODO ERROR REPORTING
+                            assert False
+                        self.advance()
+                    if self.is_done():
+                        # TODO ERROR REPORTING
+                        assert False
+                    self.advance()
+                return token
+            elif self.next() == "#":
+                self.advance()
+                if self.next() == " ":
+                    while not self.next() == "\n":
+                        self.advance()
+                return None
+            elif self.next() == "\n":
+                self.advance_line()
+                return None
+            elif self.next() in '\t ':
+                self.advance(1)
+                return None
             else:
-                if scanner.next() == "0" and scanner.next(n=1) in "x":
-                    if scanner.next(n=1) == "x":
-                        raise ScanningError("Cannot parse hex yet", scanner)
-                elif scanner.next() in "0123456789":
-                    with scanner.start_token("dec") as token:
-                        while scanner.next() in "0123456789":
-                            scanner.advance()
-                    tokens.append(token)
-                elif scanner.next() in IDENT_START:
-                    with scanner.start_token("ident") as token:
-                        while scanner.next() in IDENT:
-                            scanner.advance()
-                    if token.text in KEYWORDS:
-                        token.type = token.text
-                    tokens.append(token)
-                elif scanner.next() == "\"":
-                    with scanner.start_token("str") as token:
-                        scanner.advance()
-                        while scanner.next() != "\"":
-                            if scanner.next() == "\\":
-                                scanner.advance()
-                            scanner.advance()
-                        if scanner.is_done():
-                            raise ScanningError("Unterminated String", scanner)
-                        scanner.advance()
-                    tokens.append(token)
-                elif scanner.next() == "#":
-                    scanner.advance()
-                    if scanner.next() == " ":
-                        # Comment
-                        while not scanner.next() == "\n":
-                            scanner.advance()
-                    elif scanner.peek("nativeimport"):
-                        tokens += scanner.match_token("nativeimport")
-                elif scanner.next() == "\n":
-                    scanner.advance_line()
-                elif scanner.next() in '\t ':
-                    scanner.advance(1)
-                else:
-                    raise ScanningError(f"Unrecognized character: {scanner.next()}", scanner)
-        return tokens
+                # TODO ERROR REPORTING
+                assert False
 
+    # region utility methods
     def is_done(self):
         return self.pos >= len(self.text)
 
     def get_line(self):
-        return self.line, self.text.splitlines()[self.line-1]
+        return self.line_no, self.text.splitlines()[self.line_no - 1]
 
     def peek(self, text: str):
         return self.text.startswith(text, self.pos)
 
-    def next(self, n=0):
-        return self.text[self.pos+n] if not self.is_done() else "\0"
+    def next(self, plus=0):
+        return self.text[self.pos + plus] if not self.is_done() else "\0"
 
     def advance(self, n=1):
         self.line_pos += n
@@ -153,55 +150,81 @@ class Scanner:
 
     def advance_line(self):
         self.line_pos = 0
-        self.line += 1
+        self.line_no += 1
         self.pos += 1
 
-    def match_token(self, text: str):
+    def match_token(self, text: str) -> Token:
         if self.text.startswith(text, self.pos):
             start = self.line_pos
             self.advance(len(text))
-            return [Token(text, text, TextPos(self.text, self.line, (start, self.line_pos), self.file))]
-        return []
+            return Token(text, text, self.source, self.line_no, (start, start+len(text)))
+        else:
+            # TODO ERROR REPORTING
+            assert False
 
     @contextlib.contextmanager
     def start_token(self, type: str):
         start_pos = self.pos
+        start_line_no = self.line_no
         start_line_pos = self.line_pos
 
-        token = new(Token)
+        token = Token.__new__(Token)
         yield token
 
-        token.text = self.text[start_pos:self.pos]
-        token.type = type
-        token.pos = TextPos(self.text, self.line, (start_line_pos, self.line_pos), self.file)
+        token.__init__(self.text[start_pos:self.pos], type, self.source, start_line_no, (start_line_pos, self.line_pos))
+    # endregion
+
+
+class NodePosition(PassData):
+    def __init__(self, token: Token):
+        super().__init__()
+        self.token = token
 
 
 class AizeParser:
-    def __init__(self, tokens: List[Token], file: Path):
+    def __init__(self, tokens: List[Token], source: Source):
         self.tokens = tokens
-        self.file = file
+        self.source = source
 
         self.pos = 0
 
     @classmethod
-    def parse(cls, file: Path):
-        to_parse = [AIZE_STD / "__builtins__.aize", file]
-        visited = set()
-        files = []
+    def parse(cls, sources: List[Source], project_dir: Path, std_dir: Path, recurse=True):
+        to_parse: List[Source] = sources.copy()
+        visited: Set = set()
+        parsed_sources: List[Source] = []
+
         while len(to_parse) > 0:
-            curr = to_parse.pop()
-            if curr in visited:
+            curr_source: Source = to_parse.pop()
+            if curr_source.get_unique() in visited:
                 continue
-            parser = cls(Scanner.scan(curr), curr)
-            parsed, imps = parser.parse_file(curr)
-            files.append(parsed)
-            visited.add(curr)
-            to_parse.extend(imp.abs_path for imp in imps)
 
-        files[0].is_main = True
+            parser = cls(Scanner.scan_source(curr_source), curr_source)
+            parsed = parser.parse_source(curr_source)
 
-        return Program(files)
+            parsed_sources.append(parsed)
+            visited.add(parsed.get_unique())
 
+            if recurse:
+                for import_node in parsed.imports:
+                    if import_node.anchor == 'std':
+                        abs_path = std_dir / import_node.path
+                    elif import_node.anchor == 'project':
+                        abs_path = project_dir / import_node.path
+                    elif import_node.anchor == 'local':
+                        parsed_file = parsed.get_path()
+                        if parsed_file is None:
+                            raise ParseError("Cannot do a local import on a non-file source.",
+                                             NodePosition.of(import_node).token, parsed)
+                        else:
+                            abs_path = parsed_file.parent / import_node.path
+                    else:
+                        raise Exception("Invalid anchor")
+                    to_parse.append(FileSource(abs_path, abs_path.read_text(), False, []))
+
+        return Program(parsed_sources)
+
+    # region utility methods
     @property
     def curr(self):
         return self.tokens[self.pos]
@@ -224,41 +247,24 @@ class AizeParser:
     def match_exc(self, type: str):
         match = self.match(type)
         if not match:
-            raise ParseError(f"Expected '{type}', got '{self.curr.type}'", self.curr)
+            raise ParseError(f"Expected '{type}', got '{self.curr.type}'", self.curr, self.source)
         return match
+    # endregion
 
-    def imp(self) -> FilePath:
-        if self.curr_is("str"):
-            loc = 'here'
-            file = self.file.parent / self.match_exc("str").text[1:-1]
-        else:
-            loc = self.match_exc("ident").text
-            self.match_exc(":")
-            if loc == "std":
-                file = self.match_exc("str").text[1:-1]
-            else:
-                raise ParseError("Location can only be 'std' currently", self.prev)
-        return FilePath(loc, Path(file))
-
-    def parse_file(self, file: Path):
-        tops = []
-        imps = []
+    def parse_source(self, source: Source) -> Source:
         while self.pos < len(self.tokens):
             if self.curr_is("class"):
-                tops.append(self.parse_class())
+                source.top_levels.append(self.parse_class())
             elif self.curr_is("trait"):
-                tops.append(self.parse_trait())
+                source.top_levels.append(self.parse_trait())
             elif self.curr_is("def"):
-                tops.append(self.parse_function())
+                source.top_levels.append(self.parse_function())
             elif self.curr_is("import"):
-                obj, imp = self.parse_import()
-                tops.append(obj)
-                imps.append(imp)
-            elif self.curr_is("nativeimport"):
-                tops.append(self.parse_nativeimport())
+                source.top_levels.append(self.parse_import())
             else:
-                raise ParseError("Not a valid top-level", self.curr)
-        return File(file, False, tops), imps
+                # TODO ERROR HANDLING
+                raise ParseError("Not a valid top-level", self.curr, self.source)
+        return source
 
     def parse_class(self):
         start = self.match_exc("class")
@@ -275,6 +281,7 @@ class AizeParser:
                     break
         else:
             type_vars = []
+
         if self.match(":"):
             traits = []
             while not self.match("{"):
@@ -287,24 +294,16 @@ class AizeParser:
             traits = []
             self.match_exc("{")
 
-        attrs = {}
-        methods = {}
+        body = []
         while not self.match("}"):
             if self.curr_is("attr"):
-                attr = self.parse_attr()
-                attrs[attr.name] = attr
+                body.append(self.parse_attr())
             elif self.curr_is("method"):
-                method = self.parse_method()
-                if method.body is None:
-                    raise ParseError("Methods of a class must have a body", method)
-                methods[method.name] = method
+                body.append(self.parse_method())
             else:
-                raise ParseError("Not a valid class-statement", self.curr)
+                raise ParseError("Not a valid class-statement", self.curr, self.source)
 
-        if type_vars:
-            return GenericClass(name, GetType(name), type_vars, traits, attrs, methods).place(start.pos)
-        else:
-            return Class(name, GetType(name), traits, attrs, methods).place(start.pos)
+        return Class(name, traits, body).add_data(NodePosition(start))
 
     def parse_trait(self):
         start = self.match_exc("trait")
@@ -312,15 +311,16 @@ class AizeParser:
         name = self.match_exc("ident").text
 
         self.match_exc("{")
-        methods = {}
+        body = []
         while not self.match("}"):
             if self.curr_is("method"):
-                method = self.parse_method()
-                methods[method.name] = method
+                body.append(self.parse_method())
+            elif self.curr_is("attr"):
+                raise ParseError("Traits cannot have attributes", self.curr, self.source)
             else:
-                raise ParseError("Not a valid trait-statement", self.curr)
+                raise ParseError("Not a valid trait-statement", self.curr, self.source)
 
-        return Trait(name, GetType(name), methods).place(start.pos)
+        return Trait(name, [], body).add_data(NodePosition(start))
 
     def parse_attr(self):
         start = self.match("attr")
@@ -328,77 +328,74 @@ class AizeParser:
         self.match_exc(":")
         type = self.parse_type()
         self.match_exc(";")
-        return Attr(name, type).place(start.pos)
+        return Attr(name, type).add_data(NodePosition(start))
 
-    def parse_method_sig(self):
+    def parse_method_sig(self) -> Tuple[Token, str, List[Tuple[Token, TypeAnnotation]], TypeAnnotation]:
         start = self.match("method")
         name = self.match_exc("ident").text
         self.match_exc("(")
         args = []
         while not self.match(")"):
             arg_name = self.match_exc("ident")
-            self.match_exc(":")
-            arg_type = self.parse_type()
+            if not self.match(":"):
+                if len(args) == 0:
+                    arg_type = None
+                else:
+                    raise ParseError("Only the first argument to a method does not require a type annotation", self.curr, self.source)
+            else:
+                arg_type = self.parse_type()
             args.append((arg_name, arg_type))
             if not self.match(","):
                 self.match_exc(")")
                 break
-        self.match_exc("->")
-        ret = self.parse_type()
+        if self.match("->"):
+            ret = self.parse_type()
+        else:
+            ret = None
         return start, name, args, ret
 
     def parse_method(self):
         start, name, args, ret = self.parse_method_sig()
-        func_type = FuncTypeNode([arg_type for _, arg_type in args], ret)
-        params = [Param(arg_name.text, arg_type) for arg_name, arg_type in args]
+        params = [Param(arg_name.text, arg_type).add_data(NodePosition(arg_name)) for arg_name, arg_type in args]
         if self.match("{"):
             body = []
             while not self.match("}"):
                 body.append(self.parse_stmt())
-            return ConcreteMethod(name, func_type, params, ret, body).place(start.pos)
+            return MethodImpl(name, params, ret, body).add_data(NodePosition(start))
         else:
             self.match_exc(";")
-            return Method(name, func_type, params, ret)
+            return Method(name, params, ret).add_data(NodePosition(start))
 
-    def parse_import(self):
+    def parse_import(self) -> Import:
         start = self.match("import")
 
-        file = self.imp()
-
-        if file.where == 'std':
-            if str(file.rel_path) in ('io',):
-                file.abs_path = (AIZE_STD / file.rel_path).with_suffix(".aize")
+        path = Path(self.match_exc("str").text)
+        if len(path.parts) > 0:
+            first_part = path.parts[0]
+            if first_part.startswith("<") and first_part.endswith(">"):
+                anchor = first_part[1:-1]
+                if anchor not in ("std", "anchor", "local"):
+                    raise ParseError("Anchor must be one of std, anchor, or local", start, self.source)
+                path = Path("").joinpath(*path.parts[1:])
             else:
-                raise ParseError(f"No file in the standard library called \"{file.rel_path}\"", start)
+                anchor = '<project>'
         else:
-            for ext in (".aize", ):
-                if file.rel_path.with_suffix(ext).exists():
-                    file.abs_path = file.rel_path.absolute().with_suffix(ext)
-                    break
-            else:
-                raise ParseError(f"No file with extension '.aize' found for \"{file}\"", start)
+            anchor = '<project>'
 
         self.match_exc(";")
 
-        return Import(file, file.rel_path.with_suffix("").name).place(start.pos), file
-
-    def parse_nativeimport(self):
-        start = self.match("nativeimport")
-
-        file = self.match_exc("ident")
-
-        return NativeImport(file.text).place(start.pos)
+        return Import(anchor, path).add_data(NodePosition(start))
 
     def parse_function(self):
         start = self.match("def")
         name = self.match_exc("ident")
         self.match_exc("(")
-        args = []
+        params = []
         while not self.match(")"):
             arg_name = self.match_exc("ident")
             self.match_exc(":")
             arg_type = self.parse_type()
-            args.append((arg_name, arg_type))
+            params.append(Param(arg_name.text, arg_type).add_data(NodePosition(arg_name)))
             if not self.match(","):
                 self.match_exc(")")
                 break
@@ -408,16 +405,15 @@ class AizeParser:
         body = []
         while not self.match("}"):
             body.append(self.parse_stmt())
-        return Function(name.text,
-                        FuncTypeNode([arg_type for _, arg_type in args], ret),
-                        [Param(arg_name.text, arg_type) for arg_name, arg_type in args], ret, body).place(start.pos)
 
-    def parse_type(self):
+        return Function(name.text, params, ret, body).add_data(NodePosition(start))
+
+    def parse_type(self) -> TypeAnnotation:
         return self.parse_name()
 
-    def parse_name(self):
+    def parse_name(self) -> GetTypeAnnotation:
         ident = self.match_exc("ident")
-        return GetType(ident.text).place(ident.pos)
+        return GetTypeAnnotation(ident.text).add_data(NodePosition(ident))
 
     def parse_stmt(self):
         if self.curr_is("return"):
@@ -442,8 +438,8 @@ class AizeParser:
         if self.match("else"):
             else_body = self.parse_stmt()
         else:
-            else_body = Block([])
-        return If(cond, body, else_body).place(start.pos)
+            else_body = BlockStatement([])
+        return IfStatement(cond, body, else_body).add_data(NodePosition(start))
 
     def parse_while(self):
         start = self.match("while")
@@ -451,14 +447,14 @@ class AizeParser:
         cond = self.parse_expr()
         self.match_exc(")")
         body = self.parse_stmt()
-        return While(cond, body).place(start.pos)
+        return WhileStatement(cond, body).add_data(NodePosition(start))
 
     def parse_block(self):
         start = self.match_exc("{")
         body = []
         while not self.match("}"):
             body.append(self.parse_stmt())
-        return Block(body).place(start.pos)
+        return BlockStatement(body).add_data(NodePosition(start))
 
     def parse_var(self):
         start = self.match("var")
@@ -470,19 +466,19 @@ class AizeParser:
         self.match_exc("=")
         val = self.parse_expr()
         self.match_exc(";")
-        return VarDecl(var, type, val).place(start.pos)
+        return VarDeclStatement(var, type, val).add_data(NodePosition(start))
 
     def parse_return(self):
         start = self.match_exc("return")
         expr = self.parse_expr()
         self.match_exc(";")
-        return Return(expr).place(start.pos)
+        return ReturnStatement(expr).add_data(NodePosition(start))
 
     def parse_expr_stmt(self):
         start = self.curr
         expr = self.parse_expr()
         self.match_exc(";")
-        return ExprStmt(expr).place(start.pos)
+        return ExpressionStatement(expr).add_data(NodePosition(start))
 
     def parse_expr(self):
         return self.parse_assign()

@@ -1,0 +1,3 @@
+
+class AizeError(Exception):
+    pass
