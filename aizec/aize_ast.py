@@ -6,19 +6,28 @@ from pathlib import Path
 T = TypeVar('T')
 
 
-__all__ = ['Node', 'PassData',
-           'Program',
-           'Source', 'FileSource', 'StdinSource',
-           'TopLevel', 'Class', 'Trait',
-           'ClassStmt', 'Attr', 'Method', 'MethodImpl', 'Import', 'Function',
-           'Statement', 'IfStatement', 'WhileStatement', 'BlockStatement', 'VarDeclStatement', 'ReturnStatement', 'ExpressionStatement',
-           'Param',
-           'TypeAnnotation', 'GetTypeAnnotation']
+__all__ = [
+    'Node', 'PassData',
+    'Program',
+    'Source', 'FileSource', 'StdinSource', 'StringSource',
+    'TopLevel', 'Class', 'Trait',
+    'ClassStmt', 'Attr', 'Method', 'MethodImpl', 'Import', 'Function',
+    'Stmt', 'IfStmt', 'WhileStmt', 'BlockStmt', 'VarDeclStmt', 'ReturnStmt', 'ExprStmt',
+    'Expr',
+    'GetVarExpr', 'SetVarExpr', 'GetAttrExpr', 'SetAttrExpr',
+    'BinaryExpr', 'LTExpr', 'GTExpr', 'LEExpr', 'GEExpr', 'EQExpr', 'NEExpr',
+    'AddExpr', 'SubExpr', 'MulExpr', 'DivExpr', 'ModExpr',
+    'UnaryExpr', 'NegExpr', 'NotExpr', 'InvExpr',
+    'CallExpr',
+    'IntLiteral', 'StrLiteral',
+    'Param',
+    'TypeAnnotation', 'GetTypeAnnotation'
+]
 
 
 class Node:
     def __init__(self):
-        self.pass_data: PassData = EmptyPassData()
+        self.pass_data: Union[PassData, None] = None
 
     def add_data(self, pass_data: PassData):
         pass_data.bound = self
@@ -40,11 +49,6 @@ class PassData:
         if data is None:
             raise TypeError(f"Object {obj} does not have {cls.__name__}")
         return data
-
-
-class EmptyPassData(PassData):
-    def __init__(self):
-        super().__init__()
 
 
 class Program(Node):
@@ -94,7 +98,24 @@ class FileSource(Source):
         return self.path
 
 
+class StringSource(Source):
+    def __init__(self, text: str, is_main: bool, top_levels: List[TopLevel]):
+        super().__init__(text, is_main, top_levels)
+
+    def get_unique(self) -> Hashable:
+        return "<string>"
+
+    def get_name(self) -> str:
+        return "<string>"
+
+    def get_path(self) -> Union[Path, None]:
+        return None
+
+
 class StdinSource(Source):
+    def __init__(self, text: str, is_main: bool, top_levels: List[TopLevel]):
+        super().__init__(text, is_main, top_levels)
+
     def get_unique(self) -> Hashable:
         return "<stdin>"
 
@@ -136,7 +157,7 @@ class Import(TopLevel):
 
 
 class Function(TopLevel):
-    def __init__(self, name: str, params: List[Param], ret: TypeAnnotation, body: List[Statement]):
+    def __init__(self, name: str, params: List[Param], ret: TypeAnnotation, body: List[Stmt]):
         super().__init__()
 
         self.name = name
@@ -167,18 +188,18 @@ class Method(ClassStmt):
 
 
 class MethodImpl(Method):
-    def __init__(self, name: str, params: List[Param], ret: TypeAnnotation, body: List[Statement]):
+    def __init__(self, name: str, params: List[Param], ret: TypeAnnotation, body: List[Stmt]):
         super().__init__(name, params, ret)
 
         self.body = body
 
 
-class Statement(Node):
+class Stmt(Node):
     pass
 
 
-class IfStatement(Statement):
-    def __init__(self, cond: Expression, then_do: Statement, else_do: Statement):
+class IfStmt(Stmt):
+    def __init__(self, cond: Expr, then_do: Stmt, else_do: Stmt):
         super().__init__()
 
         self.cond = cond
@@ -186,23 +207,23 @@ class IfStatement(Statement):
         self.else_do = else_do
 
 
-class WhileStatement(Statement):
-    def __init__(self, cond: Expression, do: Statement):
+class WhileStmt(Stmt):
+    def __init__(self, cond: Expr, do: Stmt):
         super().__init__()
 
         self.cond = cond
         self.do = do
 
 
-class BlockStatement(Statement):
-    def __init__(self, body: List[Statement]):
+class BlockStmt(Stmt):
+    def __init__(self, body: List[Stmt]):
         super().__init__()
 
         self.body = body
 
 
-class VarDeclStatement(Statement):
-    def __init__(self, name: str, annotation: TypeAnnotation, value: Expression):
+class VarDeclStmt(Stmt):
+    def __init__(self, name: str, annotation: TypeAnnotation, value: Expr):
         super().__init__()
 
         self.name = name
@@ -210,18 +231,155 @@ class VarDeclStatement(Statement):
         self.value = value
 
 
-class ReturnStatement(Statement):
-    def __init__(self, value: Expression):
+class ReturnStmt(Stmt):
+    def __init__(self, value: Expr):
         super().__init__()
 
         self.value = value
 
 
-class ExpressionStatement(Statement):
-    def __init__(self, value: Expression):
+class ExprStmt(Stmt):
+    def __init__(self, value: Expr):
         super().__init__()
 
         self.value = value
+
+
+class Expr(Node):
+    pass
+
+
+class GetVarExpr(Expr):
+    def __init__(self, var: str):
+        super().__init__()
+
+        self.var = var
+
+
+class SetVarExpr(Expr):
+    def __init__(self, var: str, value: Expr):
+        super().__init__()
+
+        self.var = var
+        self.value = value
+
+
+class GetAttrExpr(Expr):
+    def __init__(self, obj: Expr, attr: str):
+        super().__init__()
+
+        self.obj = obj
+        self.attr = attr
+
+
+class SetAttrExpr(Expr):
+    def __init__(self, obj: Expr, attr: str, value: Expr):
+        super().__init__()
+
+        self.obj = obj
+        self.attr = attr
+        self.value = value
+
+
+# region Binary
+
+class BinaryExpr(Expr):
+    def __init__(self, left: Expr, right: Expr):
+        super().__init__()
+
+        self.left = left
+        self.right = right
+
+
+class GTExpr(BinaryExpr):
+    pass
+
+
+class LTExpr(BinaryExpr):
+    pass
+
+
+class GEExpr(BinaryExpr):
+    pass
+
+
+class LEExpr(BinaryExpr):
+    pass
+
+
+class EQExpr(BinaryExpr):
+    pass
+
+
+class NEExpr(BinaryExpr):
+    pass
+
+
+class AddExpr(BinaryExpr):
+    pass
+
+
+class SubExpr(BinaryExpr):
+    pass
+
+
+class MulExpr(BinaryExpr):
+    pass
+
+
+class DivExpr(BinaryExpr):
+    pass
+
+
+class ModExpr(BinaryExpr):
+    pass
+
+# endregion
+
+
+# region Unary
+
+class UnaryExpr(Expr):
+    def __init__(self, right: Expr):
+        super().__init__()
+
+        self.right = right
+
+
+class InvExpr(UnaryExpr):
+    pass
+
+
+class NegExpr(UnaryExpr):
+    pass
+
+
+class NotExpr(UnaryExpr):
+    pass
+
+# endregion
+
+
+class CallExpr(Expr):
+    def __init__(self, left: Expr, args: List[Expr]):
+        super().__init__()
+
+        self.left = left
+        self.args = args
+
+
+class IntLiteral(Expr):
+    def __init__(self, num: int):
+        super().__init__()
+
+        self.num = num
+
+
+class StrLiteral(Expr):
+    def __init__(self, s: str):
+        super().__init__()
+
+        self.s = s
 
 
 class Param(Node):

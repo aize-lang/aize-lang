@@ -2,5 +2,5 @@ import "<std>/io.az";
 
 
 def main() -> int {
-    io::
+    return 0;
 }
