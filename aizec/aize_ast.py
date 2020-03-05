@@ -64,6 +64,7 @@ class Source(Node):
         self.lines = text.splitlines()
         self.is_main = is_main
 
+        self.has_errors = False
         self.top_levels = top_levels
 
     def get_unique(self) -> Hashable:

@@ -30,28 +30,16 @@ IDENT_START = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_'
 IDENT = IDENT_START + DEC
 
 
-# class ParseError(AizeError):
-#     def __init__(self, msg: str, token: Token, in_source: Source):
-#         self.msg = msg
-#         self.token = token
-#         self.in_source = in_source
-#
-#     def display(self, file: IO):
-#         file.write(f"In {self.in_source.get_name()}:\n")
-#         file.write(f"Parsing Error: {self.msg}:\n")
-#         file.write(self.token.in_context())
-
-
 class ParseError(AizeMessage):
-    def __init__(self, msg: str, at_token: Token, in_source: Source):
+    def __init__(self, msg: str, pos: NodePosition, in_source: Source):
         super().__init__(self.ERROR)
 
         self.msg = msg
-        self.at_token = at_token
+        self.pos = pos
         self.in_source = in_source
 
     def display(self, reporter):
-        reporter.positioned_error(type="Parsing Error", source=self.in_source.get_name(), msg=self.msg, pos=self.at_token.pos())
+        reporter.positioned_error(type="Parsing Error", source=self.in_source.get_name(), msg=self.msg, pos=self.pos)
 
 
 class Token:
@@ -249,8 +237,13 @@ class AizeParser:
                 assert False
         return match
 
-    def report_error(self, msg: str, token: Token, is_fatal: bool = False):
-        self.error_handler.handle_message(ParseError(msg, token, self.source))
+    def report_error(self, msg: str, pos: Union[Token, Node, NodePosition], is_fatal: bool = False):
+        if isinstance(pos, Token):
+            pos = pos.pos()
+        elif isinstance(pos, Node):
+            pos = NodePosition.of(pos)
+        self.source.has_errors = True
+        self.error_handler.handle_message(ParseError(msg, pos, self.source))
         if is_fatal:
             self.error_handler.flush_errors()
             return False
@@ -303,6 +296,8 @@ class AizeParser:
                 pass
             else:
                 raise ValueError(f"flag reached top without being caught {flag.flag}")
+        finally:
+            self.error_handler.flush_errors()
         return source
 
     def parse_class(self):
@@ -335,12 +330,17 @@ class AizeParser:
 
         body = []
         while not self.match("}"):
-            if self.curr_is("attr"):
-                body.append(self.parse_attr())
-            elif self.curr_is("method"):
-                body.append(self.parse_method())
-            else:
-                raise ParseError("Not a valid class-statement", self.curr, self.source)
+            with self.sync_point("attr", "method"):
+                if self.curr_is("attr"):
+                    body.append(self.parse_attr())
+                elif self.curr_is("method"):
+                    body.append(self.parse_method())
+                else:
+                    if self.report_error("Class body statements must start with one of 'attr' or 'method'", self.curr):
+                        self.synchronize()
+                        assert False
+                    else:
+                        assert False
 
         return Class(name, traits, body).add_data(start.pos())
 
@@ -352,12 +352,21 @@ class AizeParser:
         self.match_exc("{")
         body = []
         while not self.match("}"):
-            if self.curr_is("method"):
-                body.append(self.parse_method())
-            elif self.curr_is("attr"):
-                raise ParseError("Traits cannot have attributes", self.curr, self.source)
-            else:
-                raise ParseError("Not a valid trait-statement", self.curr, self.source)
+            with self.sync_point("method", "attr"):
+                if self.curr_is("method"):
+                    body.append(self.parse_method())
+                elif self.curr_is("attr"):
+                    if self.report_error("Traits cannot have attributes", self.curr):
+                        self.synchronize()
+                        assert False
+                    else:
+                        assert False
+                else:
+                    if self.report_error("Trait body statements must start with 'method'", self.curr):
+                        self.synchronize()
+                        assert False
+                    else:
+                        assert False
 
         return Trait(name, [], body).add_data(start.pos())
 
@@ -380,7 +389,11 @@ class AizeParser:
                 if len(args) == 0:
                     arg_type = None
                 else:
-                    raise ParseError("Only the first argument to a method does not require a type annotation", self.curr, self.source)
+                    if self.report_error("Type annotation expected", self.curr):
+                        self.synchronize()
+                        assert False
+                    else:
+                        assert False
             else:
                 arg_type = self.parse_type()
             args.append((arg_name, arg_type))
@@ -408,13 +421,18 @@ class AizeParser:
     def parse_import(self) -> Import:
         start = self.match("import")
 
-        path = Path(self.match_exc("str").text[1:-1])
+        import_str = self.match_exc("str")
+        path = Path(import_str.text[1:-1])
         if len(path.parts) > 0:
             first_part = path.parts[0]
             if first_part.startswith("<") and first_part.endswith(">"):
                 anchor = first_part[1:-1]
-                if anchor not in ("std", "anchor", "local"):
-                    raise ParseError("Anchor must be one of std, anchor, or local", start, self.source)
+                if anchor not in ("std", "project", "local"):
+                    if self.report_error("Anchor must be one of <std>, <project>, or <local>", import_str.pos().subpos(1, 3+len(anchor))):
+                        self.synchronize()
+                        assert False
+                    else:
+                        assert False
                 path = Path("").joinpath(*path.parts[1:])
             else:
                 anchor = 'project'
@@ -529,13 +547,17 @@ class AizeParser:
         expr = self.parse_logic()
         if self.match("="):
             start = self.prev
-            right = self.parse_assign()
+            right: Expr = self.parse_assign()
             if isinstance(expr, GetVarExpr):
                 expr = SetVarExpr(expr.var, right).add_data(start.pos())
             elif isinstance(expr, GetAttrExpr):
                 expr = SetAttrExpr(expr.obj, expr.attr, right).add_data(start.pos())
             else:
-                raise ParseError("Not a valid assignment target", start, self.source)
+                if self.report_error("Assignment targets must be a variable or attribute", right):
+                    self.synchronize()
+                    assert False
+                else:
+                    assert False
         return expr
 
     def parse_logic(self):

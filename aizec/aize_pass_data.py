@@ -25,6 +25,12 @@ class NodePosition(PassData):
         else:
             raise ValueError("Not in same source")
 
+    def __add__(self, other: 'NodePosition') -> 'NodePosition':
+        return self.to(other)
+
+    def subpos(self, start: int, end: int):
+        return NodePosition(self.source, self.line_no, (self.columns[0]+start, self.columns[0]+end))
+
 
 class EmptyPassData(PassData):
     def __init__(self):

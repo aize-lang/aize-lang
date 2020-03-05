@@ -1,4 +1,5 @@
-import "<std>/io.az";
+
+def
 
 
 def main() -> int {

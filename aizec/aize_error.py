@@ -1,7 +1,6 @@
 import sys
 import contextlib
 from typing import List, IO
-from pathlib import Path
 
 from aizec.aize_pass_data import NodePosition
 
@@ -19,7 +18,7 @@ class Reporter:
 
     def source_error(self, type: str, source_name: str, msg: str):
         self.write(f"For {source_name}:")
-        self.write(f"{type}: {msg}")
+        self.write(f"{type}: {msg}.")
 
     @contextlib.contextmanager
     def indent(self):
@@ -32,8 +31,7 @@ class Reporter:
         return '    ' * self._indent_level
 
     def write(self, text: str):
-        # self._io.write(f"{'    '*self._indent}" + f"\n{'    '*self._indent}".join(text.splitlines()) + "\n")
-        self._io.write(''.join(self._indent + line + "\n" for line in text.splitlines()))
+        self._io.write(''.join(self._indent+line+"\n" for line in text.splitlines()))
 
     def separate(self):
         self._io.write("\n")
@@ -77,15 +75,18 @@ class ErrorHandler:
         if self.is_flushing:
             return
         self.is_flushing = True
+
         reporter = Reporter(self.err_out)
-        exit_after = False
+
+        has_errors = False
         for error in self.messages:
             error.display(reporter)
             reporter.separate()
             if error.level in (AizeMessage.ERROR, AizeMessage.FATAL):
-                exit_after = True
+                has_errors = True
+
         reporter.flush()
-        # reporter.write(f"That is all. Exiting? {exit_after}")
-        if exit_after:
+
+        if has_errors:
             exit(0)
         self.is_flushing = False

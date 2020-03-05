@@ -108,13 +108,15 @@ class AizeCompiler:
                     elif import_node.anchor == 'local':
                         parsed_file = source.get_path()
                         if parsed_file is None:
-                            self.fatal_error(InputError(source.get_name(), "Cannot do a local import on a non-file source."))  # , NodePosition.of(import_node)))
+                            self.fatal_error(InputError(source.get_name(), "Cannot do a local import on a non-file source"))  # , NodePosition.of(import_node)))
                             assert False
                         else:
                             abs_path = parsed_file.parent / import_node.path
                     else:
                         raise ValueError(f"Invalid anchor: {import_node.anchor!r}")
 
+                    if abs_path == source.get_path():
+                        self.error(InputError(source.get_name(), "Files cannot import themselves", ImportNote(source.get_name(), NodePosition.of(import_node))))
                     new_source = self.add_file(abs_path, False, ImportNote(source.get_name(), NodePosition.of(import_node)))
                     to_parse.append(new_source)
 
