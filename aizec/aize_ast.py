@@ -7,11 +7,11 @@ T = TypeVar('T')
 
 
 __all__ = [
-    'Node', 'PassData',
+    'Node', 'PassData', 'ASTVisitor',
     'Program',
     'Source', 'FileSource', 'StdinSource', 'StringSource',
-    'TopLevel', 'Class', 'Trait',
-    'ClassStmt', 'Attr', 'Method', 'MethodImpl', 'Import', 'Function',
+    'TopLevel', 'Class', 'Trait', 'Function',
+    'ClassStmt', 'Attr', 'Method', 'MethodImpl', 'Import',
     'Stmt', 'IfStmt', 'WhileStmt', 'BlockStmt', 'VarDeclStmt', 'ReturnStmt', 'ExprStmt',
     'Expr',
     'GetVarExpr', 'SetVarExpr', 'GetAttrExpr', 'SetAttrExpr',
@@ -27,12 +27,12 @@ __all__ = [
 
 class Node:
     def __init__(self):
-        self.pass_data: Union[PassData, None] = None
+        self._pass_data: Union[PassData, None] = None
 
     def add_data(self, pass_data: PassData):
         pass_data.bound = self
-        pass_data.next_data = self.pass_data
-        self.pass_data = pass_data
+        pass_data.next_data = self._pass_data
+        self._pass_data = pass_data
         return self
 
 
@@ -43,7 +43,7 @@ class PassData:
 
     @classmethod
     def of(cls: Type[T], obj: Node) -> T:
-        data = obj.pass_data
+        data = obj._pass_data
         while not isinstance(data, cls) and data is not None:
             data = data.next_data
         if data is None:
@@ -51,10 +51,65 @@ class PassData:
         return data
 
 
+class ASTVisitor:
+    _classes = ['Program', 'Source', 'Class', 'Trait', 'Function']
+
+    redirect = {'FileSource': 'Source', 'StringSource': 'Source', 'StdinSource': 'Source'}
+    ignored = []
+    DEBUG = False
+
+    def __init_subclass__(cls, **kwargs):
+        if not cls.DEBUG:
+            for _cls in ASTVisitor._classes:
+                if _cls not in cls.ignored:
+                    if hasattr(cls, "visit_" + _cls):
+                        base_method, derived_method = getattr(ASTVisitor, "visit_"+_cls), getattr(cls, "visit_"+_cls)
+                        if base_method is derived_method:
+                            raise TypeError(f"Visitor for Node class '{_cls}' is not defined for class {cls.__qualname__}")
+                    else:
+                        raise TypeError(f"Visitor for Node class '{_cls}' is not defined for class {cls.__qualname__}")
+
+    def visit(self, node: Node):
+        cls_name = node.__class__.__name__
+        if cls_name in ASTVisitor._classes:
+            method_name = cls_name
+        elif cls_name in self.redirect:
+            method_name = self.redirect[cls_name]
+        else:
+            raise TypeError(f"Node type '{node.__class__.__qualname__}' is not supported by ASTVisitor.visit()")
+        return getattr(self, 'visit_'+method_name)(node)
+
+    def visit_Program(self, program: Program):
+        raise NotImplementedError()
+
+    def visit_Source(self, source: Source):
+        raise NotImplementedError()
+
+    def visit_Class(self, cls: Class):
+        raise NotImplementedError()
+
+    def visit_Trait(self, trait: Trait):
+        raise NotImplementedError()
+
+    def visit_Function(self, func: Function):
+        raise NotImplementedError()
+
+
 class Program(Node):
     def __init__(self, sources: List[Source]):
         super().__init__()
         self.sources = sources
+
+    @property
+    def main_source(self) -> Source:
+        main_source = None
+        for source in self.sources:
+            if source.is_main:
+                if main_source is None:
+                    main_source = source
+                else:
+                    raise ValueError("Multiple main sources")
+        return main_source
 
 
 class Source(Node):

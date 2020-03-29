@@ -30,6 +30,7 @@ def main():
 
     compiler.add_file(args.file, True)
     compiler.trace_imports()
+    compiler.analyze()
 
 
 if __name__ == '__main__':

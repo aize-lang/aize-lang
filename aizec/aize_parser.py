@@ -4,7 +4,7 @@ import contextlib
 
 from aizec.aize_ast import *
 from aizec.common import *
-from aizec.aize_pass_data import NodePosition
+from aizec.aize_pass_data import PositionData
 from aizec.aize_error import AizeMessage, ErrorHandler
 
 BASIC_TOKENS = sorted(["+", "+=",
@@ -31,7 +31,7 @@ IDENT = IDENT_START + DEC
 
 
 class ParseError(AizeMessage):
-    def __init__(self, msg: str, pos: NodePosition, in_source: Source):
+    def __init__(self, msg: str, pos: PositionData, in_source: Source):
         super().__init__(self.ERROR)
 
         self.msg = msg
@@ -51,8 +51,8 @@ class Token:
         self.line_no = line_no
         self.columns = columns
 
-    def pos(self) -> NodePosition:
-        return NodePosition(self.source, self.line_no, self.columns)
+    def pos(self) -> PositionData:
+        return PositionData(self.source, self.line_no, self.columns)
 
     def __repr__(self):
         return f"Token({self.text!r}, {self.type!r})"
@@ -237,11 +237,11 @@ class AizeParser:
                 assert False
         return match
 
-    def report_error(self, msg: str, pos: Union[Token, Node, NodePosition], is_fatal: bool = False):
+    def report_error(self, msg: str, pos: Union[Token, Node, PositionData], is_fatal: bool = False):
         if isinstance(pos, Token):
             pos = pos.pos()
         elif isinstance(pos, Node):
-            pos = NodePosition.of(pos)
+            pos = PositionData.of(pos)
         self.source.has_errors = True
         self.error_handler.handle_message(ParseError(msg, pos, self.source))
         if is_fatal:
@@ -456,8 +456,10 @@ class AizeParser:
             if not self.match(","):
                 self.match_exc(")")
                 break
-        self.match_exc("->")
-        ret = self.parse_type()
+        if self.match("->"):
+            ret = self.parse_type()
+        else:
+            ret = None
         self.match_exc("{")
 
         body = []
@@ -691,7 +693,6 @@ class AizeParser:
             return GetVarExpr(var.text).add_data(var.pos())
         else:
             if self.report_error(f"Cannot parse '{self.curr.type}' token", self.curr):
-                print(self.prev)
                 assert False
             else:
                 assert False

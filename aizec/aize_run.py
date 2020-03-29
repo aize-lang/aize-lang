@@ -1,12 +1,13 @@
 from aizec.common import *
 from aizec.aize_error import AizeMessage, ErrorHandler, Reporter
 from aizec.aize_parser import AizeParser
-from aizec.aize_pass_data import NodePosition
-from aizec.aize_ast import Source, FileSource, StdinSource, StringSource
+from aizec.aize_pass_data import PositionData
+from aizec.aize_semantics import SemanticAnalyzer
+from aizec.aize_ast import Program, Source, FileSource, StdinSource, StringSource
 
 
 class ImportNote(AizeMessage):
-    def __init__(self, source_name: str, pos: NodePosition):
+    def __init__(self, source_name: str, pos: PositionData):
         super().__init__(self.NOTE)
 
         self.source = source_name
@@ -60,6 +61,14 @@ class AizeCompiler:
         self._sources: List[Source] = []
 
     def add_file(self, path: Union[Path, str], is_main: bool = False, import_note: ImportNote = None) -> Source:
+        source = self.create_source(path, is_main, import_note)
+        return self.add_source(source)
+
+    def add_source(self, source: Source) -> Source:
+        self._sources.append(source)
+        return source
+
+    def create_source(self, path: Union[Path, str], is_main: bool = False, import_note: ImportNote = None) -> Source:
         if isinstance(path, str):
             path = Path(path)
         try:
@@ -75,7 +84,6 @@ class AizeCompiler:
                 self.error(InputError(input_file, "File does not exist", import_note))
             # TODO .read_text() can ValueError, catch that and make it an InputError(FATAL)
             source = FileSource(input_file, input_file.read_text(), is_main, [])
-            self._sources.append(source)
             return source
         finally:
             self.flush_errors()
@@ -97,6 +105,7 @@ class AizeCompiler:
             source: Source = to_parse.pop()
             if source.get_unique() not in visited:
                 self.parse_source(source)
+                self.add_source(source)
 
                 visited.add(source.get_unique())
 
@@ -116,9 +125,16 @@ class AizeCompiler:
                         raise ValueError(f"Invalid anchor: {import_node.anchor!r}")
 
                     if abs_path == source.get_path():
-                        self.error(InputError(source.get_name(), "Files cannot import themselves", ImportNote(source.get_name(), NodePosition.of(import_node))))
-                    new_source = self.add_file(abs_path, False, ImportNote(source.get_name(), NodePosition.of(import_node)))
+                        self.error(InputError(source.get_name(), "Files cannot import themselves", ImportNote(source.get_name(), PositionData.of(import_node))))
+                    new_source = self.create_source(abs_path, False, ImportNote(source.get_name(), PositionData.of(import_node)))
                     to_parse.append(new_source)
+        self.flush_errors()
+
+    def get_program(self):
+        return Program(self._sources)
+
+    def analyze(self):
+        SemanticAnalyzer.analyze(self.get_program(), self.error_handler)
 
     def error(self, msg: AizeMessage):
         self.error_handler.handle_message(msg)

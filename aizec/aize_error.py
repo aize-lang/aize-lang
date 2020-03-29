@@ -2,7 +2,7 @@ import sys
 import contextlib
 from typing import List, IO
 
-from aizec.aize_pass_data import NodePosition
+from aizec.aize_pass_data import PositionData
 
 
 class Reporter:
@@ -11,7 +11,7 @@ class Reporter:
 
         self._indent_level = 0
 
-    def positioned_error(self, type: str, source: str, pos: NodePosition, msg: str):
+    def positioned_error(self, type: str, source: str, pos: PositionData, msg: str):
         self.write(f"In {source}:")
         self.write(f"{type}: {msg}:")
         self.write(f"{pos.in_context()}")

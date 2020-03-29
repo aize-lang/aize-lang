@@ -1,7 +1,15 @@
 
-def
+
+class Person {
+    attr next: Person;
+
+    method __init__(self) {
+
+    }
+}
 
 
 def main() -> int {
+    var person: Person = Person.new();
     return 0;
 }
