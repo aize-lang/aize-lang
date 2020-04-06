@@ -9,19 +9,22 @@ class PositionData(PassData):
     def __init__(self, source: Source, line_no: int, columns: Tuple[int, int]):
         super().__init__()
 
-        self.source = source
-        self.line_no = line_no
-        self.columns = columns
+        self._source = source
+        self._line_no = line_no
+        self._columns = columns
 
     def in_context(self) -> str:
-        return f"{self.line_no:>6} | {self.source.lines[self.line_no-1]}\n" \
-               f"         {' ' * self.columns[0]}{'^'*(self.columns[1]-self.columns[0])}"
+        return f"{self._line_no:>6} | {self._source.lines[self._line_no - 1]}\n" \
+               f"         {' ' * self._columns[0]}{'^' * (self._columns[1] - self._columns[0])}"
+
+    def get_source_name(self):
+        return self._source.get_name()
 
     def to(self, other: 'PositionData') -> 'PositionData':
-        if self.source is other.source:
-            if self.line_no == other.line_no:
-                columns = min(self.columns[0], other.columns[0]), max(self.columns[1], other.columns[1])
-                return PositionData(self.source, self.line_no, columns)
+        if self._source is other._source:
+            if self._line_no == other._line_no:
+                columns = min(self._columns[0], other._columns[0]), max(self._columns[1], other._columns[1])
+                return PositionData(self._source, self._line_no, columns)
             else:
                 raise ValueError("Not on same line")
         else:
@@ -31,4 +34,4 @@ class PositionData(PassData):
         return self.to(other)
 
     def subpos(self, start: int, end: int):
-        return PositionData(self.source, self.line_no, (self.columns[0] + start, self.columns[0] + end))
+        return PositionData(self._source, self._line_no, (self._columns[0] + start, self._columns[0] + end))

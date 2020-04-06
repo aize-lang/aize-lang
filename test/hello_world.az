@@ -1,11 +1,7 @@
 
 
 class Person {
-    attr next: Person;
 
-    method __init__(self) {
-
-    }
 }
 
 
