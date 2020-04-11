@@ -2,7 +2,7 @@ import argparse
 
 from aizec.common import *
 from aizec.aize_run import AizeCompiler
-from aizec.aize_error import ErrorHandler
+from aizec.aize_error import MessageHandler
 
 
 def make_arg_parser():
@@ -23,7 +23,8 @@ def make_arg_parser():
 
 
 def main():
-    compiler = AizeCompiler(Path(""), Path.cwd(), ErrorHandler())
+    MessageHandler.set_io('stderr')
+    compiler = AizeCompiler(Path(""), Path.cwd())
 
     arg_parser = make_arg_parser()
     args = arg_parser.parse_args()

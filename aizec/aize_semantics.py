@@ -4,7 +4,7 @@ from abc import ABC
 from typing import *
 
 from aizec.aize_ast import *
-from aizec.aize_error import ErrorHandler, AizeMessage, Reporter
+from aizec.aize_error import AizeMessage, Reporter, MessageHandler
 from aizec.aize_pass_data import PositionData
 from aizec.aize_symbols import Symbol, VariableSymbol, TypeSymbol, NamespaceSymbol, SymbolTable, SymbolError, BodyData
 
@@ -129,7 +129,7 @@ class TypeVisitor(NodeVisitor):
 
 
 class ASTPass:
-    def __init__(self, error_handler: ErrorHandler,
+    def __init__(self,
                  program_visitor: ProgramVisitor = None,
                  top_level_visitor: TopLevelVisitor = None,
                  type_visitor: TypeVisitor = None):
@@ -144,11 +144,10 @@ class ASTPass:
         self.type_visitor: TypeVisitor = type_visitor.with_pass(self)
 
         self.table = SymbolTable()
-        self.error_handler: ErrorHandler = error_handler
 
     @classmethod
-    def analyze(cls, program: Program, error_handler: ErrorHandler):
-        ast_pass = cls(error_handler)
+    def analyze(cls, program: Program):
+        ast_pass = cls()
         return ast_pass.visit_program(program)
 
     def visit_program(self, program: Program):
@@ -191,8 +190,8 @@ class Initialize(ASTPass):
             source_body = NamespaceSymbol(f"<{source.get_name()} globals>", source)
             self.table.define_namespace(source_body, visible=False, is_body=True)
 
-    def __init__(self, error_handler: ErrorHandler):
-        super().__init__(error_handler, program_visitor=self.CustomProgramVisitor())
+    def __init__(self):
+        super().__init__(program_visitor=self.CustomProgramVisitor())
 
 
 class DeclareTypes(ASTPass):
@@ -203,14 +202,14 @@ class DeclareTypes(ASTPass):
                 self.table.define_type(cls_type)
             except SymbolError as err:
                 error = DefinitionError.name_existing(cls, err.data)
-                self.ast_pass.error_handler.handle_message(error)
+                MessageHandler.handle_message(error)
                 return
 
         def visit_function(self, func: Function):
             pass
 
-    def __init__(self, error_handler: ErrorHandler):
-        super().__init__(error_handler, top_level_visitor=self.TopLevelSearcher())
+    def __init__(self):
+        super().__init__(top_level_visitor=self.TopLevelSearcher())
 
 
 class DefineTypes(ASTPass):
@@ -222,8 +221,8 @@ class DefineTypes(ASTPass):
         def visit_function(self, func: Function):
             pass
 
-    def __init__(self, error_handler: ErrorHandler):
-        super().__init__(error_handler, top_level_visitor=self.TopLevelSearcher())
+    def __init__(self):
+        super().__init__(top_level_visitor=self.TopLevelSearcher())
 
 
 class DeclareFunctions(ASTPass):
@@ -247,7 +246,7 @@ class DeclareFunctions(ASTPass):
                         self.table.define_value(param_value)
                     except SymbolError as err:
                         error = DefinitionError.param_repeated(func, param_node, param_node.name)
-                        self.ast_pass.error_handler.handle_message(error)
+                        MessageHandler.handle_message(error)
                         continue
 
             ret = self.ast_pass.visit_type(func.ret)
@@ -260,7 +259,7 @@ class DeclareFunctions(ASTPass):
                 self.table.define_value(func_value)
             except SymbolError as err:
                 error = DefinitionError.name_existing(func, err.data)
-                self.ast_pass.error_handler.handle_message(error)
+                MessageHandler.handle_message(error)
                 return
 
     class TypeResolver(TypeVisitor):
@@ -269,11 +268,11 @@ class DeclareFunctions(ASTPass):
                 return self.table.lookup_type(type.type)
             except SymbolError as err:
                 error = DefinitionError.name_undefined(type, err.data)
-                self.ast_pass.error_handler.handle_message(error)
+                MessageHandler.handle_message(error)
                 return
 
-    def __init__(self, error_handler: ErrorHandler):
-        super().__init__(error_handler, top_level_visitor=self.TopLevelSearcher(), type_visitor=self.TypeResolver())
+    def __init__(self):
+        super().__init__(top_level_visitor=self.TopLevelSearcher(), type_visitor=self.TypeResolver())
 
     def visit_type(self, type: TypeAnnotation) -> TypeSymbol:
         return cast(TypeSymbol, super().visit_type(type))
@@ -294,12 +293,12 @@ class SemanticAnalyzer:
         DeclareFunctions,
     ]
 
-    def __init__(self, error_handler: ErrorHandler):
-        self.error_handler = error_handler
+    def __init__(self):
+        pass
 
     @classmethod
-    def analyze(cls, program: Program, error_handler: ErrorHandler):
-        analyzer = cls(error_handler)
+    def analyze(cls, program: Program):
+        analyzer = cls()
         for analysis_pass in cls.PASSES:
-            analysis_pass.analyze(program, error_handler)
-            error_handler.flush_errors()
+            analysis_pass.analyze(program)
+            MessageHandler.flush_messages()

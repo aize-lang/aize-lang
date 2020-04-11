@@ -5,7 +5,7 @@ import contextlib
 from aizec.aize_ast import *
 from aizec.common import *
 from aizec.aize_pass_data import PositionData
-from aizec.aize_error import AizeMessage, ErrorHandler
+from aizec.aize_error import AizeMessage, MessageHandler
 
 BASIC_TOKENS = sorted(["+", "+=",
                        "-", "-=", "->",
@@ -59,7 +59,7 @@ class Token:
 
 
 class Scanner:
-    def __init__(self, source: Source, error_handler: ErrorHandler):
+    def __init__(self, source: Source):
         self.source = source
         self.text = source.text
 
@@ -67,11 +67,9 @@ class Scanner:
         self.line_pos = 0
         self.line_no = 1
 
-        self.error_handler = error_handler
-
     @classmethod
-    def scan_source(cls, source: Source, error_handler: ErrorHandler) -> List[Token]:
-        return list(Scanner(source, error_handler).iter_tokens())
+    def scan_source(cls, source: Source) -> List[Token]:
+        return list(Scanner(source).iter_tokens())
 
     def iter_tokens(self) -> Iterator[Token]:
         while not self.is_done():
@@ -186,19 +184,17 @@ class SyncPosition:
 
 
 class AizeParser:
-    def __init__(self, tokens: List[Token], source: Source, error_handler: ErrorHandler):
+    def __init__(self, tokens: List[Token], source: Source):
         self.tokens = tokens
         self.source = source
 
         self.pos = 0
 
-        self.error_handler = error_handler
-
         self.sync_targets = []
 
     @classmethod
-    def parse(cls, source: Source, error_handler: ErrorHandler):
-        parser = cls(Scanner.scan_source(source, error_handler), source, error_handler)
+    def parse(cls, source: Source):
+        parser = cls(Scanner.scan_source(source), source)
         parsed = parser.parse_source(source)
         return parsed
 
@@ -243,9 +239,9 @@ class AizeParser:
         elif isinstance(pos, Node):
             pos = PositionData.of(pos)
         self.source.has_errors = True
-        self.error_handler.handle_message(ParseError(msg, pos, self.source))
+        MessageHandler.handle_message(ParseError(msg, pos, self.source))
         if is_fatal:
-            self.error_handler.flush_errors()
+            MessageHandler.flush_messages()
             return False
         else:
             return True
@@ -297,7 +293,7 @@ class AizeParser:
             else:
                 raise ValueError(f"flag reached top without being caught {flag.flag}")
         finally:
-            self.error_handler.flush_errors()
+            MessageHandler.flush_messages()
         return source
 
     def parse_class(self):

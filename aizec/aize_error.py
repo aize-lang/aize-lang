@@ -1,8 +1,12 @@
 import sys
 import contextlib
-from typing import List, IO
+from typing import List, IO, Union, Literal
 
 from aizec.aize_pass_data import PositionData
+
+
+__all__ = ['Reporter', 'AizeMessage',
+           'MessageHandler']
 
 
 class Reporter:
@@ -58,9 +62,11 @@ class AizeMessage:
         raise NotImplementedError()
 
 
-class ErrorHandler:
-    def __init__(self, err_out: IO = None):
-        self.err_out = sys.stderr if err_out is None else err_out
+class _ErrorHandler:
+    _instance_ = None
+
+    def __init__(self):
+        self.err_out = sys.stderr
 
         self.messages: List[AizeMessage] = []
 
@@ -69,9 +75,9 @@ class ErrorHandler:
     def handle_message(self, msg: AizeMessage):
         self.messages.append(msg)
         if msg.level == AizeMessage.FATAL:
-            self.flush_errors()
+            self.flush_messages()
 
-    def flush_errors(self):
+    def flush_messages(self):
         if self.is_flushing:
             return
         self.is_flushing = True
@@ -90,3 +96,29 @@ class ErrorHandler:
         if has_errors:
             exit(0)
         self.is_flushing = False
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance_ is None:
+            cls._instance_ = cls()
+        return cls._instance_
+
+
+# TODO Fold the class into _ErrorHandler
+class MessageHandler:
+    @staticmethod
+    def set_io(io: Union[IO, Literal['stderr']]):
+        if isinstance(io, str):
+            if io == 'stderr':
+                io = sys.stderr
+            else:
+                raise ValueError(f"Unknown io: {io!r}")
+        _ErrorHandler.get_instance().err_out = io
+
+    @staticmethod
+    def handle_message(msg: AizeMessage):
+        _ErrorHandler.get_instance().handle_message(msg)
+
+    @staticmethod
+    def flush_messages():
+        _ErrorHandler.get_instance().flush_messages()

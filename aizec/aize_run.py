@@ -1,5 +1,5 @@
 from aizec.common import *
-from aizec.aize_error import AizeMessage, ErrorHandler, Reporter
+from aizec.aize_error import AizeMessage, Reporter, MessageHandler
 from aizec.aize_parser import AizeParser
 from aizec.aize_pass_data import PositionData
 from aizec.aize_semantics import SemanticAnalyzer
@@ -53,10 +53,9 @@ class CompilerOptions:
 
 
 class AizeCompiler:
-    def __init__(self, std_dir: Path, project_dir: Path, error_handler: ErrorHandler):
+    def __init__(self, std_dir: Path, project_dir: Path):
         self.std_dir: Path = std_dir
         self.project_dir: Path = project_dir
-        self.error_handler: ErrorHandler = error_handler
 
         self._sources: List[Source] = []
 
@@ -90,7 +89,7 @@ class AizeCompiler:
         assert False
 
     def parse_source(self, source: Source) -> Source:
-        return AizeParser.parse(source, self.error_handler)
+        return AizeParser.parse(source)
 
     def trace_imports(self, *, reload: bool = False):
         to_parse: List[Source] = self._sources.copy()
@@ -134,15 +133,15 @@ class AizeCompiler:
         return Program(self._sources)
 
     def analyze(self):
-        SemanticAnalyzer.analyze(self.get_program(), self.error_handler)
+        SemanticAnalyzer.analyze(self.get_program())
 
     def error(self, msg: AizeMessage):
-        self.error_handler.handle_message(msg)
+        MessageHandler.handle_message(msg)
 
     def fatal_error(self, msg: AizeMessage):
-        self.error_handler.handle_message(msg)
-        self.error_handler.flush_errors()
+        MessageHandler.handle_message(msg)
+        MessageHandler.flush_messages()
         assert False
 
     def flush_errors(self):
-        self.error_handler.flush_errors()
+        MessageHandler.flush_messages()

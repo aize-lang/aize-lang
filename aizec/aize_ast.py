@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from abc import ABCMeta, abstractmethod
-from typing import List, Type, TypeVar, Union, Hashable, Generic
+from typing import List, Type, TypeVar, Union, Hashable
 from pathlib import Path
 
 T = TypeVar('T')
 
 
 __all__ = [
-    'Node', 'PassData', 'ASTVisitor',
+    'Node', 'PassData',
     'Program',
     'Source', 'FileSource', 'StdinSource', 'StringSource', 'BuiltinSource',
     'TopLevel', 'Class', 'Trait', 'Function',
@@ -60,81 +59,6 @@ class PassData:
             data = cls()
             obj.add_data(data)
         return data
-
-
-_TLR = TypeVar('_TLR')
-"""ASTVisitor.visit_top_level's return type parameter"""
-_SR = TypeVar('_SR')
-_ER = TypeVar('_ER')
-_TAR = TypeVar('_TAR')
-"""ASTVisitor.visit_type's return type parameter"""
-
-
-class ASTVisitor(Generic[_TLR, _SR, _ER, _TAR], metaclass=ABCMeta):
-    """A Visitor class for AST nodes
-
-    The class provides default implementations of visit_top_level, visit_stmt, visit_expr, and visit_type. To get the
-    return types for each of those functions, the Generic Type Parameters are needed. They are, in order:
-        _TLR: ASTVisitor.visit_top_level's return type parameter
-        _SR: ASTVisitor.visit_stmt's return type parameter
-        _ER: ASTVisitor.visit_expr's return type parameter
-        _TAR: ASTVisitor.visit_type's return type parameter
-
-    """
-
-    def _get_method(self, cls: Type[Node]):
-        while cls is not None:
-            try:
-                method = getattr(self, 'visit_' + cls.__name__)
-            except AttributeError:
-                cls = cls.__base__
-            else:
-                return method
-        raise TypeError(f"Node type '{cls.__qualname__}' is not supported by ASTVisitor.visit_type()")
-
-    def visit_top_level(self, top_level: TopLevel) -> _TLR:
-        cls = top_level.__class__
-        if not issubclass(cls, TypeAnnotation):
-            raise TypeError(f"'top_level' must be an instance of TopLevel")
-        return self._get_method(cls)(top_level)
-
-    def visit_type(self, type: TypeAnnotation) -> _TAR:
-        cls = type.__class__
-        if not issubclass(cls, TypeAnnotation):
-            raise TypeError(f"'type' must be an instance of TypeAnnotation")
-        return self._get_method(cls)(type)
-
-    @abstractmethod
-    def visit_Program(self, program: Program):
-        raise NotImplementedError()
-
-    @abstractmethod
-    def visit_Source(self, source: Source):
-        raise NotImplementedError()
-
-    @abstractmethod
-    def visit_Class(self, cls: Class) -> _TLR:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def visit_Trait(self, trait: Trait) -> _TLR:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def visit_Function(self, func: Function) -> _TLR:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def visit_VarDeclStmt(self, var_decl: VarDeclStmt) -> _SR:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def visit_ReturnStmt(self, ret: ReturnStmt) -> _SR:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def visit_GetTypeAnnotation(self, ann: GetTypeAnnotation) -> _TAR:
-        raise NotImplementedError()
 
 
 class Program(Node):
