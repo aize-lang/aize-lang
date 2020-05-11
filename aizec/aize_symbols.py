@@ -45,6 +45,31 @@ class TypeSymbol(Symbol):
     def __init__(self, name: str, node: Node):
         super().__init__(name, node)
 
+    def is_subtype(self, other: TypeSymbol) -> bool:
+        """Check if `other` is a subtype of this"""
+        # TODO
+        return other is self
+
+
+class FunctionTypeSymbol(TypeSymbol):
+    def __init__(self, name: str, node: Node, params: List[TypeSymbol], ret: TypeSymbol):
+        super().__init__(name, node)
+        self.params = params
+        self.ret = ret
+
+    def is_subtype(self, other: TypeSymbol) -> bool:
+        if not isinstance(other, FunctionTypeSymbol):
+            return False
+        if len(self.params) != len(other.params):
+            return False
+        for param, other_param in zip(self.params, other.params):
+            # reverse the order to account for contravariance in parameters
+            if not other_param.is_subtype(param):
+                return False
+        if not self.ret.is_subtype(other.ret):
+            return False
+        return True
+
 
 class NamespaceSymbol(Symbol):
     def __init__(self, name: str, node: Node):
@@ -84,6 +109,17 @@ class NamespaceSymbol(Symbol):
                 return namespace.type_symbols[name]
         raise SymbolError(name)
 
+    def lookup_value(self, name: str, *, here: bool = False, nearest: bool = True) -> VariableSymbol:
+        if here:
+            lookup_chain = [self]
+        else:
+            lookup_chain = self.parents(nearest_first=nearest)
+
+        for namespace in lookup_chain:
+            if name in namespace.value_symbols:
+                return namespace.value_symbols[name]
+        raise SymbolError(name)
+
     def define_value(self, value: VariableSymbol, as_name: str = None, visible: bool = True):
         if as_name is None:
             as_name = value.name
@@ -93,7 +129,7 @@ class NamespaceSymbol(Symbol):
                 raise SymbolError(self.value_symbols[as_name])
             else:
                 self.value_symbols[as_name] = value
-        SymbolData.of_else(value.node).defined.append(value)
+        SymbolData.of_or_new(value.node).defined.append(value)
         value.namespace = self
 
     def define_type(self, type: TypeSymbol, as_name: str = None, visible: bool = True):
@@ -105,7 +141,7 @@ class NamespaceSymbol(Symbol):
                 raise SymbolError(self.type_symbols[as_name])
             else:
                 self.type_symbols[as_name] = type
-        SymbolData.of_else(type.node).defined.append(type)
+        SymbolData.of_or_new(type.node).defined.append(type)
         type.namespace = self
 
     def define_namespace(self, namespace: NamespaceSymbol, as_name: str = None, visible: bool = True, is_body: bool = False):
@@ -117,10 +153,10 @@ class NamespaceSymbol(Symbol):
                 raise SymbolError(self.namespace_symbols[as_name])
             else:
                 self.namespace_symbols[as_name] = namespace
-        SymbolData.of_else(namespace.node).defined.append(namespace)
+        SymbolData.of_or_new(namespace.node).defined.append(namespace)
         namespace.namespace = self
         if is_body:
-            BodyData.of_else(namespace.node).body_namespace = namespace
+            BodyData.of_or_new(namespace.node).body_namespace = namespace
 
 
 class SymbolTable:
@@ -143,8 +179,25 @@ class SymbolTable:
         else:
             raise ValueError("Not inside a namespace yet")
 
+    @property
+    def top_namespace(self):
+        if len(self._visiting_stack) > 0:
+            return self._visiting_stack[-1].parents(nearest_first=False)[0]
+        else:
+            raise ValueError("Not inside a namespace yet")
+
+    @property
+    def error_type(self):
+        return self.top_namespace.lookup_type("<errored type>")
+
+    def get_builtin_type(self, name: str) -> TypeSymbol:
+        return self.top_namespace.lookup_type(name)
+
     def lookup_type(self, name: str, *, here: bool = False, nearest: bool = True):
         return self.current_namespace.lookup_type(name, here=here, nearest=nearest)
+
+    def lookup_value(self, name: str, *, here: bool = False, nearest: bool = True):
+        return self.current_namespace.lookup_value(name, here=here, nearest=nearest)
 
     def define_value(self, value: VariableSymbol, as_name: str = None, visible: bool = True):
         self.current_namespace.define_value(value, as_name, visible)
@@ -156,9 +209,9 @@ class SymbolTable:
         self.current_namespace.define_namespace(namespace, as_name, visible, is_body)
 
     def define_top(self, namespace: NamespaceSymbol, is_body: bool = False):
-        SymbolData.of_else(namespace.node).defined.append(namespace)
+        SymbolData.of_or_new(namespace.node).defined.append(namespace)
         if is_body:
-            BodyData.of_else(namespace.node).body_namespace = namespace
+            BodyData.of_or_new(namespace.node).body_namespace = namespace
 
 
 class SymbolData(PassData):
@@ -166,6 +219,13 @@ class SymbolData(PassData):
         super().__init__()
 
         self.defined: List[Symbol] = []
+
+    def get_value(self) -> VariableSymbol:
+        for symbol in self.defined:
+            if isinstance(symbol, VariableSymbol):
+                return symbol
+        else:
+            raise ValueError("No variable defined")
 
 
 class BodyData(PassData):

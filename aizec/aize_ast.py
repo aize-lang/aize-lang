@@ -51,7 +51,7 @@ class PassData:
         return data
 
     @classmethod
-    def of_else(cls: Type[T], obj: Node) -> T:
+    def of_or_new(cls: Type[T], obj: Node) -> T:
         data = obj._pass_data
         while not isinstance(data, cls) and data is not None:
             data = data.next_data

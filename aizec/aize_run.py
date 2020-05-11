@@ -3,6 +3,7 @@ from aizec.aize_error import AizeMessage, Reporter, MessageHandler
 from aizec.aize_parser import AizeParser
 from aizec.aize_pass_data import PositionData
 from aizec.aize_semantics import SemanticAnalyzer
+from aizec.aize_backend import IRToLLVM
 from aizec.aize_ast import Program, Source, FileSource, StdinSource, StringSource
 
 
@@ -59,11 +60,16 @@ class AizeCompiler:
 
         self._sources: List[Source] = []
 
+        # noinspection PyTypeChecker
+        self._program: Program = None
+
     def add_file(self, path: Union[Path, str], is_main: bool = False, import_note: ImportNote = None) -> Source:
         source = self.create_source(path, is_main, import_note)
         return self.add_source(source)
 
     def add_source(self, source: Source) -> Source:
+        if self._program is not None:
+            ValueError("Cannot add sources after program object is created")
         self._sources.append(source)
         return source
 
@@ -130,10 +136,15 @@ class AizeCompiler:
         self.flush_errors()
 
     def get_program(self):
-        return Program(self._sources)
+        if self._program is None:
+            self._program = Program(self._sources)
+        return self._program
 
     def analyze(self):
         SemanticAnalyzer.analyze(self.get_program())
+
+    def compile(self):
+        IRToLLVM.analyze(self.get_program())
 
     def error(self, msg: AizeMessage):
         MessageHandler.handle_message(msg)

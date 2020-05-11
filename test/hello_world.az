@@ -1,11 +1,6 @@
 
 
-class Person {
-
-}
-
-
 def main() -> int {
-    var person: Person = Person.new();
+    var num: int = 0;
     return 0;
 }

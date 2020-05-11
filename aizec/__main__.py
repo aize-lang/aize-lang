@@ -29,9 +29,10 @@ def main():
     arg_parser = make_arg_parser()
     args = arg_parser.parse_args()
 
-    compiler.add_file(args.file, True)
+    compiler.add_file(args.file, is_main=True)
     compiler.trace_imports()
     compiler.analyze()
+    compiler.compile()
 
 
 if __name__ == '__main__':

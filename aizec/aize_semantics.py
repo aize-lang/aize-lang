@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from abc import ABC
 from typing import *
 
 from aizec.aize_ast import *
 from aizec.aize_error import AizeMessage, Reporter, MessageHandler
 from aizec.aize_pass_data import PositionData
-from aizec.aize_symbols import Symbol, VariableSymbol, TypeSymbol, NamespaceSymbol, SymbolTable, SymbolError, BodyData
+from aizec.aize_symbols import Symbol, VariableSymbol, TypeSymbol, FunctionTypeSymbol, NamespaceSymbol, SymbolError
 
-T = TypeVar('T')
+from aizec.aize_visitors import ProgramVisitor, TopLevelVisitor, StmtVisitor, ExprVisitor, TypeVisitor, ASTPass
 
 
 # region Errors
@@ -51,6 +50,31 @@ class DefinitionError(AizeMessage):
                 self.note.display(reporter)
 
 
+class TypeCheckingError(AizeMessage):
+    def __init__(self, source_name: str, pos: PositionData, msg: str, note: AizeMessage = None):
+        super().__init__(self.ERROR)
+        self.source = source_name
+        self.pos = pos
+        self.msg = msg
+
+        self.note = note
+
+    @classmethod
+    def from_nodes(cls, definition: Node, offender: Node):
+        offender_pos = PositionData.of(offender)
+        def_pos = PositionData.of(definition)
+        note = DefinitionNote.from_node(definition, "Declared here")
+        error = cls(offender_pos.get_source_name(), offender_pos, "Expected type , got type", note)
+        return error
+
+    def display(self, reporter: Reporter):
+        reporter.positioned_error("Type Checking Error", self.source, self.pos, self.msg)
+        if self.note is not None:
+            reporter.separate()
+            with reporter.indent():
+                self.note.display(reporter)
+
+
 class DefinitionNote(AizeMessage):
     def __init__(self, source_name: str, pos: PositionData, msg: str):
         super().__init__(self.NOTE)
@@ -69,102 +93,22 @@ class DefinitionNote(AizeMessage):
 # endregion
 
 
-# region Node Visitor Classes
-class NodeVisitor(ABC):
-    def __init__(self):
-        # noinspection PyTypeChecker
-        self.ast_pass: ASTPass = None
+# region Useful Visitors
 
-    @property
-    def table(self):
-        return self.ast_pass.table
-
-    def enter_body(self, node: Node):
-        return self.table.enter(BodyData.of(node).body_namespace)
-
-    def with_pass(self: T, ast_pass: ASTPass) -> T:
-        self.ast_pass = ast_pass
-        return self
-
-
-class ProgramVisitor(NodeVisitor):
-    def visit_program(self, program: Program):
-        with self.enter_body(program):
-            for source in program.sources:
-                self.visit_source(source)
-
-    def visit_source(self, source: Source):
-        with self.enter_body(source):
-            for top_level in source.top_levels:
-                self.ast_pass.visit_top_level(top_level)
-
-
-class TopLevelVisitor(NodeVisitor):
-    def visit_top_level(self, top_level: TopLevel):
-        if isinstance(top_level, Class):
-            return self.visit_class(top_level)
-        elif isinstance(top_level, Function):
-            return self.visit_function(top_level)
-        else:
-            raise TypeError(f"incorrect type: {top_level.__class__}")
-
-    def visit_class(self, cls: Class):
-        pass
-
-    def visit_function(self, func: Function):
-        pass
-
-
-class TypeVisitor(NodeVisitor):
-    def visit_type(self, type: TypeAnnotation):
-        if isinstance(type, GetTypeAnnotation):
-            return self.visit_get(type)
-        else:
-            raise TypeError(f"incorrect type: {type.__class__}")
-
-    def visit_get(self, type: GetTypeAnnotation):
-        pass
+class TypeResolver(TypeVisitor[TypeSymbol]):
+    def visit_get(self, type: GetTypeAnnotation) -> TypeSymbol:
+        try:
+            return self.table.lookup_type(type.type)
+        except SymbolError as err:
+            error = DefinitionError.name_undefined(type, err.data)
+            MessageHandler.handle_message(error)
+            return self.table.error_type
 
 # endregion
 
 
-class ASTPass:
-    def __init__(self,
-                 program_visitor: ProgramVisitor = None,
-                 top_level_visitor: TopLevelVisitor = None,
-                 type_visitor: TypeVisitor = None):
-        if program_visitor is None:
-            program_visitor = ProgramVisitor()
-        if top_level_visitor is None:
-            top_level_visitor = TopLevelVisitor()
-        if type_visitor is None:
-            type_visitor = TypeVisitor()
-        self.program_visitor: ProgramVisitor = program_visitor.with_pass(self)
-        self.top_level_visitor: TopLevelVisitor = top_level_visitor.with_pass(self)
-        self.type_visitor: TypeVisitor = type_visitor.with_pass(self)
-
-        self.table = SymbolTable()
-
-    @classmethod
-    def analyze(cls, program: Program):
-        ast_pass = cls()
-        return ast_pass.visit_program(program)
-
-    def visit_program(self, program: Program):
-        return self.program_visitor.visit_program(program)
-
-    def visit_source(self, source: Source):
-        return self.program_visitor.visit_source(source)
-
-    def visit_top_level(self, top_level: TopLevel):
-        return self.top_level_visitor.visit_top_level(top_level)
-
-    def visit_type(self, type: TypeAnnotation):
-        return self.type_visitor.visit_type(type)
-
-
-class Initialize(ASTPass):
-    class CustomProgramVisitor(ProgramVisitor):
+class Initialize(ASTPass[None, None, None, None, None]):
+    class CustomProgramVisitor(ProgramVisitor[None]):
         @staticmethod
         def create_builtins(program: Program) -> NamespaceSymbol:
             # TODO find a better way to initialize the global namespace
@@ -176,9 +120,11 @@ class Initialize(ASTPass):
 
             define_type("int")
 
+            define_type("<errored type>")
+
             return builtin_namespace
 
-        def visit_program(self, program: Program):
+        def visit_program(self, program: Program) -> None:
             builtin_namespace = self.create_builtins(program)
             self.table.define_top(builtin_namespace, is_body=True)
 
@@ -186,7 +132,7 @@ class Initialize(ASTPass):
                 for source in program.sources:
                     self.visit_source(source)
 
-        def visit_source(self, source: Source):
+        def visit_source(self, source: Source) -> None:
             source_body = NamespaceSymbol(f"<{source.get_name()} globals>", source)
             self.table.define_namespace(source_body, visible=False, is_body=True)
 
@@ -194,9 +140,9 @@ class Initialize(ASTPass):
         super().__init__(program_visitor=self.CustomProgramVisitor())
 
 
-class DeclareTypes(ASTPass):
-    class TopLevelSearcher(TopLevelVisitor):
-        def visit_class(self, cls: Class):
+class DeclareTypes(ASTPass[None, None, None, None, None]):
+    class TopLevelSearcher(TopLevelVisitor[None]):
+        def visit_class(self, cls: Class) -> None:
             cls_type = TypeSymbol(cls.name, cls)
             try:
                 self.table.define_type(cls_type)
@@ -205,34 +151,35 @@ class DeclareTypes(ASTPass):
                 MessageHandler.handle_message(error)
                 return
 
-        def visit_function(self, func: Function):
+        def visit_function(self, func: Function) -> None:
             pass
 
     def __init__(self):
         super().__init__(top_level_visitor=self.TopLevelSearcher())
 
 
-class DefineTypes(ASTPass):
-    class TopLevelSearcher(TopLevelVisitor):
-        def visit_class(self, cls: Class):
+class DefineTypes(ASTPass[None, None, None, None, None]):
+    class TopLevelSearcher(TopLevelVisitor[None]):
+        def visit_class(self, cls: Class) -> None:
             # TODO implement type definition
             pass
 
-        def visit_function(self, func: Function):
+        def visit_function(self, func: Function) -> None:
             pass
 
     def __init__(self):
         super().__init__(top_level_visitor=self.TopLevelSearcher())
 
 
-class DeclareFunctions(ASTPass):
-    class TopLevelSearcher(TopLevelVisitor):
+class DeclareFunctions(ASTPass[None, None, None, None, TypeSymbol]):
+    class TopLevelSearcher(TopLevelVisitor[None]):
         ast_pass: DeclareFunctions
 
-        def visit_class(self, cls: Class):
-            super().visit_class(cls)
+        def visit_class(self, cls: Class) -> None:
+            # TODO search through methods for functions (if I add inline functions that are top-levels)
+            pass
 
-        def visit_function(self, func: Function):
+        def visit_function(self, func: Function) -> None:
             body = NamespaceSymbol(f"<{func.name} body>", func)
             self.table.define_namespace(body, visible=False, is_body=True)
 
@@ -251,7 +198,7 @@ class DeclareFunctions(ASTPass):
 
             ret = self.ast_pass.visit_type(func.ret)
 
-            func_type = TypeSymbol(f"<{func.name} type>", func)
+            func_type = FunctionTypeSymbol(f"<{func.name} type>", func, list(params.values()), ret)
             self.table.define_type(func_type, visible=False)
 
             func_value = VariableSymbol(func.name, func_type, func)
@@ -262,27 +209,50 @@ class DeclareFunctions(ASTPass):
                 MessageHandler.handle_message(error)
                 return
 
-    class TypeResolver(TypeVisitor):
-        def visit_get(self, type: GetTypeAnnotation):
-            try:
-                return self.table.lookup_type(type.type)
-            except SymbolError as err:
-                error = DefinitionError.name_undefined(type, err.data)
+    def __init__(self):
+        super().__init__(top_level_visitor=self.TopLevelSearcher(), type_visitor=TypeResolver())
+
+
+class ResolveSymbols(ASTPass[None, None, None, TypeSymbol, TypeSymbol]):
+    class TopLevelResolver(TopLevelVisitor[None]):
+        def visit_class(self, cls: Class) -> None:
+            pass
+
+        def visit_function(self, func: Function) -> None:
+            with self.enter_body(func):
+                for stmt in func.body:
+                    self.ast_pass.visit_stmt(stmt)
+
+    class StmtResolver(StmtVisitor[None]):
+        ast_pass: ResolveSymbols
+
+        def visit_var_decl(self, decl: VarDeclStmt) -> None:
+            type = self.ast_pass.visit_type(decl.annotation)
+            value_type = self.ast_pass.visit_expr(decl.value)
+            if not type.is_subtype(value_type):
+                error = TypeCheckingError.from_nodes(decl, decl.value)
                 MessageHandler.handle_message(error)
-                return
+
+        def visit_return(self, ret: ReturnStmt):
+            pass
+
+    class ExprResolver(ExprVisitor[TypeSymbol]):
+        def visit_int(self, num: IntLiteral) -> TypeSymbol:
+            return self.table.get_builtin_type("int")
+
+        def visit_get_var(self, var: GetVarExpr) -> TypeSymbol:
+            try:
+                return self.table.lookup_value(var.var).type
+            except SymbolError as err:
+                error = DefinitionError.name_undefined(var, var.var)
+                MessageHandler.handle_message(error)
+                return self.table.error_type
 
     def __init__(self):
-        super().__init__(top_level_visitor=self.TopLevelSearcher(), type_visitor=self.TypeResolver())
-
-    def visit_type(self, type: TypeAnnotation) -> TypeSymbol:
-        return cast(TypeSymbol, super().visit_type(type))
-
-# TODO write a symbol resolution pass
-# class ResolveSymbols(ASTAnalysisPass):
-#     def visit_Function(self, func: Function):
-#         body_namespace = SymbolData.of(func).namespace_symbol
-#
-#         super().visit_Function(func)
+        super().__init__(top_level_visitor=self.TopLevelResolver(),
+                         stmt_visitor=self.StmtResolver(),
+                         type_visitor=TypeResolver(),
+                         expr_visitor=self.ExprResolver())
 
 
 class SemanticAnalyzer:
@@ -291,6 +261,7 @@ class SemanticAnalyzer:
         DeclareTypes,
         DefineTypes,
         DeclareFunctions,
+        ResolveSymbols,
     ]
 
     def __init__(self):
