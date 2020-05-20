@@ -1,0 +1,6 @@
+class Person {
+    method dance(self) -> void;
+    method say_hi(self) -> void {
+        print("Hello");
+    }
+}

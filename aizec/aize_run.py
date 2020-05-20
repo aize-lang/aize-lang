@@ -1,10 +1,12 @@
+import io
+
 from aizec.common import *
 
 from aizec.aize_error import AizeMessage, MessageHandler, Reporter
 from aizec.aize_parser import AizeParser
 # from aizec.aize_semantics import AizeAnalyzer
 # from aizec.aize_backend import IRToLLVM
-from aizec.aize_source import Source, FileSource, Position
+from aizec.aize_source import Source, FileSource, Position, StreamSource
 from aizec.aize_ast import ProgramAST, SourceAST
 
 
@@ -83,6 +85,12 @@ class FrontendManager:
 
         file_stream = path.open("r")
         return FileSource(path, file_stream)
+
+    @staticmethod
+    def make_text_source(text: str, pos: Position = None) -> StreamSource:
+        text_stream = io.StringIO(text)
+
+        return StreamSource("<string>", text_stream)
 
     def get_program_ast(self) -> ProgramAST:
         return ProgramAST(self._source_asts.copy())

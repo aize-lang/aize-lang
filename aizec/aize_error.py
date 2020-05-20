@@ -6,7 +6,8 @@ from aizec.aize_source import Source, Position, TextPosition
 
 
 __all__ = ['Reporter', 'AizeMessage',
-           'MessageHandler']
+           'MessageHandler',
+           'ThrownMessage']
 
 
 class Reporter:
@@ -70,20 +71,29 @@ class AizeMessage:
         raise NotImplementedError()
 
 
+class ThrownMessage(Exception):
+    def __init__(self, message: AizeMessage):
+        self.message = message
+
+
 class _ErrorHandler:
     _instance_ = None
 
     def __init__(self):
-        self.err_out = sys.stderr
+        self.err_out: IO = sys.stderr
+        self.throw_messages: bool = False
 
         self.messages: List[AizeMessage] = []
 
         self.is_flushing: bool = False
 
     def handle_message(self, msg: AizeMessage):
-        self.messages.append(msg)
-        if msg.level == AizeMessage.FATAL:
-            self.flush_messages()
+        if self.throw_messages:
+            raise ThrownMessage(msg)
+        else:
+            self.messages.append(msg)
+            if msg.level == AizeMessage.FATAL:
+                self.flush_messages()
 
     def flush_messages(self):
         if self.is_flushing:
@@ -122,6 +132,10 @@ class MessageHandler:
             else:
                 raise ValueError(f"Unknown io: {io!r}")
         _ErrorHandler.get_instance().err_out = io
+
+    @staticmethod
+    def set_throw(throw: bool):
+        _ErrorHandler.get_instance().throw_messages = throw
 
     @staticmethod
     def handle_message(msg: AizeMessage):

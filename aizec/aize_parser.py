@@ -43,6 +43,9 @@ class ParseError(AizeMessage):
     def display(self, reporter):
         reporter.positioned_error(type="Parsing Error", msg=self.msg, pos=self.pos)
 
+    def __repr__(self):
+        return f"ParseError({self.msg!r}, {self.pos!r})"
+
 
 class Token:
     def __init__(self, text: str, type: str, source: Source, line_no: int, columns: Tuple[int, int]):
@@ -60,16 +63,6 @@ class Token:
         return f"Token({self.text!r}, {self.type!r})"
 
 
-class TokenTrie:
-    def __init__(self, char: str, children: List[TokenTrie]):
-        self.char = char
-        self.children = children
-
-    @classmethod
-    def from_list(cls, li: List[str]):
-        pass
-
-
 class Scanner:
     def __init__(self, source: Source):
         self.source = source
@@ -82,7 +75,6 @@ class Scanner:
         self._line_no: int = 1
         # """Is in fact 1-indexed, but starts at 0 since advance() increments it instantly"""
         self._token: str = ""
-        self._token_line_pos: int = 1
 
         self._is_last_line = False
         self._is_done = False
@@ -106,7 +98,6 @@ class Scanner:
         if self.is_last_line():
             self._curr_line = ""
             self._line_pos = 0
-            self._token_line_pos = 1
             return
         line = ""
         while (char := self.source.read_char()) not in ("", "\n"):
@@ -120,9 +111,6 @@ class Scanner:
 
     def advance(self):
         self._token += self._curr_char
-        if self._line_pos == 1:
-            self._token_line_pos = 1
-        self._token_line_pos += 1
 
         # Keep loading lines until we reach a line with at least a character or the end
         while not self.is_last_line() and self.at_line_end():
@@ -137,7 +125,6 @@ class Scanner:
 
     def init(self):
         self._line_no = 0
-        self._token_line_pos = 1
 
         while not self.is_last_line() and self.at_line_end():
             self.load_next_line()
@@ -171,7 +158,7 @@ class Scanner:
     def start_token(self, type: Union[str, None] = None):
         self._token = ""
         line_no = self._line_no
-        start_line_pos = self._token_line_pos
+        start_line_pos = self._line_pos
 
         token = Token.__new__(Token)
         yield token
@@ -180,7 +167,7 @@ class Scanner:
         if type is None:
             type = text
 
-        token.__init__(text, type, self.source, line_no, (start_line_pos, self._token_line_pos))
+        token.__init__(text, type, self.source, line_no, (start_line_pos+1, self._line_pos+1))
     # endregion
 
     def iter_tokens(self) -> Iterator[Token]:
@@ -218,11 +205,18 @@ class Scanner:
                         self.advance()
                     yield token
                 elif self.curr == "#":
-                    self.advance()
-                    if self.curr == " ":
-                        while not self.curr == "\n":
-                            self.advance()
-                    continue
+                    with self.start_token("<comment>") as token:
+                        by_itself = self.at_line_end()
+                        self.advance()
+                        if not by_itself:
+                            if self.curr == " ":
+                                while not self.at_line_end() and not self.is_done():
+                                    self.advance()
+                                self.advance()
+                                continue
+                        else:
+                            continue
+                    MessageHandler.handle_message(ParseError(f"Comment must be followed by a space", token.pos()))
                 elif self.curr in ('\t', ' '):
                     self.advance()
                     continue
@@ -231,7 +225,7 @@ class Scanner:
                         self.advance()
                     MessageHandler.handle_message(ParseError(f"Cannot tokenize character '{token.text!s}'", token.pos()))
         while True:
-            yield Token('<eof>', '<eof>', self.source, self._line_no, (self._token_line_pos, self._token_line_pos+1))
+            yield Token('<eof>', '<eof>', self.source, self._line_no, (self._line_pos+1, self._line_pos+1))
 
 
 class SyncFlag(Exception):

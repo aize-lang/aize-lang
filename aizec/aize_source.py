@@ -76,6 +76,9 @@ class Position:
     def get_source_name(self) -> str:
         raise NotImplementedError()
 
+    def __repr__(self) -> str:
+        raise NotImplementedError()
+
     @classmethod
     def new_builtin(cls, builtin_name: str) -> BuiltinPosition:
         return BuiltinPosition(builtin_name)
@@ -99,6 +102,9 @@ class BuiltinPosition(Position):
 
     def get_source_name(self):
         return self.builtin_name
+
+    def __repr__(self):
+        return f"BuiltinPosition()"
 
 
 class TextPosition(Position):
@@ -126,3 +132,6 @@ class TextPosition(Position):
 
     def __add__(self, other: TextPosition) -> TextPosition:
         return self.to(other)
+
+    def __repr__(self):
+        return f"TextPosition(line={self._line_no}, columns={self._columns})"
