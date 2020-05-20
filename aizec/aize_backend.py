@@ -56,7 +56,6 @@ class IRToLLVM(ASTPass):
             if isinstance(type, FunctionTypeSymbol):
                 return self.visit_func_type(type)
             else:
-                if type is type.namespace.parents(nearest_first=False)[0]
                 raise ValueError(type)
 
         def visit_func_type(self, ftype: FunctionTypeSymbol) -> ir.FunctionType:

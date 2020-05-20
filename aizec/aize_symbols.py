@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 from typing import *
 
-from aizec.aize_ast import Node, PassData
+from aizec.aize_ast import Node, PassData, Program
 
 
 class SymbolError(Exception):
@@ -49,6 +49,15 @@ class TypeSymbol(Symbol):
         """Check if `other` is a subtype of this"""
         # TODO
         return other is self
+
+
+class IntTypeSymbol(TypeSymbol):
+    def __init__(self, name: str, node: Node, bit_size: int):
+        super().__init__(name, node)
+        self.bit_size = bit_size
+
+    def is_subtype(self, other: TypeSymbol) -> bool:
+        return isinstance(other, IntTypeSymbol) and other.bit_size <= self.bit_size
 
 
 class FunctionTypeSymbol(TypeSymbol):
@@ -138,7 +147,7 @@ class NamespaceSymbol(Symbol):
 
         if visible:
             if as_name in self.type_symbols:
-                raise SymbolError(self.type_symbols[as_name])
+                raise SymbolError(f"Symbol Already Defined: {self.type_symbols[as_name]}")
             else:
                 self.type_symbols[as_name] = type
         SymbolData.of_or_new(type.node).defined.append(type)
@@ -150,7 +159,7 @@ class NamespaceSymbol(Symbol):
 
         if visible:
             if as_name in self.namespace_symbols:
-                raise SymbolError(self.namespace_symbols[as_name])
+                raise SymbolError(f"Symbol Already Defined: {self.namespace_symbols[as_name]}")
             else:
                 self.namespace_symbols[as_name] = namespace
         SymbolData.of_or_new(namespace.node).defined.append(namespace)
@@ -160,8 +169,10 @@ class NamespaceSymbol(Symbol):
 
 
 class SymbolTable:
-    def __init__(self):
+    def __init__(self, program: Program):
         self._visiting_stack: List[NamespaceSymbol] = []
+
+        self.program = program
 
     @contextlib.contextmanager
     def enter(self, namespace: Union[NamespaceSymbol, None]):
@@ -180,18 +191,15 @@ class SymbolTable:
             raise ValueError("Not inside a namespace yet")
 
     @property
-    def top_namespace(self):
-        if len(self._visiting_stack) > 0:
-            return self._visiting_stack[-1].parents(nearest_first=False)[0]
-        else:
-            raise ValueError("Not inside a namespace yet")
+    def builtin_namespace(self):
+        return BodyData.of(self.program).body_namespace
 
     @property
     def error_type(self):
-        return self.top_namespace.lookup_type("<errored type>")
+        return self.builtin_namespace.lookup_type("<errored type>")
 
     def get_builtin_type(self, name: str) -> TypeSymbol:
-        return self.top_namespace.lookup_type(name)
+        return self.builtin_namespace.lookup_type(name)
 
     def lookup_type(self, name: str, *, here: bool = False, nearest: bool = True):
         return self.current_namespace.lookup_type(name, here=here, nearest=nearest)

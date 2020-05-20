@@ -2,7 +2,7 @@ import sys
 import contextlib
 from typing import List, IO, Union, Literal
 
-from aizec.aize_pass_data import PositionData
+from aizec.aize_source import Source, Position, TextPosition
 
 
 __all__ = ['Reporter', 'AizeMessage',
@@ -15,13 +15,21 @@ class Reporter:
 
         self._indent_level = 0
 
-    def positioned_error(self, type: str, source: str, pos: PositionData, msg: str):
-        self.write(f"In {source}:")
-        self.write(f"{type}: {msg}:")
-        self.write(f"{pos.in_context()}")
+    def positioned_error(self, type: str, msg: str, pos: Position):
+        source_name = pos.get_source_name()
+        if isinstance(pos, TextPosition):
+            self.write(f"In {source_name}:")
+            self.write(f"{type}: {msg}:")
+            self.write(f"{pos.in_context()}")
+        else:
+            self.write(f"In {source_name}:")
+            self.write(f"{type}: {msg}.")
 
-    def source_error(self, type: str, source_name: str, msg: str):
-        self.write(f"For {source_name}:")
+    def source_error(self, type: str, msg: str, source: Source):
+        self.write(f"For {source.get_name()}:")
+        self.write(f"{type}: {msg}.")
+
+    def general_error(self, type: str, msg: str):
         self.write(f"{type}: {msg}.")
 
     @contextlib.contextmanager
@@ -118,6 +126,7 @@ class MessageHandler:
     @staticmethod
     def handle_message(msg: AizeMessage):
         _ErrorHandler.get_instance().handle_message(msg)
+        MessageHandler.flush_messages()
 
     @staticmethod
     def flush_messages():

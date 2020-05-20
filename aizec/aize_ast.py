@@ -1,200 +1,85 @@
 from __future__ import annotations
 
-from typing import List, Type, TypeVar, Union, Hashable
-from pathlib import Path
+from aizec.common import *
 
-T = TypeVar('T')
+from aizec.aize_source import Position, Source
 
 
 __all__ = [
-    'Node', 'PassData',
-    'Program',
-    'Source', 'FileSource', 'StdinSource', 'StringSource', 'BuiltinSource',
-    'TopLevel', 'Class', 'Trait', 'Function',
-    'ClassStmt', 'Attr', 'Method', 'MethodImpl', 'Import',
-    'Stmt', 'IfStmt', 'WhileStmt', 'BlockStmt', 'VarDeclStmt', 'ReturnStmt', 'ExprStmt',
-    'Expr',
-    'GetVarExpr', 'SetVarExpr', 'GetAttrExpr', 'SetAttrExpr',
-    'BinaryExpr', 'LTExpr', 'GTExpr', 'LEExpr', 'GEExpr', 'EQExpr', 'NEExpr',
-    'AddExpr', 'SubExpr', 'MulExpr', 'DivExpr', 'ModExpr',
-    'UnaryExpr', 'NegExpr', 'NotExpr', 'InvExpr',
-    'CallExpr',
-    'IntLiteral', 'StrLiteral',
-    'Param',
-    'TypeAnnotation', 'GetTypeAnnotation'
+    'NodeAST', 'TextAST',
+    'ProgramAST', 'SourceAST',
+    'ParamAST',
+    'TopLevelAST', 'ClassAST', 'FunctionAST', 'ImportAST',
+    'AttrAST', 'MethodSigAST', 'MethodImplAST',
+    'StmtAST', 'IfStmtAST', 'WhileStmtAST', 'BlockStmtAST', 'VarDeclStmtAST', 'ReturnStmtAST', 'ExprStmtAST',
+
+    'ExprAST', 'NEExprAST', 'BinaryExprAST', 'SubExprAST', 'AddExprAST', 'MulExprAST', 'GetVarExprAST', 'EQExprAST',
+    'ModExprAST', 'LEExprAST', 'UnaryExprAST', 'LTExprAST', 'InvExprAST', 'NotExprAST', 'DivExprAST', 'GetAttrExprAST',
+    'GEExprAST', 'SetAttrExprAST', 'NegExprAST', 'GTExprAST', 'SetVarExprAST', 'CallExprAST', 'StrLiteralAST',
+    'IntLiteralAST'
 ]
 
 
-class Node:
-    def __init__(self):
-        self._pass_data: Union[PassData, None] = None
-
-    def add_data(self, pass_data: PassData):
-        pass_data.bound = self
-        pass_data.next_data = self._pass_data
-        self._pass_data = pass_data
-        return self
-
-
-class PassData:
-    def __init__(self, bound: Node = None, next_data: PassData = None):
-        self.bound: Union[Node, None] = None
-        self.next_data: Union[PassData, None] = next_data
-
-    @classmethod
-    def of(cls: Type[T], obj: Node) -> T:
-        data = obj._pass_data
-        while not isinstance(data, cls) and data is not None:
-            data = data.next_data
-        if data is None:
-            raise TypeError(f"Object {obj} does not have {cls.__name__}")
-        return data
-
-    @classmethod
-    def of_or_new(cls: Type[T], obj: Node) -> T:
-        data = obj._pass_data
-        while not isinstance(data, cls) and data is not None:
-            data = data.next_data
-        if data is None:
-            data = cls()
-            obj.add_data(data)
-        return data
-
-
-class Program(Node):
-    def __init__(self, sources: List[Source]):
-        super().__init__()
-        self.sources = sources
-
-    @property
-    def main_source(self) -> Source:
-        main_source = None
-        for source in self.sources:
-            if source.is_main:
-                if main_source is None:
-                    main_source = source
-                else:
-                    raise ValueError("Multiple main sources")
-        return main_source
-
-
-class Source(Node):
-    def __init__(self, text: str, is_main: bool, top_levels: List[TopLevel]):
-        super().__init__()
-        self.text = text
-        self.lines = text.splitlines()
-        self.is_main = is_main
-
-        self.has_errors = False
-        self.top_levels = top_levels
-
-    def get_unique(self) -> Hashable:
-        """Return a unique (hashable) identifier suitable for ensuring no source is parsed multiple times"""
-        raise NotImplementedError()
-
-    def get_name(self) -> str:
-        """Return a str that is displayed as the source in error messages"""
-        raise NotImplementedError()
-
-    def get_path(self) -> Union[Path, None]:
-        """Return a Path if this source has a path, or None if it does not"""
-        raise NotImplementedError()
-
-    @property
-    def imports(self) -> List[Import]:
-        return [top_level for top_level in self.top_levels if isinstance(top_level, Import)]
-
-
-class FileSource(Source):
-    def __init__(self, path: Path, text: str, is_main: bool, top_levels: List[TopLevel]):
-        super().__init__(text, is_main, top_levels)
-        self.path = path
-
-    def get_unique(self) -> Hashable:
-        return self.path
-
-    def get_name(self) -> str:
-        return str(self.path)
-
-    def get_path(self) -> Union[Path, None]:
-        return self.path
-
-
-class StringSource(Source):
-    def __init__(self, text: str, is_main: bool, top_levels: List[TopLevel]):
-        super().__init__(text, is_main, top_levels)
-
-    def get_unique(self) -> Hashable:
-        return "<string>"
-
-    def get_name(self) -> str:
-        return "<string>"
-
-    def get_path(self) -> Union[Path, None]:
-        return None
-
-
-class StdinSource(Source):
-    def __init__(self, text: str, is_main: bool, top_levels: List[TopLevel]):
-        super().__init__(text, is_main, top_levels)
-
-    def get_unique(self) -> Hashable:
-        return "<stdin>"
-
-    def get_name(self) -> str:
-        return "<stdin>"
-
-    def get_path(self) -> Union[Path, None]:
-        return None
-
-
-class BuiltinSource(Source):
-    def __init__(self):
-        super().__init__("", False, [])
-
-    def get_unique(self) -> Hashable:
-        return "<builtin>"
-
-    def get_name(self) -> str:
-        return "<builtin>"
-
-    def get_path(self) -> Union[Path, None]:
-        return None
-
-
-class TopLevel(Node):
+class NodeAST:
     pass
 
 
-class Class(TopLevel):
-    def __init__(self, name: str, parents: List[TypeAnnotation], body: List[ClassStmt]):
+class ProgramAST(NodeAST):
+    def __init__(self, sources: List[SourceAST]):
         super().__init__()
+        self.sources = sources
+
+
+class SourceAST(NodeAST):
+    def __init__(self, source: Source, top_levels: List[TopLevelAST]):
+        super().__init__()
+
+        self.source = source
+        self.top_levels = top_levels
+
+    @property
+    def imports(self) -> List[ImportAST]:
+        return [top_level for top_level in self.top_levels if isinstance(top_level, ImportAST)]
+
+
+class TextAST(NodeAST):
+    def __init__(self, pos: Position):
+        self.pos = pos
+
+
+class TopLevelAST(TextAST):
+    pass
+
+
+class ClassAST(TopLevelAST):
+    def __init__(self, name: str, parents: List[ExprAST], body: List[ClassStmtAST], pos: Position):
+        super().__init__(pos)
 
         self.name: str = name
-        self.parents: List[TypeAnnotation] = parents
-        self.body: List[ClassStmt] = body
+        self.parents: List[ExprAST] = parents
+        self.body: List[ClassStmtAST] = body
 
 
-class Trait(TopLevel):
-    def __init__(self, name: str, parents: List[TypeAnnotation], body: List[ClassStmt]):
-        super().__init__()
+# class Trait(TopLevelAST):
+#     def __init__(self, name: str, parents: List[TypeAnnotation], body: List[ClassStmt]):
+#         super().__init__()
+#
+#         self.name: str = name
+#         self.parents: List[TypeAnnotation] = parents
+#         self.body: List[ClassStmt] = body
 
-        self.name: str = name
-        self.parents: List[TypeAnnotation] = parents
-        self.body: List[ClassStmt] = body
 
-
-class Import(TopLevel):
-    def __init__(self, anchor: str, path: Path):
-        super().__init__()
+class ImportAST(TopLevelAST):
+    def __init__(self, anchor: str, path: Path, pos: Position):
+        super().__init__(pos)
 
         self.anchor: str = anchor
         self.path: Path = path
 
 
-class Function(TopLevel):
-    def __init__(self, name: str, params: List[Param], ret: TypeAnnotation, body: List[Stmt]):
-        super().__init__()
+class FunctionAST(TopLevelAST):
+    def __init__(self, name: str, params: List[ParamAST], ret: ExprAST, body: List[StmtAST], pos: Position):
+        super().__init__(pos)
 
         self.name = name
         self.params = params
@@ -202,115 +87,119 @@ class Function(TopLevel):
         self.body = body
 
 
-class ClassStmt(Node):
+class ClassStmtAST(TextAST):
     pass
 
 
-class Attr(ClassStmt):
-    def __init__(self, name: str, annotation: TypeAnnotation):
-        super().__init__()
+class AttrAST(ClassStmtAST):
+    def __init__(self, name: str, annotation: ExprAST, pos: Position):
+        super().__init__(pos)
 
         self.name = name
         self.annotation = annotation
 
 
-class Method(ClassStmt):
-    def __init__(self, name: str, params: List[Param], ret: TypeAnnotation):
-        super().__init__()
+class MethodSigAST(ClassStmtAST):
+    def __init__(self, name: str, params: List[ParamAST], ret: ExprAST, pos: Position):
+        super().__init__(pos)
 
         self.name = name
         self.params = params
         self.ret = ret
 
 
-class MethodImpl(Method):
-    def __init__(self, name: str, params: List[Param], ret: TypeAnnotation, body: List[Stmt]):
-        super().__init__(name, params, ret)
+class MethodImplAST(MethodSigAST):
+    def __init__(self, name: str, params: List[ParamAST], ret: ExprAST, body: List[StmtAST], pos: Position):
+        super().__init__(name, params, ret, pos)
 
         self.body = body
 
+    @classmethod
+    def from_sig(cls, sig: MethodSigAST, body: List[StmtAST]) -> MethodImplAST:
+        return cls(sig.name, sig.params, sig.ret, body, sig.pos)
 
-class Stmt(Node):
+
+class StmtAST(TextAST):
     pass
 
 
-class IfStmt(Stmt):
-    def __init__(self, cond: Expr, then_do: Stmt, else_do: Stmt):
-        super().__init__()
+class IfStmtAST(StmtAST):
+    def __init__(self, cond: ExprAST, then_do: StmtAST, else_do: StmtAST, pos: Position):
+        super().__init__(pos)
 
         self.cond = cond
         self.then_do = then_do
         self.else_do = else_do
 
 
-class WhileStmt(Stmt):
-    def __init__(self, cond: Expr, do: Stmt):
-        super().__init__()
+class WhileStmtAST(StmtAST):
+    def __init__(self, cond: ExprAST, do: StmtAST, pos: Position):
+        super().__init__(pos)
 
         self.cond = cond
         self.do = do
 
 
-class BlockStmt(Stmt):
-    def __init__(self, body: List[Stmt]):
-        super().__init__()
+class BlockStmtAST(StmtAST):
+    def __init__(self, body: List[StmtAST], pos: Position):
+        super().__init__(pos)
 
         self.body = body
 
 
-class VarDeclStmt(Stmt):
-    def __init__(self, name: str, annotation: TypeAnnotation, value: Expr):
-        super().__init__()
+class VarDeclStmtAST(StmtAST):
+    def __init__(self, name: str, annotation: ExprAST, value: ExprAST, pos: Position):
+        super().__init__(pos)
 
         self.name = name
         self.annotation = annotation
         self.value = value
 
 
-class ReturnStmt(Stmt):
-    def __init__(self, value: Expr):
-        super().__init__()
+class ReturnStmtAST(StmtAST):
+    def __init__(self, value: ExprAST, pos: Position):
+        super().__init__(pos)
 
         self.value = value
 
 
-class ExprStmt(Stmt):
-    def __init__(self, value: Expr):
-        super().__init__()
+class ExprStmtAST(StmtAST):
+    def __init__(self, value: ExprAST, pos: Position):
+        super().__init__(pos)
 
         self.value = value
 
 
-class Expr(Node):
+class ExprAST(TextAST):
     pass
 
 
-class GetVarExpr(Expr):
-    def __init__(self, var: str):
-        super().__init__()
+class GetVarExprAST(ExprAST):
+    def __init__(self, var: str, pos: Position):
+        super().__init__(pos)
 
         self.var = var
 
 
-class SetVarExpr(Expr):
-    def __init__(self, var: str, value: Expr):
-        super().__init__()
+class SetVarExprAST(ExprAST):
+    def __init__(self, var: str, value: ExprAST, pos: Position):
+        super().__init__(pos)
 
         self.var = var
         self.value = value
 
 
-class GetAttrExpr(Expr):
-    def __init__(self, obj: Expr, attr: str):
-        super().__init__()
+class GetAttrExprAST(ExprAST):
+    def __init__(self, obj: ExprAST, attr: str, pos: Position):
+        super().__init__(pos)
 
         self.obj = obj
         self.attr = attr
 
 
-class SetAttrExpr(Expr):
-    def __init__(self, obj: Expr, attr: str, value: Expr):
-        super().__init__()
+class SetAttrExprAST(ExprAST):
+    def __init__(self, obj: ExprAST, attr: str, value: ExprAST, pos: Position):
+        super().__init__(pos)
 
         self.obj = obj
         self.attr = attr
@@ -319,55 +208,55 @@ class SetAttrExpr(Expr):
 
 # region Binary
 
-class BinaryExpr(Expr):
-    def __init__(self, left: Expr, right: Expr):
-        super().__init__()
+class BinaryExprAST(ExprAST):
+    def __init__(self, left: ExprAST, right: ExprAST, pos: Position):
+        super().__init__(pos)
 
         self.left = left
         self.right = right
 
 
-class GTExpr(BinaryExpr):
+class GTExprAST(BinaryExprAST):
     pass
 
 
-class LTExpr(BinaryExpr):
+class LTExprAST(BinaryExprAST):
     pass
 
 
-class GEExpr(BinaryExpr):
+class GEExprAST(BinaryExprAST):
     pass
 
 
-class LEExpr(BinaryExpr):
+class LEExprAST(BinaryExprAST):
     pass
 
 
-class EQExpr(BinaryExpr):
+class EQExprAST(BinaryExprAST):
     pass
 
 
-class NEExpr(BinaryExpr):
+class NEExprAST(BinaryExprAST):
     pass
 
 
-class AddExpr(BinaryExpr):
+class AddExprAST(BinaryExprAST):
     pass
 
 
-class SubExpr(BinaryExpr):
+class SubExprAST(BinaryExprAST):
     pass
 
 
-class MulExpr(BinaryExpr):
+class MulExprAST(BinaryExprAST):
     pass
 
 
-class DivExpr(BinaryExpr):
+class DivExprAST(BinaryExprAST):
     pass
 
 
-class ModExpr(BinaryExpr):
+class ModExprAST(BinaryExprAST):
     pass
 
 # endregion
@@ -375,63 +264,52 @@ class ModExpr(BinaryExpr):
 
 # region Unary
 
-class UnaryExpr(Expr):
-    def __init__(self, right: Expr):
-        super().__init__()
+class UnaryExprAST(ExprAST):
+    def __init__(self, right: ExprAST, pos: Position):
+        super().__init__(pos)
 
         self.right = right
 
 
-class InvExpr(UnaryExpr):
+class InvExprAST(UnaryExprAST):
     pass
 
 
-class NegExpr(UnaryExpr):
+class NegExprAST(UnaryExprAST):
     pass
 
 
-class NotExpr(UnaryExpr):
+class NotExprAST(UnaryExprAST):
     pass
 
 # endregion
 
 
-class CallExpr(Expr):
-    def __init__(self, left: Expr, args: List[Expr]):
-        super().__init__()
+class CallExprAST(ExprAST):
+    def __init__(self, left: ExprAST, args: List[ExprAST], pos: Position):
+        super().__init__(pos)
 
         self.left = left
         self.args = args
 
 
-class IntLiteral(Expr):
-    def __init__(self, num: int):
-        super().__init__()
+class IntLiteralAST(ExprAST):
+    def __init__(self, num: int, pos: Position):
+        super().__init__(pos)
 
         self.num = num
 
 
-class StrLiteral(Expr):
-    def __init__(self, s: str):
-        super().__init__()
+class StrLiteralAST(ExprAST):
+    def __init__(self, s: str, pos: Position):
+        super().__init__(pos)
 
         self.s = s
 
 
-class Param(Node):
-    def __init__(self, name: str, annotation: TypeAnnotation):
-        super().__init__()
+class ParamAST(TextAST):
+    def __init__(self, name: str, annotation: ExprAST, pos: Position):
+        super().__init__(pos)
 
         self.name = name
         self.annotation = annotation
-
-
-class TypeAnnotation(Node):
-    pass
-
-
-class GetTypeAnnotation(TypeAnnotation):
-    def __init__(self, type: str):
-        super().__init__()
-
-        self.type: str = type

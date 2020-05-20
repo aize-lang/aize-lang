@@ -1,6 +1,3 @@
-
-
-def main() -> int {
-    var num: int = 0;
-    return 0;
+class Person \\\\\\0{
+    &
 }
