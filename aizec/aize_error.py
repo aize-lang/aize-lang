@@ -19,9 +19,10 @@ class Reporter:
     def positioned_error(self, type: str, msg: str, pos: Position):
         source_name = pos.get_source_name()
         if isinstance(pos, TextPosition):
+            in_context = pos.in_context()
             self.write(f"In {source_name}:")
             self.write(f"{type}: {msg}:")
-            self.write(f"{pos.in_context()}")
+            self.write(f"{in_context}")
         else:
             self.write(f"In {source_name}:")
             self.write(f"{type}: {msg}.")
@@ -111,9 +112,9 @@ class _ErrorHandler:
 
         reporter.flush()
 
+        self.is_flushing = False
         if has_errors:
             exit(0)
-        self.is_flushing = False
 
     @classmethod
     def get_instance(cls):
@@ -124,6 +125,10 @@ class _ErrorHandler:
 
 # TODO Fold the class into _ErrorHandler
 class MessageHandler:
+    @staticmethod
+    def reset_errors():
+        _ErrorHandler._instance_ = None
+
     @staticmethod
     def set_io(io: Union[IO, Literal['stderr']]):
         if isinstance(io, str):
@@ -140,7 +145,6 @@ class MessageHandler:
     @staticmethod
     def handle_message(msg: AizeMessage):
         _ErrorHandler.get_instance().handle_message(msg)
-        MessageHandler.flush_messages()
 
     @staticmethod
     def flush_messages():

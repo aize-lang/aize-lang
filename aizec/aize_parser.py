@@ -287,7 +287,6 @@ class AizeParser:
         if isinstance(pos, Token):
             pos = pos.pos()
         elif isinstance(pos, TextAST):
-            # TODO
             pos = pos.pos
         self.source.has_errors = True
         MessageHandler.handle_message(ParseError(msg, pos))

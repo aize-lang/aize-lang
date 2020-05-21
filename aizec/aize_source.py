@@ -15,6 +15,8 @@ class Source:
 
     def get_line(self, index: int) -> str:
         """Return the line indexed by index (starting at 0)"""
+        if index < 0:
+            raise IndexError(f"Line index must be greater than 0 (got {index})")
         return self._lines[index]
 
     def read_char(self) -> str:
@@ -114,7 +116,12 @@ class TextPosition(Position):
         self._columns = columns
 
     def in_context(self) -> str:
-        return f"{self._line_no:>6} | {self._source.get_line(self._line_no - 1)}\n" \
+        line = self._source.get_line(self._line_no - 1)
+        if not (0 <= self._columns[1] < len(line)):
+            raise IndexError("End column must be valid")
+        if not (0 <= self._columns[0] < self._columns[1]):
+            raise IndexError("Start column must be valid")
+        return f"{self._line_no:>6} | {line}\n" \
                f"         {' ' * (self._columns[0]-1)}{'^' * (self._columns[1] - self._columns[0])}"
 
     def get_source_name(self):
