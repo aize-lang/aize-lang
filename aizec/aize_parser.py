@@ -5,7 +5,7 @@ import contextlib
 from aizec.aize_ast import *
 from aizec.common import *
 from aizec.aize_source import Source, Position
-from aizec.aize_error import AizeMessage, MessageHandler
+from aizec.aize_error import AizeMessage, MessageHandler, ThrownMessage
 
 BASIC_TOKENS = Trie.from_list([
     "+", "+=",
@@ -23,6 +23,8 @@ BASIC_TOKENS = Trie.from_list([
     "@", "::"
 ])
 
+BASIC_START = list(BASIC_TOKENS.children.keys())
+
 KEYWORDS = ['class', 'trait', 'def', 'method', 'attr', 'var', 'while', 'if', 'return', 'else', 'import']
 
 BIN = '01'
@@ -31,6 +33,8 @@ DEC = OCT + '89'
 HEX = DEC + 'ABCDEF'
 IDENT_START = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_'
 IDENT = IDENT_START + DEC
+
+TOKENIZE_ABLE = ''.join(BASIC_START) + IDENT_START + DEC
 
 
 class ParseError(AizeMessage):
@@ -48,6 +52,10 @@ class ParseError(AizeMessage):
 
 
 class Token:
+    DECIMAL_TYPE = "decimal-number"
+    STRING_TYPE = "string-literal"
+    IDENTIFIER_TYPE = "identifier"
+
     def __init__(self, text: str, type: str, source: Source, line_no: int, columns: Tuple[int, int]):
         self.text = text
         self.type = type
@@ -75,6 +83,7 @@ class Scanner:
         self._line_no: int = 1
         # """Is in fact 1-indexed, but starts at 0 since advance() increments it instantly"""
         self._token: str = ""
+        self._token_line_pos = 1
 
         self._is_last_line = False
         self._is_done = False
@@ -111,6 +120,10 @@ class Scanner:
 
     def advance(self):
         self._token += self._curr_char
+        if self._line_pos == 1:
+            self._token_line_pos = 1
+        else:
+            self._token_line_pos += 1
 
         # Keep loading lines until we reach a line with at least a character or the end
         while not self.is_last_line() and self.at_line_end():
@@ -158,7 +171,7 @@ class Scanner:
     def start_token(self, type: Union[str, None] = None):
         self._token = ""
         line_no = self._line_no
-        start_line_pos = self._line_pos
+        start_line_pos = self._token_line_pos
 
         token = Token.__new__(Token)
         yield token
@@ -167,7 +180,7 @@ class Scanner:
         if type is None:
             type = text
 
-        token.__init__(text, type, self.source, line_no, (start_line_pos+1, self._line_pos+1))
+        token.__init__(text, type, self.source, line_no, (start_line_pos+1, self._token_line_pos+1))
     # endregion
 
     def iter_tokens(self) -> Iterator[Token]:
@@ -178,19 +191,19 @@ class Scanner:
                 yield token
             else:
                 if self.curr in "0123456789":
-                    with self.start_token("dec") as token:
+                    with self.start_token(Token.DECIMAL_TYPE) as token:
                         while self.curr in "0123456789":
                             self.advance()
                     yield token
                 elif self.curr in IDENT_START:
-                    with self.start_token("ident") as token:
+                    with self.start_token(Token.IDENTIFIER_TYPE) as token:
                         while self.curr in IDENT:
                             self.advance()
                     if token.text in KEYWORDS:
                         token.type = token.text
                     yield token
                 elif self.curr == "\"":
-                    with self.start_token("str") as token:
+                    with self.start_token(Token.STRING_TYPE) as token:
                         self.advance()
                         while self.curr != "\"":
                             if self.curr == "\\":
@@ -222,8 +235,15 @@ class Scanner:
                     continue
                 else:
                     with self.start_token("<unexpected characters>") as token:
-                        self.advance()
-                    MessageHandler.handle_message(ParseError(f"Cannot tokenize character '{token.text!s}'", token.pos()))
+                        while self.curr not in TOKENIZE_ABLE:
+                            self.advance()
+                    if len(token.text) == 1:
+                        MessageHandler.handle_message(ParseError(f"Cannot tokenize character '{token.text!s}'", token.pos()))
+                    elif len(token.text) > 1:
+                        MessageHandler.handle_message(ParseError(f"Cannot tokenize characters '{token.text!s}'", token.pos()))
+                    else:
+                        raise ValueError(self.curr)
+
         while True:
             yield Token('<eof>', '<eof>', self.source, self._line_no, (self._line_pos+1, self._line_pos+1))
 
@@ -350,12 +370,12 @@ class AizeParser:
     def parse_class(self) -> ClassAST:
         start = self.match_exc("class")
 
-        name = self.match_exc("ident").text
+        name = self.match_exc(Token.IDENTIFIER_TYPE).text
 
         if self.match("["):
             type_vars = []
             while not self.match("]"):
-                type_var = self.match("ident").text
+                type_var = self.match(Token.IDENTIFIER_TYPE).text
                 type_vars.append(type_var)
                 if not self.match(","):
                     self.match_exc("]")
@@ -394,7 +414,7 @@ class AizeParser:
     # def parse_trait(self):
     #     start = self.match_exc("trait")
     #
-    #     name = self.match_exc("ident").text
+    #     name = self.match_exc(Token.IDENTIFIER_TYPE).text
     #
     #     self.match_exc("{")
     #     body = []
@@ -419,7 +439,7 @@ class AizeParser:
 
     def parse_attr(self) -> AttrAST:
         start = self.match("attr")
-        name = self.match_exc("ident").text
+        name = self.match_exc(Token.IDENTIFIER_TYPE).text
         self.match_exc(":")
         ann = self.parse_ann()
         self.match_exc(";")
@@ -427,11 +447,11 @@ class AizeParser:
 
     def parse_method_sig(self) -> MethodSigAST:
         start = self.match("method")
-        name = self.match_exc("ident").text
+        name = self.match_exc(Token.IDENTIFIER_TYPE).text
         self.match_exc("(")
         args = []
         while not self.match(")"):
-            param_name = self.match_exc("ident")
+            param_name = self.match_exc(Token.IDENTIFIER_TYPE)
             if not self.match(":"):
                 if len(args) == 0:  # If this is the first argument (self), which doesn't need an annotation
                     param_ann = None
@@ -467,7 +487,7 @@ class AizeParser:
     def parse_import(self) -> ImportAST:
         start = self.match("import")
 
-        import_str = self.match_exc("str")
+        import_str = self.match_exc(Token.STRING_TYPE)
         path = Path(import_str.text[1:-1])
         if len(path.parts) > 0:
             first_part = path.parts[0]
@@ -491,11 +511,11 @@ class AizeParser:
 
     def parse_function(self):
         start = self.match("def")
-        name = self.match_exc("ident")
+        name = self.match_exc(Token.IDENTIFIER_TYPE)
         self.match_exc("(")
         params = []
         while not self.match(")"):
-            param_name = self.match_exc("ident")
+            param_name = self.match_exc(Token.IDENTIFIER_TYPE)
             self.match_exc(":")
             param_ann = self.parse_ann()
             params.append(ParamAST(param_name.text, param_ann, param_name.pos()))
@@ -565,7 +585,7 @@ class AizeParser:
 
     def parse_var(self) -> VarDeclStmtAST:
         start = self.match("var")
-        var = self.match_exc("ident").text
+        var = self.match_exc(Token.IDENTIFIER_TYPE).text
         if self.match(":"):
             type = self.parse_type()
         else:
@@ -707,12 +727,12 @@ class AizeParser:
                 expr = CallExprAST(expr, args, start.pos())
             elif start := self.match("."):
                 # TODO maybe also match number for tuples?
-                attr = self.match_exc("ident")
+                attr = self.match_exc(Token.IDENTIFIER_TYPE)
                 expr = GetAttrExprAST(expr, attr.text, start.pos())
             # TODO Namespaces
             # elif self.match("::"):
             #     start = self.prev
-            #     attr = self.match_exc("ident")
+            #     attr = self.match_exc(Token.IDENTIFIER_TYPE)
             #     if isinstance(expr, GetVarExpr):
             #         expr = GetNamespaceExpr(GetNamespace(expr.name).place(expr.pos), attr.text).place(start.pos)
             #     else:
@@ -726,15 +746,15 @@ class AizeParser:
             expr = self.parse_expr()
             self.match_exc(")")
             return expr
-        elif self.curr_is("dec"):
-            num = self.match("dec")
+        elif self.curr_is(Token.DECIMAL_TYPE):
+            num = self.match(Token.DECIMAL_TYPE)
             return IntLiteralAST(int(num.text), num.pos())
-        elif self.curr_is("str"):
-            s = self.match("str")
+        elif self.curr_is(Token.STRING_TYPE):
+            s = self.match(Token.STRING_TYPE)
             s_e = s.text.encode().decode("unicode-escape")
             return StrLiteralAST(s_e, s.pos())
-        elif self.curr_is("ident"):
-            var = self.match("ident")
+        elif self.curr_is(Token.IDENTIFIER_TYPE):
+            var = self.match(Token.IDENTIFIER_TYPE)
             return GetVarExprAST(var.text, var.pos())
         else:
             if self.report_error(f"Cannot parse '{self.curr.type}' token", self.curr):

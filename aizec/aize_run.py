@@ -80,10 +80,10 @@ class FrontendManager:
     def make_file_source(path: Path, pos: Position = None) -> FileSource:
         try:
             path = path.resolve()
+            file_stream = path.open("r")
         except FileNotFoundError:
-            raise AizeFileError(f"Cannot open file {path!s}", pos) from None
+            raise AizeFileError(f"Cannot open '{str(path)}'", pos) from None
 
-        file_stream = path.open("r")
         return FileSource(path, file_stream)
 
     @staticmethod

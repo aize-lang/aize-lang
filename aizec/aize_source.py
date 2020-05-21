@@ -117,9 +117,9 @@ class TextPosition(Position):
 
     def in_context(self) -> str:
         line = self._source.get_line(self._line_no - 1)
-        if not (0 <= self._columns[1] < len(line)):
+        if not (1 <= (self._columns[1]-1) <= len(line)):
             raise IndexError("End column must be valid")
-        if not (0 <= self._columns[0] < self._columns[1]):
+        if not (1 <= self._columns[0] < self._columns[1]):
             raise IndexError("Start column must be valid")
         return f"{self._line_no:>6} | {line}\n" \
                f"         {' ' * (self._columns[0]-1)}{'^' * (self._columns[1] - self._columns[0])}"
