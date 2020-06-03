@@ -3,7 +3,11 @@ from __future__ import annotations
 from aizec.common import *
 
 
-__all__ = ['Source', 'StreamSource', 'FileSource', 'Position', 'TextPosition']
+__all__ = [
+    'Source', 'StreamSource', 'FileSource',
+    'Position', 'TextPosition', 'BuiltinPosition', 'SourcePosition',
+    'Positioned'
+]
 
 
 class Source:
@@ -18,6 +22,15 @@ class Source:
         if index < 0:
             raise IndexError(f"Line index must be greater than 0 (got {index})")
         return self._lines[index]
+
+    def __eq__(self, other: Source):
+        if isinstance(other, Source):
+            return other.get_unique() == self.get_unique()
+        else:
+            return False
+
+    def __hash__(self):
+        return hash(self.get_unique())
 
     def read_char(self) -> str:
         """Return the next character of the Source, or an empty string if it is done"""
@@ -34,6 +47,9 @@ class Source:
     def get_path(self) -> Union[Path, None]:
         """Return a Path if this source has a path, or None if it does not"""
         raise NotImplementedError()
+
+    def get_position(self) -> SourcePosition:
+        return Position.new_source(self.get_name())
 
 
 class StreamSource(Source):
@@ -74,6 +90,11 @@ class FileSource(Source):
         return self.path
 
 
+class Positioned:
+    def __init__(self, pos: Position):
+        self.pos = pos
+
+
 class Position:
     def get_source_name(self) -> str:
         raise NotImplementedError()
@@ -97,16 +118,43 @@ class Position:
         """
         return TextPosition(source, line, columns)
 
+    @classmethod
+    def new_source(cls, name: str) -> SourcePosition:
+        return SourcePosition(name)
+
+    @classmethod
+    def new_none(cls) -> NoPosition:
+        return NoPosition()
+
+
+class NoPosition(Position):
+    def get_source_name(self) -> str:
+        return "<no position>"
+
+    def __repr__(self):
+        return f"NoPosition()"
+
+
+class SourcePosition(Position):
+    def __init__(self, name: str):
+        self.name = name
+
+    def get_source_name(self) -> str:
+        return self.name
+
+    def __repr__(self):
+        return f"SourcePosition('{self.name!s}')"
+
 
 class BuiltinPosition(Position):
     def __init__(self, builtin_name: str):
         self.builtin_name: str = builtin_name
 
     def get_source_name(self):
-        return self.builtin_name
+        return f"builtin \"{self.builtin_name}\""
 
     def __repr__(self):
-        return f"BuiltinPosition()"
+        return f"BuiltinPosition('{self.builtin_name}')"
 
 
 class TextPosition(Position):

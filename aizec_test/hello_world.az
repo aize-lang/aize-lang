@@ -1,3 +1,5 @@
-class Person {
-    &
+
+
+def main() -> int {
+    return 0;
 }

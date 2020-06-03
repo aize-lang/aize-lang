@@ -21,10 +21,10 @@ def main():
     args = arg_parser.parse_args()
 
     frontend = FrontendManager(Path.cwd(), Path(__file__))
+    frontend.add_file(Path(args.file))
+    frontend.trace_imports()
 
-    frontend.trace_imports([frontend.make_file_source(Path(args.file))])
-
-    ir_manager = IRManager(frontend.get_program_ast())
+    ir_manager = IRManager(frontend.get_program_ir())
 
 
 if __name__ == '__main__':

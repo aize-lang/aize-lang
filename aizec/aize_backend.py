@@ -4,7 +4,7 @@ import llvmlite.ir as ir
 import llvmlite.binding as binding
 
 from aizec.aize_symbols import SymbolData, TypeSymbol, FunctionTypeSymbol
-from aizec.aize_visitors import ProgramVisitor, TopLevelVisitor, StmtVisitor, ExprVisitor, TypeVisitor, ASTPass
+from aizec.aize_visitors_old import ProgramVisitor, TopLevelVisitor, StmtVisitor, ExprVisitor, TypeVisitor, ASTPass
 from aizec.aize_ast import *
 
 

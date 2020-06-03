@@ -4,10 +4,11 @@ from aizec.common import *
 
 from aizec.aize_error import AizeMessage, MessageHandler, Reporter
 from aizec.aize_parser import AizeParser
-# from aizec.aize_semantics import AizeAnalyzer
-# from aizec.aize_backend import IRToLLVM
+from aizec.aize_semantics import CreateIR
 from aizec.aize_source import Source, FileSource, Position, StreamSource
+
 from aizec.aize_ast import ProgramAST, SourceAST
+from aizec.aize_ir import ProgramIR
 
 
 __all__ = ['FrontendManager', 'IRManager', 'BackendManager',
@@ -64,8 +65,7 @@ class FrontendManager:
         self.project_dir = project_dir
         self.std_dir = std_dir
 
-        self._sources: List[Source] = []
-        self._source_asts: List[SourceAST] = []
+        self._sources: Dict[Source, SourceAST] = {}
 
     @staticmethod
     def _parse_source(source: Source) -> SourceAST:
@@ -77,7 +77,7 @@ class FrontendManager:
         assert False
 
     @staticmethod
-    def make_file_source(path: Path, pos: Position = None) -> FileSource:
+    def _make_file_source(path: Path, pos: Position = None) -> FileSource:
         try:
             path = path.resolve()
             file_stream = path.open("r")
@@ -87,34 +87,42 @@ class FrontendManager:
         return FileSource(path, file_stream)
 
     @staticmethod
-    def make_text_source(text: str, pos: Position = None) -> StreamSource:
+    def _make_text_source(text: str, pos: Position = None) -> StreamSource:
         text_stream = io.StringIO(text)
 
         return StreamSource("<string>", text_stream)
 
     def get_program_ast(self) -> ProgramAST:
-        return ProgramAST(self._source_asts.copy())
+        return ProgramAST([ast for ast in self._sources.values()])
+
+    def get_program_ir(self) -> ProgramIR:
+        return CreateIR.create_ir(self.get_program_ast())
 
     def add_source(self, source: Source):
-        self._sources.append(source)
-        self._source_asts.append(self._parse_source(source))
+        if source in self._sources:
+            raise ValueError(f"Source {source} already added")
+        self._sources[source] = self._parse_source(source)
 
-    def trace_imports(self, from_sources: List[Source] = None):
-        to_visit: List[Source] = self._sources.copy() + ([] if from_sources is None else from_sources)
-        visited: Set = set()
-        source_asts: List[SourceAST] = []
-        sources: List[Source] = []
+    def add_file(self, path: Path):
+        self.add_source(self._make_file_source(path))
+
+    def trace_imports(self):
+        to_visit: List[Source] = [source for source in self._sources]
+        visited: Set[Source] = set()
+
+        sources: Dict[Source, SourceAST] = self._sources.copy()
 
         while to_visit:
             source = to_visit.pop()
-            if source.get_unique() in visited:
+            if source in visited:
                 continue
 
-            source_ast = self._parse_source(source)
-            sources.append(source)
-            source_asts.append(source_ast)
+            if source not in sources:
+                source_ast = sources[source] = self._parse_source(source)
+            else:
+                source_ast = sources[source]
 
-            visited.add(source.get_unique())
+            visited.add(source)
 
             for import_node in source_ast.imports:
                 if import_node.anchor == 'std':
@@ -138,20 +146,15 @@ class FrontendManager:
                 if source.get_path() and abs_path != source.get_path().resolve():
                     raise AizeImportError(f"A file cannot import itself", pos=import_node.pos)
 
-                imported_source = self.make_file_source(abs_path, pos=import_node.pos)
+                imported_source = self._make_file_source(abs_path, pos=import_node.pos)
                 to_visit.append(imported_source)
 
         self._sources = sources
-        self._source_asts = source_asts
 
 
 class IRManager:
-    def __init__(self, program_ast: ProgramAST):
-        self.program_ast = program_ast
-
-    def get_program_ir(self):
-        # TODO
-        pass
+    def __init__(self, program: ProgramIR):
+        self.program: ProgramIR = program
 
 
 class BackendManager:

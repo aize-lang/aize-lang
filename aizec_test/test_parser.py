@@ -14,7 +14,7 @@ def set_throw():
 
 class TestClass:
     def load_test_file(self, name: str) -> Source:
-        return FrontendManager.make_file_source(Path("parser_test_files") / "class" / name)
+        return FrontendManager._make_file_source(Path("parser_test_files") / "class" / name)
 
     def test_smallest(self):
         test_file = self.load_test_file("smallest_class.az")
@@ -31,7 +31,7 @@ class TestClass:
 
 class TestComments:
     def load_test_file(self, name: str) -> Source:
-        return FrontendManager.make_file_source(Path("parser_test_files") / "comment" / name)
+        return FrontendManager._make_file_source(Path("parser_test_files") / "comment" / name)
 
     def test_comment(self):
         test_file = self.load_test_file("comment.az")
@@ -50,7 +50,7 @@ class TestComments:
 
 class TestOneLine:
     def load_test_file(self, name: str) -> Source:
-        return FrontendManager.make_file_source(Path("parser_test_files") / "one_line" / name)
+        return FrontendManager._make_file_source(Path("parser_test_files") / "one_line" / name)
 
     def test_empty_source(self):
         test_file = self.load_test_file("empty.az")

@@ -5,7 +5,7 @@ import contextlib
 from aizec.aize_ast import *
 from aizec.common import *
 from aizec.aize_source import Source, Position
-from aizec.aize_error import AizeMessage, MessageHandler, ThrownMessage
+from aizec.aize_error import AizeMessage, MessageHandler
 
 BASIC_TOKENS = Trie.from_list([
     "+", "+=",

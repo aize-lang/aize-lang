@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aizec.common import *
 
-from aizec.aize_source import Position, Source
+from aizec.aize_source import *
 
 
 __all__ = [
@@ -10,7 +10,7 @@ __all__ = [
     'ProgramAST', 'SourceAST',
     'ParamAST',
     'TopLevelAST', 'ClassAST', 'FunctionAST', 'ImportAST',
-    'AttrAST', 'MethodSigAST', 'MethodImplAST',
+    'AttrAST', 'MethodSigAST', 'MethodImplAST', 'MethodAST',
     'StmtAST', 'IfStmtAST', 'WhileStmtAST', 'BlockStmtAST', 'VarDeclStmtAST', 'ReturnStmtAST', 'ExprStmtAST',
 
     'ExprAST', 'NEExprAST', 'BinaryExprAST', 'SubExprAST', 'AddExprAST', 'MulExprAST', 'GetVarExprAST', 'EQExprAST',
@@ -21,7 +21,11 @@ __all__ = [
 
 
 class NodeAST:
-    pass
+    def __eq__(self, other):
+        return other is self
+
+    def __hash__(self):
+        return id(self)
 
 
 class ProgramAST(NodeAST):
@@ -42,9 +46,9 @@ class SourceAST(NodeAST):
         return [top_level for top_level in self.top_levels if isinstance(top_level, ImportAST)]
 
 
-class TextAST(NodeAST):
+class TextAST(Positioned, NodeAST):
     def __init__(self, pos: Position):
-        self.pos = pos
+        super().__init__(pos)
 
 
 class TopLevelAST(TextAST):
@@ -58,15 +62,6 @@ class ClassAST(TopLevelAST):
         self.name: str = name
         self.parents: List[ExprAST] = parents
         self.body: List[ClassStmtAST] = body
-
-
-# class Trait(TopLevelAST):
-#     def __init__(self, name: str, parents: List[TypeAnnotation], body: List[ClassStmt]):
-#         super().__init__()
-#
-#         self.name: str = name
-#         self.parents: List[TypeAnnotation] = parents
-#         self.body: List[ClassStmt] = body
 
 
 class ImportAST(TopLevelAST):
@@ -117,6 +112,9 @@ class MethodImplAST(MethodSigAST):
     @classmethod
     def from_sig(cls, sig: MethodSigAST, body: List[StmtAST]) -> MethodImplAST:
         return cls(sig.name, sig.params, sig.ret, body, sig.pos)
+
+
+MethodAST = MethodSigAST
 
 
 class StmtAST(TextAST):
