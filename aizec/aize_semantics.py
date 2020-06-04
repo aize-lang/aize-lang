@@ -9,8 +9,6 @@ from aizec.aize_error import AizeMessage, Reporter, MessageHandler
 from aizec.aize_source import *
 from aizec.aize_symbols import *
 
-from aizec.aize_visitors import ASTVisitor
-
 
 # region Errors
 # class DefinitionError(AizeMessage):
@@ -194,5 +192,161 @@ class CreateIR(ASTVisitor):
         return GetTypeIR(type.var, type.pos)
 
 
-def ast_to_ir(program: ProgramAST) -> ProgramIR:
-    return CreateIR(program).visit_program(program)
+class IRVisitor(ABC):
+    @abstractmethod
+    def visit_program(self, program: ProgramIR):
+        pass
+
+    @abstractmethod
+    def visit_source(self, source: SourceIR):
+        pass
+
+    def visit_top_level(self, top_level: TopLevelIR):
+        if isinstance(top_level, ClassIR):
+            return self.visit_class(top_level)
+        elif isinstance(top_level, FunctionIR):
+            return self.visit_function(top_level)
+        else:
+            raise TypeError(f"Expected a top-level node, got {top_level}")
+
+    @abstractmethod
+    def visit_class(self, cls: ClassIR):
+        pass
+
+    @abstractmethod
+    def visit_function(self, func: FunctionIR):
+        pass
+
+    @abstractmethod
+    def visit_field(self, attr: FieldIR):
+        pass
+
+    @abstractmethod
+    def visit_method_def(self, method: MethodDefIR):
+        pass
+
+    @abstractmethod
+    def visit_param(self, param: ParamIR):
+        pass
+
+    def visit_stmt(self, stmt: StmtIR):
+        if isinstance(stmt, ReturnIR):
+            return self.visit_return(stmt)
+        else:
+            raise TypeError(f"Expected a stmt node, got {stmt}")
+
+    @abstractmethod
+    def visit_return(self, ret: ReturnIR):
+        pass
+
+    def visit_expr(self, expr: ExprIR):
+        if isinstance(expr, IntIR):
+            return self.visit_int(expr)
+        else:
+            raise TypeError(f"Expected a expr node, got {expr}")
+
+    @abstractmethod
+    def visit_int(self, num: IntIR):
+        pass
+
+    @abstractmethod
+    def visit_ann(self, ann: AnnotationIR):
+        pass
+
+    def visit_type(self, type: TypeIR):
+        if isinstance(type, GetVarExprAST):
+            return self.visit_get_type(type)
+        else:
+            raise TypeError(f"Expected a type node, got {type}")
+
+    @abstractmethod
+    def visit_get_type(self, type: GetVarExprAST):
+        pass
+
+
+class PassRegister:
+    _instance_ = None
+
+    def __init__(self):
+        self._passes: Dict[str, Type[IRPass]] = {}
+
+    @classmethod
+    def _instance(cls):
+        if cls._instance_ is None:
+            cls._instance_ = cls()
+        return cls._instance_
+
+    @classmethod
+    def register(cls, pass_: Type[IRPass]):
+        inst = cls._instance()
+        inst._passes[pass_.NAME] = pass_
+        return pass_
+
+    @classmethod
+    def get_pass(cls, name: str) -> Type[IRPass]:
+        return cls._instance()._passes[name]
+
+
+class IRPass(IRVisitor):
+    NAME: str
+    PREREQUISITES: Set[str]
+
+    def __init__(self):
+        self.table = SymbolTable()
+
+    @classmethod
+    def apply_pass(cls, ir: ProgramIR):
+        pass_ = cls()
+        pass_.visit_program(ir)
+
+    def enter_node(self, node: WithNamespace):
+        return self.table.enter(node.namespace)
+
+    def visit_program(self, program: ProgramIR):
+        with self.enter_node(program):
+            for source in program.sources:
+                self.visit_source(source)
+
+    def visit_source(self, source: SourceIR):
+        with self.enter_node(source):
+            for top_level in source.top_levels:
+                self.visit_top_level(top_level)
+
+    def visit_function(self, func: FunctionIR):
+        pass
+
+    def visit_class(self, cls: ClassIR):
+        pass
+
+    def visit_field(self, attr: FieldIR):
+        pass
+
+    def visit_method_def(self, method: MethodDefIR):
+        pass
+
+    def visit_param(self, param: ParamIR):
+        pass
+
+    def visit_return(self, ret: ReturnIR):
+        pass
+
+    def visit_int(self, num: IntIR):
+        pass
+
+    def visit_ann(self, ann: AnnotationIR):
+        pass
+
+    def visit_get_type(self, type: GetVarExprAST):
+        pass
+
+
+@PassRegister.register
+class CreateBuiltins(IRPass):
+    NAME = 'CreateBuiltins'
+    PREREQUISITES = set()
+
+    def visit_program(self, program: ProgramIR):
+        builtin_namespace = NamespaceSymbol("<builtins>", Position.new_none())
+        BuiltinsCreator.add_builtins(builtin_namespace)
+
+        program.namespace = builtin_namespace

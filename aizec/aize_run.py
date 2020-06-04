@@ -4,7 +4,7 @@ from aizec.common import *
 
 from aizec.aize_error import AizeMessage, MessageHandler, Reporter
 from aizec.aize_parser import AizeParser
-from aizec.aize_semantics import CreateIR
+from aizec.aize_semantics import CreateIR, PassRegister, IRPass
 from aizec.aize_source import Source, FileSource, Position, StreamSource
 
 from aizec.aize_ast import ProgramAST, SourceAST
@@ -153,8 +153,38 @@ class FrontendManager:
 
 
 class IRManager:
+    DEFAULT_PASSES = ['CreateBuiltins']
+
     def __init__(self, program: ProgramIR):
         self.program: ProgramIR = program
+
+        self._ran_passes: Set[str] = set()
+        self._scheduled_passes: List[Type[IRPass]] = []
+
+    def schedule_pass(self, pass_: Union[str, Type[IRPass]]):
+        if isinstance(pass_, str):
+            pass_ = PassRegister.get_pass(pass_)
+        self._scheduled_passes.append(pass_)
+
+    def schedule_all(self, passes: List[Union[str, Type[IRPass]]]):
+        for pass_ in passes:
+            self.schedule_pass(pass_)
+
+    def run_scheduled(self):
+        ran = self._ran_passes
+        scheduled = self._scheduled_passes
+        while len(scheduled) > 0:
+            for i in range(len(scheduled)):
+                to_run = scheduled[i]
+                if ran.issuperset(to_run.PREREQUISITES):
+                    to_run.apply_pass(self.program)
+                    scheduled.pop(i)
+                    ran.add(to_run.NAME)
+                    break
+            else:
+                raise ValueError("No passes can be run")
+
+
 
 
 class BackendManager:

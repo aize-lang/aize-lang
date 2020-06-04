@@ -10,27 +10,27 @@ T = TypeVar('T')
 
 __all__ = ['NodeIR', 'TopLevelIR', 'UnresolvedTypeIR', 'AnnotationIR', 'ProgramIR', 'StmtIR', 'ExprIR', 'ReturnIR',
            'MethodDeclIR', 'IntIR', 'MalformedTypeIR', 'FieldIR', 'TypeIR', 'FunctionIR', 'GetTypeIR', 'SourceIR',
-           'MethodDefIR', 'ParamIR', 'TextIR', 'ClassIR']
+           'MethodDefIR', 'ParamIR', 'TextIR', 'ClassIR', 'WithNamespace']
 
 
 class NodeIR:
     pass
 
 
-class WithBody(Protocol):
-    body: NamespaceSymbol
+class WithNamespace(Protocol):
+    namespace: NamespaceSymbol
 
 
 class ProgramIR(NodeIR):
-    def __init__(self, sources: List[SourceIR], body: NamespaceSymbol):
+    def __init__(self, sources: List[SourceIR], namespace: NamespaceSymbol):
         self.sources = sources
-        self.body = body
+        self.namespace = namespace
 
 
 class SourceIR(NodeIR):
-    def __init__(self, top_levels: List[TopLevelIR], body: NamespaceSymbol):
+    def __init__(self, top_levels: List[TopLevelIR], namespace: NamespaceSymbol):
         self.top_levels = top_levels
-        self.body = body
+        self.namespace = namespace
 
 
 class TextIR(Positioned, NodeIR):
@@ -139,5 +139,5 @@ class GetTypeIR(UnresolvedTypeIR):
 
 
 # if __name__ == '__main__':
-#     __all__ = ['NodeIR'] + [child.__name__ for child in all_subclasses(NodeIR)]
+#     __all__ = ['NodeIR', 'WithBody'] + [child.__name__ for child in all_subclasses(NodeIR)]
 #     print(__all__)
