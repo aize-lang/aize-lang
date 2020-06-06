@@ -158,7 +158,7 @@ class NamespaceSymbol(Symbol):
                 self.type_symbols[as_name] = type
         type.namespace = self
 
-    def define_namespace(self, namespace: NamespaceSymbol, as_name: str = None, visible: bool = True, is_body: bool = False):
+    def define_namespace(self, namespace: NamespaceSymbol, as_name: str = None, visible: bool = True):
         if as_name is None:
             as_name = namespace.name
 
@@ -169,14 +169,25 @@ class NamespaceSymbol(Symbol):
                 self.namespace_symbols[as_name] = namespace
         namespace.namespace = self
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}('{self.name}', {self.position})"
+
 
 class NoNamespaceSymbol(NamespaceSymbol):
     def __init__(self):
         super().__init__("<none>", Position.new_none())
 
-    def __getattribute__(self, item: str):
-        raise Exception(f"{self.__class__.__name__} is being used")
-        # super().__getattribute__(item)
+    def define_value(self, value: VariableSymbol, as_name: str = None, visible: bool = True):
+        raise NotImplementedError()
+
+    def define_type(self, type: TypeSymbol, as_name: str = None, visible: bool = True):
+        raise NotImplementedError()
+
+    def define_namespace(self, namespace: NamespaceSymbol, as_name: str = None, visible: bool = True):
+        raise NotImplementedError()
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}()"
 
 
 class SymbolTable:
@@ -211,5 +222,5 @@ class SymbolTable:
     def define_type(self, type: TypeSymbol, as_name: str = None, visible: bool = True):
         self.current_namespace.define_type(type, as_name, visible)
 
-    def define_namespace(self, namespace: NamespaceSymbol, as_name: str = None, visible: bool = True, is_body: bool = False):
-        self.current_namespace.define_namespace(namespace, as_name, visible, is_body)
+    def define_namespace(self, namespace: NamespaceSymbol, as_name: str = None, visible: bool = True):
+        self.current_namespace.define_namespace(namespace, as_name, visible)

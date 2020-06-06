@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import *
 from contextlib import contextmanager
+from functools import reduce
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path

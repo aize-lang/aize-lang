@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from abc import ABCMeta
+
 from aizec.common import *
 
 from aizec.aize_ast import *
@@ -127,7 +129,7 @@ class CreateIR(ASTVisitor):
         return ProgramIR([self.visit_source(source) for source in program.sources], NoNamespaceSymbol())
 
     def visit_source(self, source: SourceAST):
-        return SourceIR([self.visit_top_level(top_level) for top_level in source.top_levels], NoNamespaceSymbol())
+        return SourceIR([self.visit_top_level(top_level) for top_level in source.top_levels], source.source.get_name(), NoNamespaceSymbol())
 
     def visit_function(self, func: FunctionAST):
         ann = self.visit_ann(func.ret)
@@ -264,11 +266,11 @@ class IRVisitor(ABC):
         pass
 
 
-class PassRegister:
+class PassesRegister:
     _instance_ = None
 
     def __init__(self):
-        self._passes: Dict[str, Type[IRPass]] = {}
+        self._passes: Dict[str, IRPass] = {}
 
     @classmethod
     def _instance(cls):
@@ -277,30 +279,103 @@ class PassRegister:
         return cls._instance_
 
     @classmethod
-    def register(cls, pass_: Type[IRPass]):
-        inst = cls._instance()
-        inst._passes[pass_.NAME] = pass_
-        return pass_
+    @overload
+    def register(cls, pass_: IRPass) -> IRPass:
+        pass
 
     @classmethod
-    def get_pass(cls, name: str) -> Type[IRPass]:
+    @overload
+    def register(cls, *, to_sequences: Iterable[str] = None) -> Callable[[IRPass], IRPass]:
+        pass
+
+    @classmethod
+    def register(cls, pass_: IRPass = None, *, to_sequences: Iterable[str] = None):
+        inst = cls._instance()
+        if to_sequences is None:
+            to_sequences = []
+        to_sequences = set(to_sequences)
+
+        def _register(ir_pass: IRPass):
+            for seq_name in to_sequences:
+                seq = inst.get_pass(seq_name)
+                if isinstance(seq, IRPassSequence):
+                    seq.add_pass(ir_pass)
+                else:
+                    raise ValueError(f"{seq_name} not a IRPassSequence")
+            inst._passes[ir_pass.name] = ir_pass
+            return ir_pass
+
+        if pass_ is None:
+            return _register
+        else:
+            return _register(pass_)
+
+    @classmethod
+    def get_pass(cls, name: str) -> IRPass:
         return cls._instance()._passes[name]
 
 
-class IRPass(IRVisitor):
-    NAME: str
-    PREREQUISITES: Set[str]
+class IRPass(ABC):
+    def __init__(self, name: str):
+        self.name: str = name
 
-    def __init__(self):
-        self.table = SymbolTable()
+    @abstractmethod
+    def get_prerequisites(self) -> Set[str]:
+        pass
+
+    @abstractmethod
+    def apply_pass(self, program: ProgramIR) -> Set[str]:
+        pass
+
+
+# region Metaclass Magic
+class IRPassMetaclass(IRPass, ABC, ABCMeta):
+    pass
+
+
+class IRPassClass:
+    __metaclass__ = IRPassMetaclass
+
+    name: str
+
+    def __init_subclass__(cls):
+        cls.name = cls.get_name()
 
     @classmethod
-    def apply_pass(cls, ir: ProgramIR):
-        pass_ = cls()
-        pass_.visit_program(ir)
+    def get_name(cls) -> str:
+        return cls.__name__
+
+    @classmethod
+    @abstractmethod
+    def get_prerequisites(cls) -> Set[str]:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def apply_pass(cls, program: ProgramIR) -> Set[str]:
+        pass
+# endregion
+
+
+class IRTreePass(IRVisitor, IRPassClass, ABC):
+    def __init__(self):
+        self._table = SymbolTable()
+
+    @classmethod
+    def apply_pass(cls, program: ProgramIR) -> Set[str]:
+        cls().visit_program(program)
+        return {cls.name}
 
     def enter_node(self, node: WithNamespace):
-        return self.table.enter(node.namespace)
+        namespace = node.namespace
+        if namespace.namespace is not None:
+            if namespace.namespace is not self.current_namespace:
+                raise ValueError("When entering a namespace, it must be a child of the current namespace")
+        return self._table.enter(node.namespace)
+
+    @property
+    def current_namespace(self) -> NamespaceSymbol:
+        return self._table.current_namespace
 
     def visit_program(self, program: ProgramIR):
         with self.enter_node(program):
@@ -340,13 +415,61 @@ class IRPass(IRVisitor):
         pass
 
 
-@PassRegister.register
-class CreateBuiltins(IRPass):
-    NAME = 'CreateBuiltins'
-    PREREQUISITES = set()
+class IRPassSequence(IRPass):
+    def __init__(self, name: str, passes: List[IRPass] = None):
+        super().__init__(name)
+        self.passes = [] if passes is None else passes
+
+    def get_prerequisites(self) -> Set[str]:
+        return self._common
+
+    def add_pass(self, ir_pass: IRPass):
+        self.passes.append(ir_pass)
+        return ir_pass
+
+    @property
+    def _common(self):
+        return reduce(set.intersection, (pass_.get_prerequisites() for pass_ in self.passes))
+
+    def apply_pass(self, program: ProgramIR) -> Set[str]:
+        run_passes = {self.name}
+        for pass_ in self.passes:
+            run_passes |= pass_.apply_pass(program)
+        return run_passes
+
+
+DefaultPasses = IRPassSequence("DefaultPasses")
+PassesRegister.register(DefaultPasses)
+
+
+@PassesRegister.register(to_sequences=['DefaultPasses'])
+class CreateBuiltins(IRTreePass):
+    @classmethod
+    def get_prerequisites(cls) -> Set[str]:
+        return set()
 
     def visit_program(self, program: ProgramIR):
         builtin_namespace = NamespaceSymbol("<builtins>", Position.new_none())
         BuiltinsCreator.add_builtins(builtin_namespace)
 
         program.namespace = builtin_namespace
+
+
+@PassesRegister.register(to_sequences=['DefaultPasses'])
+class InitSources(IRTreePass):
+    @classmethod
+    def get_prerequisites(cls) -> Set[str]:
+        return {'CreateBuiltins'}
+
+    def visit_source(self, source: SourceIR):
+        global_namespace = NamespaceSymbol(f"<{source.source_name} globals>", Position.new_source(source.source_name))
+        self.current_namespace.define_namespace(global_namespace, visible=False)
+
+        source.namespace = global_namespace
+
+
+@PassesRegister.register(to_sequences=['DefaultPasses'])
+class DeclareTypes(IRTreePass):
+    @classmethod
+    def get_prerequisites(cls) -> Set[str]:
+        return {'CreateBuiltins', 'InitSources'}

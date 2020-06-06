@@ -28,8 +28,9 @@ class ProgramIR(NodeIR):
 
 
 class SourceIR(NodeIR):
-    def __init__(self, top_levels: List[TopLevelIR], namespace: NamespaceSymbol):
+    def __init__(self, top_levels: List[TopLevelIR], source_name: str, namespace: NamespaceSymbol):
         self.top_levels = top_levels
+        self.source_name = source_name
         self.namespace = namespace
 
 

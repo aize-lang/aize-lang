@@ -25,7 +25,7 @@ def main():
     frontend.trace_imports()
 
     ir_manager = IRManager(frontend.get_program_ir())
-    ir_manager.schedule_all(IRManager.DEFAULT_PASSES)
+    ir_manager.schedule_pass('DefaultPasses')
     ir_manager.run_scheduled()
 
 
