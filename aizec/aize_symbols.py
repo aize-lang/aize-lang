@@ -9,15 +9,25 @@ __all__ = [
     'Symbol',
     'VariableSymbol',
     'NamespaceSymbol', 'NoNamespaceSymbol',
-    'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol',
+    'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'UnknownTypeSymbol', 'ErroredTypeSymbol',
     'SymbolTable',
-    'SymbolError'
+    'FailedLookupError', 'DuplicateSymbolError'
 ]
 
 
 class SymbolError(Exception):
-    def __init__(self, data: Any):
-        self.data = data
+    pass
+
+
+class DuplicateSymbolError(SymbolError):
+    def __init__(self, new_symbol: Symbol, old_symbol: Symbol):
+        self.new_symbol = new_symbol
+        self.old_symbol = old_symbol
+
+
+class FailedLookupError(SymbolError):
+    def __init__(self, failed_name: str):
+        self.failed_name = failed_name
 
 
 class Symbol:
@@ -58,6 +68,22 @@ class TypeSymbol(Symbol):
         return sub is self
 
 
+class UnknownTypeSymbol(TypeSymbol):
+    def __init__(self, pos: Position):
+        super().__init__("<unresolved>", pos)
+
+    def is_super_of(self, sub: TypeSymbol) -> bool:
+        raise ValueError("Cannot compare unknown type symbols")
+
+
+class ErroredTypeSymbol(TypeSymbol):
+    def __init__(self, pos: Position):
+        super().__init__("<errored type>", pos)
+
+    def is_super_of(self, sub: TypeSymbol) -> bool:
+        return False
+
+
 class IntTypeSymbol(TypeSymbol):
     def __init__(self, name: str, bit_size: int, pos: Position):
         super().__init__(name, pos)
@@ -68,8 +94,8 @@ class IntTypeSymbol(TypeSymbol):
 
 
 class FunctionTypeSymbol(TypeSymbol):
-    def __init__(self, name: str, params: List[TypeSymbol], ret: TypeSymbol, pos: Position):
-        super().__init__(name, pos)
+    def __init__(self, params: List[TypeSymbol], ret: TypeSymbol, pos: Position):
+        super().__init__("<function type>", pos)
         self.params = params
         self.ret = ret
 
@@ -123,7 +149,7 @@ class NamespaceSymbol(Symbol):
         for namespace in lookup_chain:
             if name in namespace.type_symbols:
                 return namespace.type_symbols[name]
-        raise SymbolError(name)
+        raise FailedLookupError(name)
 
     def lookup_value(self, name: str, *, here: bool = False, nearest: bool = True) -> VariableSymbol:
         if here:
@@ -134,7 +160,7 @@ class NamespaceSymbol(Symbol):
         for namespace in lookup_chain:
             if name in namespace.value_symbols:
                 return namespace.value_symbols[name]
-        raise SymbolError(name)
+        raise FailedLookupError(name)
 
     def define_value(self, value: VariableSymbol, as_name: str = None, visible: bool = True):
         if as_name is None:
@@ -142,7 +168,7 @@ class NamespaceSymbol(Symbol):
 
         if visible:
             if as_name in self.value_symbols:
-                raise SymbolError(self.value_symbols[as_name])
+                raise DuplicateSymbolError(value, self.value_symbols[as_name])
             else:
                 self.value_symbols[as_name] = value
         value.namespace = self
@@ -153,7 +179,7 @@ class NamespaceSymbol(Symbol):
 
         if visible:
             if as_name in self.type_symbols:
-                raise SymbolError(f"Symbol Already Defined: {self.type_symbols[as_name]}")
+                raise DuplicateSymbolError(type, self.type_symbols[as_name])
             else:
                 self.type_symbols[as_name] = type
         type.namespace = self
@@ -164,7 +190,7 @@ class NamespaceSymbol(Symbol):
 
         if visible:
             if as_name in self.namespace_symbols:
-                raise SymbolError(f"Symbol Already Defined: {self.namespace_symbols[as_name]}")
+                raise DuplicateSymbolError(namespace, self.namespace_symbols[as_name])
             else:
                 self.namespace_symbols[as_name] = namespace
         namespace.namespace = self

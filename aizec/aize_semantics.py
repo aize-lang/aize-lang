@@ -7,50 +7,73 @@ from aizec.common import *
 from aizec.aize_ast import *
 from aizec.aize_ir import *
 
-from aizec.aize_error import AizeMessage, Reporter, MessageHandler
+from aizec.aize_error import AizeMessage, Reporter, MessageHandler, ErrorLevel
 from aizec.aize_source import *
 from aizec.aize_symbols import *
 
 
 # region Errors
-# class DefinitionError(AizeMessage):
-#     def __init__(self, msg: str, pos: Position, note: AizeMessage = None):
-#         super().__init__(self.ERROR)
-#         self.msg = msg
-#         self.pos = pos
-#
-#         self.note = note
-#
-#     @classmethod
-#     def name_existing(cls, node: Node, existing: Symbol):
-#         note = DefinitionNote.from_node(existing.node, "Previously defined here")
-#         error = cls.from_node(node, f"Name '{existing.name}' already defined", note)
-#         return error
-#
-#     @classmethod
-#     def name_undefined(cls, node: Node, name: str):
-#         error = cls.from_node(node, f"Name '{name}' could not be found")
-#         return error
-#
-#     @classmethod
-#     def param_repeated(cls, func: Node, param: Node, name: str):
-#         note = DefinitionNote.from_node(param, "Repeated here")
-#         error = cls.from_node(func, f"Parameter name '{name}' repeated", note)
-#         return error
-#
-#     @classmethod
-#     def from_node(cls, node: Node, msg: str, note: AizeMessage = None):
-#         pos = Position.of(node)
-#         return cls(pos.get_source_name(), pos, msg, note)
-#
-#     def display(self, reporter: Reporter):
-#         reporter.positioned_error("Name Resolution Error", self.msg, self.pos)
-#         if self.note is not None:
-#             reporter.separate()
-#             with reporter.indent():
-#                 self.note.display(reporter)
-#
-#
+class DefinitionError(AizeMessage):
+    def __init__(self, msg: str, pos: Position, note: AizeMessage = None):
+        super().__init__(ErrorLevel.ERROR)
+        self.msg = msg
+        self.pos = pos
+
+        self.note = note
+
+    @classmethod
+    def name_existing(cls, node: TextIR, existing: Symbol):
+        note = DefinitionNote.from_pos(existing.position, "Previously defined here")
+        error = cls.from_node(node, f"Name '{existing.name}' already defined", note)
+        return error
+
+    @classmethod
+    def name_undefined(cls, node: TextIR, name: str):
+        error = cls.from_node(node, f"Name '{name}' could not be found")
+        return error
+
+    @classmethod
+    def param_repeated(cls, func: FunctionIR, param: ParamIR, name: str):
+        note = DefinitionNote.from_node(param, "Repeated here")
+        error = cls.from_node(func, f"Parameter name '{name}' repeated", note)
+        return error
+
+    @classmethod
+    def from_pos(cls, pos: Position, msg: str, note: AizeMessage = None):
+        return cls(msg, pos, note)
+
+    @classmethod
+    def from_node(cls, node: TextIR, msg: str, note: AizeMessage = None):
+        return cls.from_pos(node.pos, msg, note)
+
+    def display(self, reporter: Reporter):
+        reporter.positioned_error("Name Resolution Error", self.msg, self.pos)
+        if self.note is not None:
+            reporter.separate()
+            with reporter.indent():
+                self.note.display(reporter)
+
+
+class DefinitionNote(AizeMessage):
+    def __init__(self, source_name: str, pos: Position, msg: str):
+        super().__init__(ErrorLevel.NOTE)
+
+        self.source = source_name
+        self.pos = pos
+        self.msg = msg
+
+    @classmethod
+    def from_node(cls, node: TextIR, msg: str):
+        return cls.from_pos(node.pos, msg)
+
+    @classmethod
+    def from_pos(cls, pos: Position, msg: str):
+        return cls(pos.get_source_name(), pos, msg)
+
+    def display(self, reporter: Reporter):
+        reporter.positioned_error("Note", self.msg, self.pos)
+
+
 # class TypeCheckingError(AizeMessage):
 #     def __init__(self, source_name: str, pos: Position, msg: str, note: AizeMessage = None):
 #         super().__init__(self.ERROR)
@@ -74,23 +97,6 @@ from aizec.aize_symbols import *
 #             reporter.separate()
 #             with reporter.indent():
 #                 self.note.display(reporter)
-#
-#
-# class DefinitionNote(AizeMessage):
-#     def __init__(self, source_name: str, pos: Position, msg: str):
-#         super().__init__(self.NOTE)
-#
-#         self.source = source_name
-#         self.pos = pos
-#         self.msg = msg
-#
-#     @classmethod
-#     def from_node(cls, node: Node, msg: str):
-#         pos = Position.of(node)
-#         return cls(pos.get_source_name(), pos, msg)
-#
-#     def display(self, reporter: Reporter):
-#         reporter.positioned_error("Note", self.msg, self.pos)
 # endregion
 
 
@@ -138,6 +144,8 @@ class CreateIR(ASTVisitor):
             params=[self.visit_param(param) for param in func.params],
             ret=ann.type,
             body=[self.visit_stmt(stmt) for stmt in func.body],
+            value=VariableSymbol(func.name, UnknownTypeSymbol(func.pos), func.pos),
+            namespace=NoNamespaceSymbol(),
             pos=func.pos
         )
 
@@ -188,10 +196,10 @@ class CreateIR(ASTVisitor):
 
     def handle_malformed_type(self, type: ExprAST):
         # TODO
-        return MalformedTypeIR(type.pos)
+        return MalformedTypeIR(UnknownTypeSymbol(type.pos), type.pos)
 
     def visit_get_type(self, type: GetVarExprAST):
-        return GetTypeIR(type.var, type.pos)
+        return GetTypeIR(type.var, UnknownTypeSymbol(type.pos), type.pos)
 
 
 class IRVisitor(ABC):
@@ -256,13 +264,13 @@ class IRVisitor(ABC):
         pass
 
     def visit_type(self, type: TypeIR):
-        if isinstance(type, GetVarExprAST):
+        if isinstance(type, GetTypeIR):
             return self.visit_get_type(type)
         else:
             raise TypeError(f"Expected a type node, got {type}")
 
     @abstractmethod
-    def visit_get_type(self, type: GetVarExprAST):
+    def visit_get_type(self, type: GetTypeIR):
         pass
 
 
@@ -364,6 +372,7 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     @classmethod
     def apply_pass(cls, program: ProgramIR) -> Set[str]:
         cls().visit_program(program)
+        MessageHandler.flush_messages()
         return {cls.name}
 
     def enter_node(self, node: WithNamespace):
@@ -411,7 +420,7 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     def visit_ann(self, ann: AnnotationIR):
         pass
 
-    def visit_get_type(self, type: GetVarExprAST):
+    def visit_get_type(self, type: GetTypeIR):
         pass
 
 
@@ -473,3 +482,30 @@ class DeclareTypes(IRTreePass):
     @classmethod
     def get_prerequisites(cls) -> Set[str]:
         return {'CreateBuiltins', 'InitSources'}
+
+
+@PassesRegister.register(to_sequences=['DefaultPasses'])
+class ResolveTypes(IRTreePass):
+    @classmethod
+    def get_prerequisites(cls) -> Set[str]:
+        return {'CreateBuiltins', 'InitSources', 'DeclareTypes'}
+
+    def visit_function(self, func: FunctionIR):
+        for param in func.params:
+            self.visit_param(param)
+        self.visit_type(func.ret)
+        params = [param.type.resolved_type for param in func.params]
+        ret = func.ret.resolved_type
+        func_type = FunctionTypeSymbol(params, ret, func.pos)
+
+    def visit_param(self, param: ParamIR):
+        self.visit_type(param.type)
+
+    def visit_get_type(self, type: GetTypeIR):
+        try:
+            resolved_type = self.current_namespace.lookup_type(type.name)
+        except FailedLookupError as err:
+            msg = DefinitionError.name_undefined(type, err.failed_name)
+            MessageHandler.handle_message(msg)
+            resolved_type = ErroredTypeSymbol(type.pos)
+        type.resolved_type = resolved_type

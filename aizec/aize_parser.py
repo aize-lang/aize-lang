@@ -5,7 +5,7 @@ import contextlib
 from aizec.aize_ast import *
 from aizec.common import *
 from aizec.aize_source import Source, Position
-from aizec.aize_error import AizeMessage, MessageHandler
+from aizec.aize_error import AizeMessage, MessageHandler, ErrorLevel
 
 BASIC_TOKENS = Trie.from_list([
     "+", "+=",
@@ -39,7 +39,7 @@ TOKENIZE_ABLE = ''.join(BASIC_START) + IDENT_START + DEC
 
 class ParseError(AizeMessage):
     def __init__(self, msg: str, pos: Position):
-        super().__init__(self.ERROR)
+        super().__init__(ErrorLevel.ERROR)
 
         self.msg = msg
         self.pos = pos

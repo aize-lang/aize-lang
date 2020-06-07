@@ -2,7 +2,7 @@ import io
 
 from aizec.common import *
 
-from aizec.aize_error import AizeMessage, MessageHandler, Reporter
+from aizec.aize_error import AizeMessage, MessageHandler, Reporter, ErrorLevel, FailFlag
 from aizec.aize_parser import AizeParser
 from aizec.aize_semantics import CreateIR, PassesRegister, IRPass
 from aizec.aize_source import Source, FileSource, Position, StreamSource
@@ -12,26 +12,11 @@ from aizec.aize_ir import ProgramIR
 
 
 __all__ = ['FrontendManager', 'IRManager', 'BackendManager',
-           'AizeFrontendError', 'AizeImportError', 'AizeFileError']
-
-
-class InputError(AizeMessage):
-    def __init__(self, msg: str, pos: Position = None):
-        super().__init__(self.FATAL)
-
-        self.msg = msg
-        self.pos = pos
-
-    def display(self, reporter: Reporter):
-        if self.pos is None:
-            reporter.general_error("Input Error", self.msg)
-        else:
-            reporter.positioned_error("Input Error", self.msg, self.pos)
+           'AizeFrontendError', 'AizeImportError', 'AizeFileError', 'fail_callback']
 
 
 class AizeFrontendError(Exception):
-    def report(self):
-        raise NotImplementedError()
+    pass
 
 
 class AizeImportError(AizeFrontendError):
@@ -40,12 +25,6 @@ class AizeImportError(AizeFrontendError):
         self.msg = msg
         self.pos = pos
 
-    def report(self):
-        msg = InputError(self.msg, self.pos)
-        MessageHandler.handle_message(msg)
-        MessageHandler.flush_messages()
-        assert False
-
 
 class AizeFileError(AizeFrontendError):
     def __init__(self, msg: str, pos: Position = None):
@@ -53,11 +32,13 @@ class AizeFileError(AizeFrontendError):
         self.msg = msg
         self.pos: Optional[Position] = pos
 
-    def report(self):
-        msg = InputError(self.msg, self.pos)
-        MessageHandler.handle_message(msg)
-        MessageHandler.flush_messages()
-        assert False
+
+@contextmanager
+def fail_callback(callback: Callable[[List[AizeMessage]], None]):
+    try:
+        yield
+    except FailFlag as fail:
+        callback(fail.fail_msgs)
 
 
 class FrontendManager:

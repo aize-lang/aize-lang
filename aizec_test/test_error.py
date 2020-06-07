@@ -1,6 +1,6 @@
 import pytest
 
-from aizec.aize_error import ThrownMessage, MessageHandler, AizeMessage, Reporter
+from aizec.aize_error import MessageHandler, AizeMessage, Reporter, ErrorLevel, FailFlag
 
 from aizec.aize_source import Position, Source, StreamSource
 
@@ -16,7 +16,7 @@ def dummy_source() -> Source:
 
 class PositionedError(AizeMessage):
     def __init__(self, type: str, msg: str, pos: Position):
-        super().__init__(self.ERROR)
+        super().__init__(ErrorLevel.ERROR)
 
         self.type = type
         self.msg = msg
@@ -28,18 +28,19 @@ class PositionedError(AizeMessage):
 
 class TestErrorMessages:
     @pytest.fixture(autouse=True)
-    def reset_errors(self):
+    def reset(self):
+        MessageHandler.reset_config()
         MessageHandler.reset_errors()
 
     @pytest.fixture()
     def cap_err(self):
         err = StringIO()
-        MessageHandler.set_io(err)
+        MessageHandler.set_config(err_out=err)
         return err
 
     def test_good_position1(self, dummy_source, cap_err):
         pos = Position.new_text(dummy_source, 1, (1, 5))
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(FailFlag) as exc_info:
             MessageHandler.handle_message(PositionedError("Dummy Error", "Testing a Position", pos))
             MessageHandler.flush_messages()
         cap_err.seek(0)
@@ -48,7 +49,7 @@ class TestErrorMessages:
 
     def test_good_position2(self, dummy_source, cap_err):
         pos = Position.new_text(dummy_source, 1, (1, 15))
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(FailFlag) as exc_info:
             MessageHandler.handle_message(PositionedError("Dummy Error", "Testing a Position", pos))
             MessageHandler.flush_messages()
         cap_err.seek(0)
@@ -69,6 +70,7 @@ class TestErrorMessages:
         with pytest.raises(IndexError) as exc_info:
             MessageHandler.handle_message(PositionedError("Dummy Error", "Testing a Position", pos))
             MessageHandler.flush_messages()
+
         cap_err.seek(0)
         err = cap_err.read()
         assert err == ''

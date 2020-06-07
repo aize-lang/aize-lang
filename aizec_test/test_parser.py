@@ -1,7 +1,7 @@
 import pytest
 
 from aizec.aize_parser import AizeParser, ParseError
-from aizec.aize_error import MessageHandler, ThrownMessage
+from aizec.aize_error import MessageHandler, ThrownMessage, ErrorLevel
 from aizec.aize_source import Source
 from aizec.aize_run import FrontendManager
 from aizec.common import Path
@@ -9,7 +9,7 @@ from aizec.common import Path
 
 @pytest.fixture(autouse=True)
 def set_throw():
-    MessageHandler.set_throw(True)
+    MessageHandler.set_config(throw_ge=ErrorLevel.ALL)
 
 
 class TestClass:

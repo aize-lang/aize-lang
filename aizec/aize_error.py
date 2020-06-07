@@ -1,7 +1,10 @@
-import sys
-import contextlib
-from typing import List, IO, Union, Literal
+from __future__ import annotations
 
+import sys
+from dataclasses import dataclass
+from enum import IntEnum
+
+from aizec.common import *
 from aizec.aize_source import Source, Position, TextPosition
 
 
@@ -34,7 +37,7 @@ class Reporter:
     def general_error(self, type: str, msg: str):
         self.write(f"{type}: {msg}.")
 
-    @contextlib.contextmanager
+    @contextmanager
     def indent(self):
         self._indent_level += 1
         yield
@@ -54,18 +57,20 @@ class Reporter:
         self._io.flush()
 
 
-class AizeMessage:
-    FATAL = 'fatal error'
-    ERROR = 'error'
-    WARNING = 'warning'
-    MESSAGE = 'message'
-    NOTE = 'note'
+class ErrorLevel(IntEnum):
+    ALL = 0
+    NOTE = 1
+    MESSAGE = 2
+    WARNING = 3
+    ERROR = 4
+    FATAL = 5
+    NEVER = 6
 
-    LEVELS = [FATAL, ERROR, WARNING, MESSAGE, NOTE]
 
-    def __init__(self, level: str):
-        if level not in self.LEVELS:
-            raise ValueError(f"level {level!r} is not valid")
+class AizeMessage(ABC):
+    def __init__(self, level: ErrorLevel):
+        if not ErrorLevel.ALL < level < ErrorLevel.NEVER:
+            raise ValueError(level)
         self.level = level
 
     def display(self, reporter: Reporter):
@@ -77,75 +82,101 @@ class ThrownMessage(Exception):
         self.message = message
 
 
-class _ErrorHandler:
-    _instance_ = None
+class FailFlag(Exception):
+    def __init__(self, fail_msgs: List[AizeMessage]):
+        self.fail_msgs = fail_msgs
 
-    def __init__(self):
-        self.err_out: IO = sys.stderr
-        self.throw_messages: bool = False
 
-        self.messages: List[AizeMessage] = []
+@dataclass(frozen=True)
+class ErrorHandlerConfig:
+    err_out: IO
+    throw_ge: ErrorLevel
+    fail_ge: ErrorLevel
+    immediate_flush_ge: ErrorLevel
 
-        self.is_flushing: bool = False
 
-    def handle_message(self, msg: AizeMessage):
-        if self.throw_messages:
-            raise ThrownMessage(msg)
-        else:
-            self.messages.append(msg)
-            if msg.level == AizeMessage.FATAL:
-                self.flush_messages()
-
-    def flush_messages(self):
-        if self.is_flushing:
-            return
-        self.is_flushing = True
-
-        reporter = Reporter(self.err_out)
-
-        has_errors = False
-        for error in self.messages:
-            error.display(reporter)
-            reporter.separate()
-            if error.level in (AizeMessage.ERROR, AizeMessage.FATAL):
-                has_errors = True
-
-        reporter.flush()
-
-        self.is_flushing = False
-        if has_errors:
-            exit(0)
-
-    @classmethod
-    def get_instance(cls):
-        if cls._instance_ is None:
-            cls._instance_ = cls()
-        return cls._instance_
+DefaultConfig = ErrorHandlerConfig(
+    err_out=sys.stderr,
+    throw_ge=ErrorLevel.NEVER,
+    fail_ge=ErrorLevel.ERROR,
+    immediate_flush_ge=ErrorLevel.FATAL
+)
 
 
 # TODO Fold the class into _ErrorHandler
 class MessageHandler:
-    @staticmethod
-    def reset_errors():
-        _ErrorHandler._instance_ = None
+    _instance: MessageHandler = None
+    _config: ErrorHandlerConfig = DefaultConfig
 
-    @staticmethod
-    def set_io(io: Union[IO, Literal['stderr']]):
-        if isinstance(io, str):
-            if io == 'stderr':
-                io = sys.stderr
-            else:
-                raise ValueError(f"Unknown io: {io!r}")
-        _ErrorHandler.get_instance().err_out = io
+    def __init__(self):
+        self.messages: List[AizeMessage] = []
 
-    @staticmethod
-    def set_throw(throw: bool):
-        _ErrorHandler.get_instance().throw_messages = throw
+        # For when MessageHandler.flush_messages() is called in a finally block, so only 1 flush_messages is called at a time
+        self.is_flushing: bool = False
 
-    @staticmethod
-    def handle_message(msg: AizeMessage):
-        _ErrorHandler.get_instance().handle_message(msg)
+    def _handle_message(self, msg: AizeMessage):
+        if msg.level >= self._config.throw_ge:
+            raise ThrownMessage(msg)
+        else:
+            self.messages.append(msg)
+            if msg.level >= self._config.immediate_flush_ge:
+                self._flush_messages()
 
-    @staticmethod
-    def flush_messages():
-        _ErrorHandler.get_instance().flush_messages()
+    def _flush_messages(self):
+        if self.is_flushing:
+            return
+        self.is_flushing = True
+
+        reporter = Reporter(self._config.err_out)
+
+        fail = False
+        fail_causes = []
+        for error in self.messages:
+            error.display(reporter)
+            reporter.separate()
+            if error.level >= self._config.fail_ge:
+                fail_causes.append(error)
+                fail = True
+
+        reporter.flush()
+
+        self.is_flushing = False
+        if fail:
+            raise FailFlag(fail_causes)
+
+    @classmethod
+    def instance(cls):
+        if cls._config is None:
+            raise ValueError("Set config before using class utilities")
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    @classmethod
+    def reset_config(cls):
+        cls._config = DefaultConfig
+
+    @classmethod
+    def reset_errors(cls):
+        cls.instance().messages = []
+        cls.instance().is_flushing = False
+
+    @classmethod
+    def set_config(cls, err_out: IO = None, throw_ge: ErrorLevel = None, fail_ge: ErrorLevel = None, immediate_flush_ge: ErrorLevel = None):
+        new_err_out = cls._config.err_out if err_out is None else err_out
+        new_throw_ge = cls._config.throw_ge if throw_ge is None else throw_ge
+        new_fail_ge = cls._config.fail_ge if fail_ge is None else fail_ge
+        new_flush_ge = cls._config.immediate_flush_ge if immediate_flush_ge is None else immediate_flush_ge
+        cls._config = ErrorHandlerConfig(new_err_out, new_throw_ge, new_fail_ge, new_flush_ge)
+
+    @classmethod
+    def handle_message(cls, msg: AizeMessage):
+        cls.instance()._handle_message(msg)
+
+    @classmethod
+    def flush_messages(cls):
+        cls.instance()._flush_messages()
+
+    @classmethod
+    def get_config(cls):
+        return cls._config

@@ -8,9 +8,9 @@ from aizec.aize_symbols import *
 T = TypeVar('T')
 
 
-__all__ = ['NodeIR', 'TopLevelIR', 'UnresolvedTypeIR', 'AnnotationIR', 'ProgramIR', 'StmtIR', 'ExprIR', 'ReturnIR',
-           'MethodDeclIR', 'IntIR', 'MalformedTypeIR', 'FieldIR', 'TypeIR', 'FunctionIR', 'GetTypeIR', 'SourceIR',
-           'MethodDefIR', 'ParamIR', 'TextIR', 'ClassIR', 'WithNamespace']
+__all__ = ['NodeIR', 'TopLevelIR', 'AnnotationIR', 'ProgramIR', 'StmtIR', 'ExprIR', 'ReturnIR',
+           'MethodDeclIR', 'IntIR', 'FieldIR', 'TypeIR', 'FunctionIR', 'GetTypeIR', 'SourceIR',
+           'MethodDefIR', 'ParamIR', 'TextIR', 'ClassIR', 'MalformedTypeIR', 'WithNamespace']
 
 
 class NodeIR:
@@ -44,12 +44,15 @@ class TopLevelIR(TextIR):
 
 
 class FunctionIR(TopLevelIR):
-    def __init__(self, name: str, params: List[ParamIR], ret: TypeIR, body: List[StmtIR], pos: Position):
+    def __init__(self, name: str, params: List[ParamIR], ret: TypeIR, body: List[StmtIR], value: VariableSymbol, namespace: NamespaceSymbol, pos: Position):
         super().__init__(pos)
         self.name = name
         self.params = params
         self.ret = ret
         self.body = body
+
+        self.value = value
+        self.namespace = namespace
 
 
 class ClassIR(TopLevelIR):
@@ -115,27 +118,20 @@ class AnnotationIR(TextIR):
         self.type = type
 
 
-class TypeIR(NodeIR):
-    RESOLVED: bool
-
-
-class MalformedTypeIR(TextIR, TypeIR):
-    RESOLVED = False
-
-    def __init__(self, pos: Position):
+class TypeIR(TextIR):
+    def __init__(self, resolved_type: TypeSymbol, pos: Position):
         super().__init__(pos)
+        self.resolved_type = resolved_type
 
 
-class UnresolvedTypeIR(TextIR, TypeIR):
-    RESOLVED = False
-
-    def __init__(self, pos: Position):
-        super().__init__(pos)
+class MalformedTypeIR(TypeIR):
+    def __init__(self, resolved_type: TypeSymbol, pos: Position):
+        super().__init__(resolved_type, pos)
 
 
-class GetTypeIR(UnresolvedTypeIR):
-    def __init__(self, name: str, pos: Position):
-        super().__init__(pos)
+class GetTypeIR(TypeIR):
+    def __init__(self, name: str, resolved_type: TypeSymbol, pos: Position):
+        super().__init__(resolved_type, pos)
         self.name = name
 
 
