@@ -10,7 +10,7 @@ T = TypeVar('T')
 
 __all__ = ['NodeIR', 'TopLevelIR', 'AnnotationIR', 'ProgramIR', 'StmtIR', 'ExprIR', 'ReturnIR',
            'MethodDeclIR', 'IntIR', 'FieldIR', 'TypeIR', 'FunctionIR', 'GetTypeIR', 'SourceIR',
-           'MethodDefIR', 'ParamIR', 'TextIR', 'ClassIR', 'MalformedTypeIR', 'WithNamespace']
+           'MethodDefIR', 'ParamIR', 'TextIR', 'ClassIR', 'MalformedTypeIR', 'WithNamespace', 'ProgramData']
 
 
 class NodeIR:
@@ -21,10 +21,17 @@ class WithNamespace(Protocol):
     namespace: NamespaceSymbol
 
 
+class ProgramData:
+    def __init__(self, int32: TypeSymbol, error_placeholder: TypeSymbol):
+        self.int32 = int32
+        self.error_placeholder = error_placeholder
+
+
 class ProgramIR(NodeIR):
-    def __init__(self, sources: List[SourceIR], namespace: NamespaceSymbol):
+    def __init__(self, sources: List[SourceIR], namespace: NamespaceSymbol, data: ProgramData):
         self.sources = sources
         self.namespace = namespace
+        self.data = data
 
 
 class SourceIR(NodeIR):
@@ -44,14 +51,19 @@ class TopLevelIR(TextIR):
 
 
 class FunctionIR(TopLevelIR):
-    def __init__(self, name: str, params: List[ParamIR], ret: TypeIR, body: List[StmtIR], value: VariableSymbol, namespace: NamespaceSymbol, pos: Position):
+    def __init__(self,
+                 name: str,
+                 params: List[ParamIR], ret: TypeIR,
+                 body: List[StmtIR],
+                 symbol: VariableSymbol, namespace: NamespaceSymbol,
+                 pos: Position):
         super().__init__(pos)
         self.name = name
         self.params = params
         self.ret = ret
         self.body = body
 
-        self.value = value
+        self.symbol = symbol
         self.namespace = namespace
 
 
@@ -86,10 +98,11 @@ class MethodDefIR(TextIR):
 
 
 class ParamIR(TextIR):
-    def __init__(self, name: str, type: TypeIR, pos: Position):
+    def __init__(self, name: str, type: TypeIR, symbol: VariableSymbol, pos: Position):
         super().__init__(pos)
         self.name = name
         self.type = type
+        self.symbol = symbol
 
 
 class StmtIR(TextIR):
@@ -103,12 +116,14 @@ class ReturnIR(StmtIR):
 
 
 class ExprIR(TextIR):
-    pass
+    def __init__(self, ret_type: TypeSymbol, pos: Position):
+        super().__init__(pos)
+        self.ret_type = ret_type
 
 
 class IntIR(ExprIR):
     def __init__(self, num: int, pos: Position):
-        super().__init__(pos)
+        super().__init__(UnknownTypeSymbol(pos), pos)
         self.num = num
 
 
@@ -136,5 +151,5 @@ class GetTypeIR(TypeIR):
 
 
 # if __name__ == '__main__':
-#     __all__ = ['NodeIR', 'WithBody'] + [child.__name__ for child in all_subclasses(NodeIR)]
+#     __all__ = ['NodeIR', 'WithNamespace', 'ProgramData'] + [child.__name__ for child in all_subclasses(NodeIR)]
 #     print(__all__)

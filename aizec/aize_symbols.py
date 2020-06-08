@@ -7,7 +7,7 @@ from aizec.aize_source import Position
 
 __all__ = [
     'Symbol',
-    'VariableSymbol',
+    'VariableSymbol', 'UnknownVariableSymbol',
     'NamespaceSymbol', 'NoNamespaceSymbol',
     'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'UnknownTypeSymbol', 'ErroredTypeSymbol',
     'SymbolTable',
@@ -57,6 +57,11 @@ class VariableSymbol(Symbol):
 
         self.type: TypeSymbol = type
         """A reference to the symbol of the type of this variable"""
+
+
+class UnknownVariableSymbol(VariableSymbol):
+    def __init__(self, pos: Position):
+        super().__init__("<unresolved>", UnknownTypeSymbol(pos) ,pos)
 
 
 class TypeSymbol(Symbol):
@@ -140,6 +145,12 @@ class NamespaceSymbol(Symbol):
             parents.reverse()
         return parents
 
+    def get_root(self) -> NamespaceSymbol:
+        curr = self
+        while curr is not None:
+            curr = curr.namespace
+        return curr
+
     def lookup_type(self, name: str, *, here: bool = False, nearest: bool = True) -> TypeSymbol:
         if here:
             lookup_chain = [self]
@@ -163,6 +174,17 @@ class NamespaceSymbol(Symbol):
         raise FailedLookupError(name)
 
     def define_value(self, value: VariableSymbol, as_name: str = None, visible: bool = True):
+        """
+        Defines a variable in this namespace.
+
+        Args:
+            value: The variable to define.
+            as_name: A name to define it as in this namespace (for lookups), if different from the value's.
+            visible: If the value is visible to lookups.
+
+        Raises:
+            DuplicateSymbolError: If the name used by the variable is already used in this immediate namespace.
+        """
         if as_name is None:
             as_name = value.name
 

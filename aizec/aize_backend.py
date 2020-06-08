@@ -47,7 +47,7 @@ class IRToLLVM(ASTPass):
             var = self.ast_pass.builder.alloca(self.ast_pass.visit_type(type))
 
         def visit_return(self, ret: ReturnStmt):
-            self.ast_pass.builder.ret(self.ast_pass.visit_expr(ret.value))
+            self.ast_pass.builder.ret(self.ast_pass.visit_expr(ret.symbol))
 
     class AizeTypesToLLVM:
         ast_pass: IRToLLVM

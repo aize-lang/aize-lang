@@ -74,29 +74,27 @@ class DefinitionNote(AizeMessage):
         reporter.positioned_error("Note", self.msg, self.pos)
 
 
-# class TypeCheckingError(AizeMessage):
-#     def __init__(self, source_name: str, pos: Position, msg: str, note: AizeMessage = None):
-#         super().__init__(self.ERROR)
-#         self.source = source_name
-#         self.pos = pos
-#         self.msg = msg
-#
-#         self.note = note
-#
-#     @classmethod
-#     def from_nodes(cls, definition: Node, offender: Node):
-#         offender_pos = Position.of(offender)
-#         def_pos = Position.of(definition)
-#         note = DefinitionNote.from_node(definition, "Declared here")
-#         error = cls(offender_pos.get_source_name(), offender_pos, "Expected type , got type", note)
-#         return error
-#
-#     def display(self, reporter: Reporter):
-#         reporter.positioned_error("Type Checking Error", self.msg, self.pos)
-#         if self.note is not None:
-#             reporter.separate()
-#             with reporter.indent():
-#                 self.note.display(reporter)
+class TypeCheckingError(AizeMessage):
+    def __init__(self, source_name: str, pos: Position, msg: str, note: AizeMessage = None):
+        super().__init__(ErrorLevel.ERROR)
+        self.source = source_name
+        self.pos = pos
+        self.msg = msg
+
+        self.note = note
+
+    @classmethod
+    def from_nodes(cls, offender: TextIR, definition: TextIR, expected: TypeSymbol, got: TypeSymbol):
+        note = DefinitionNote.from_pos(definition.pos, "Declared here")
+        error = cls(offender.pos.get_source_name(), offender.pos, f"Expected type {expected}, got type {got}", note)
+        return error
+
+    def display(self, reporter: Reporter):
+        reporter.positioned_error("Type Checking Error", self.msg, self.pos)
+        if self.note is not None:
+            reporter.separate()
+            with reporter.indent():
+                self.note.display(reporter)
 # endregion
 
 
@@ -118,12 +116,12 @@ class BuiltinsCreator:
         return int_type_symbol
 
     @classmethod
-    def add_builtins(cls, namespace: NamespaceSymbol):
+    def add_builtins(cls, data: ProgramData, namespace: NamespaceSymbol):
         creator = cls(namespace)
-        creator.create_int_type("int", bit_size=32)
+        data.int32 = creator.create_int_type("int", bit_size=32)
 
         # returned instead of an actual type whenever an inconsistency in types occurs
-        creator.create_type("<type check error>")
+        data.error_placeholder = creator.create_type("<type check error>")
 
 
 class CreateIR(ASTVisitor):
@@ -132,7 +130,8 @@ class CreateIR(ASTVisitor):
         return cls(program).visit_program(program)
 
     def visit_program(self, program: ProgramAST) -> ProgramIR:
-        return ProgramIR([self.visit_source(source) for source in program.sources], NoNamespaceSymbol())
+        data = ProgramData(UnknownTypeSymbol(Position.new_none()), UnknownTypeSymbol(Position.new_none()))
+        return ProgramIR([self.visit_source(source) for source in program.sources], NoNamespaceSymbol(), data)
 
     def visit_source(self, source: SourceAST):
         return SourceIR([self.visit_top_level(top_level) for top_level in source.top_levels], source.source.get_name(), NoNamespaceSymbol())
@@ -144,7 +143,7 @@ class CreateIR(ASTVisitor):
             params=[self.visit_param(param) for param in func.params],
             ret=ann.type,
             body=[self.visit_stmt(stmt) for stmt in func.body],
-            value=VariableSymbol(func.name, UnknownTypeSymbol(func.pos), func.pos),
+            symbol=UnknownVariableSymbol(func.pos),
             namespace=NoNamespaceSymbol(),
             pos=func.pos
         )
@@ -183,7 +182,12 @@ class CreateIR(ASTVisitor):
 
     def visit_param(self, param: ParamAST):
         ann = self.visit_ann(param.annotation)
-        return ParamIR(param.name, ann.type, param.pos)
+        return ParamIR(
+            name=param.name,
+            type=ann.type,
+            symbol=VariableSymbol(param.name, UnknownTypeSymbol(param.pos), param.pos),
+            pos=param.pos
+        )
 
     def visit_return(self, ret: ReturnStmtAST):
         return ReturnIR(self.visit_expr(ret.value), ret.pos)
@@ -195,7 +199,6 @@ class CreateIR(ASTVisitor):
         return AnnotationIR(self.visit_type(ann), ann.pos)
 
     def handle_malformed_type(self, type: ExprAST):
-        # TODO
         return MalformedTypeIR(UnknownTypeSymbol(type.pos), type.pos)
 
     def visit_get_type(self, type: GetVarExprAST):
@@ -366,14 +369,18 @@ class IRPassClass:
 
 
 class IRTreePass(IRVisitor, IRPassClass, ABC):
-    def __init__(self):
+    def __init__(self, program: ProgramIR):
         self._table = SymbolTable()
+        self.data: ProgramData = program.data
 
     @classmethod
     def apply_pass(cls, program: ProgramIR) -> Set[str]:
-        cls().visit_program(program)
+        cls(program).visit_program(program)
         MessageHandler.flush_messages()
         return {cls.name}
+
+    def enter_namespace(self, namespace: NamespaceSymbol):
+        return self._table.enter(namespace)
 
     def enter_node(self, node: WithNamespace):
         namespace = node.namespace
@@ -459,7 +466,7 @@ class CreateBuiltins(IRTreePass):
 
     def visit_program(self, program: ProgramIR):
         builtin_namespace = NamespaceSymbol("<builtins>", Position.new_none())
-        BuiltinsCreator.add_builtins(builtin_namespace)
+        BuiltinsCreator.add_builtins(program.data, builtin_namespace)
 
         program.namespace = builtin_namespace
 
@@ -486,6 +493,34 @@ class DeclareTypes(IRTreePass):
 
 @PassesRegister.register(to_sequences=['DefaultPasses'])
 class ResolveTypes(IRTreePass):
+    def __init__(self, program: ProgramIR):
+        super().__init__(program)
+        self._current_func: Optional[FunctionIR] = None
+        self._current_func_type: Optional[FunctionTypeSymbol] = None
+
+    @property
+    def current_func(self):
+        if self._current_func is not None:
+            return self._current_func
+        else:
+            raise ValueError("Not in a function")
+
+    @property
+    def current_func_type(self):
+        if self._current_func_type is not None:
+            return self._current_func_type
+        else:
+            raise ValueError("Not in a function")
+
+    @contextmanager
+    def in_function(self, func: FunctionIR, type: FunctionTypeSymbol):
+        old_func, self._current_func = self._current_func, func
+        old_type, self._current_func_type = self._current_func_type, type
+        with self.enter_node(func):
+            yield
+        self._current_func = old_func
+        self._current_func_type = old_type
+
     @classmethod
     def get_prerequisites(cls) -> Set[str]:
         return {'CreateBuiltins', 'InitSources', 'DeclareTypes'}
@@ -498,8 +533,43 @@ class ResolveTypes(IRTreePass):
         ret = func.ret.resolved_type
         func_type = FunctionTypeSymbol(params, ret, func.pos)
 
+        func.value = VariableSymbol(func.name, func_type, func.pos)
+        try:
+            self.current_namespace.define_value(func.value)
+        except DuplicateSymbolError as err:
+            msg = DefinitionError.name_existing(func, err.old_symbol)
+            MessageHandler.handle_message(msg)
+
+        func.namespace = NamespaceSymbol(f"<{func.name} body>", func.pos)
+        with self.in_function(func, func_type):
+            for param in func.params:
+                try:
+                    func.namespace.define_value(param.symbol)
+                except DuplicateSymbolError as err:
+                    msg = DefinitionError.param_repeated(func, param, param.name)
+                    MessageHandler.handle_message(msg)
+
+        with self.in_function(func, func_type):
+            for stmt in func.body:
+                self.visit_stmt(stmt)
+
     def visit_param(self, param: ParamIR):
         self.visit_type(param.type)
+        param.symbol = VariableSymbol(param.name, param.type.resolved_type, param.pos)
+
+    def visit_return(self, ret: ReturnIR):
+        self.visit_expr(ret.expr)
+        expected = self.current_func_type.ret
+        got = ret.expr.ret_type
+        if expected.is_super_of(got):
+            return
+        else:
+            msg = TypeCheckingError.from_nodes(ret, self.current_func, expected, got)
+            MessageHandler.handle_message(msg)
+
+    def visit_int(self, num: IntIR):
+        # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal
+        num.ret_type = self.data.int32
 
     def visit_get_type(self, type: GetTypeIR):
         try:

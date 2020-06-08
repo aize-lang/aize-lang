@@ -31,7 +31,7 @@ def main():
     arg_parser = make_arg_parser()
     args = arg_parser.parse_args()
 
-    with fail_callback(lambda: exit(0)):
+    with fail_callback(lambda c: exit(0)):
         frontend = FrontendManager(Path.cwd(), Path(__file__))
         frontend.add_file(Path(args.file))
         frontend.trace_imports()
