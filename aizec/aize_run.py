@@ -4,11 +4,11 @@ from aizec.common import *
 
 from aizec.aize_error import AizeMessage, MessageHandler, Reporter, ErrorLevel, FailFlag
 from aizec.aize_parser import AizeParser
-from aizec.aize_semantics import CreateIR, PassesRegister, IRPass
+from aizec.aize_semantics import CreateIR
 from aizec.aize_source import Source, FileSource, Position, StreamSource
 
 from aizec.aize_ast import ProgramAST, SourceAST
-from aizec.aize_ir import ProgramIR
+from aizec.aize_ir import IR, PassesRegister, PassScheduler, IRPass
 
 
 __all__ = ['FrontendManager', 'IRManager', 'BackendManager',
@@ -76,7 +76,7 @@ class FrontendManager:
     def get_program_ast(self) -> ProgramAST:
         return ProgramAST([ast for ast in self._sources.values()])
 
-    def get_program_ir(self) -> ProgramIR:
+    def get_ir(self) -> IR:
         return CreateIR.create_ir(self.get_program_ast())
 
     def add_source(self, source: Source):
@@ -134,32 +134,16 @@ class FrontendManager:
 
 
 class IRManager:
-    def __init__(self, program: ProgramIR):
-        self.program: ProgramIR = program
+    def __init__(self, ir: IR):
+        self.ir: IR = ir
 
-        self._ran_passes: Set[str] = set()
-        self._scheduled_passes: List[IRPass] = []
+        self.scheduler = PassScheduler(self.ir, [])
 
-    def schedule_pass(self, pass_name: str):
-        pass_ = PassesRegister.get_pass(pass_name)
-        self._scheduled_passes.append(pass_)
-
-    def schedule_all(self, passes: List[str]):
-        for pass_name in passes:
-            self.schedule_pass(pass_name)
+    def schedule_pass(self, pass_name: str) -> bool:
+        return self.scheduler.schedule(PassesRegister.get_pass(pass_name))
 
     def run_scheduled(self):
-        ran = self._ran_passes
-        scheduled = self._scheduled_passes
-        while len(scheduled) > 0:
-            for i in range(len(scheduled)):
-                to_run = scheduled[i]
-                if ran.issuperset(to_run.get_prerequisites()):
-                    ran |= to_run.apply_pass(self.program)
-                    scheduled.pop(i)
-                    break
-            else:
-                raise ValueError("No passes can be run")
+        self.scheduler.run_scheduled()
 
 
 class BackendManager:

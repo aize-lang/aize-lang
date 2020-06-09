@@ -36,7 +36,7 @@ def main():
         frontend.add_file(Path(args.file))
         frontend.trace_imports()
 
-        ir_manager = IRManager(frontend.get_program_ir())
+        ir_manager = IRManager(frontend.get_ir())
         ir_manager.schedule_pass('DefaultPasses')
         ir_manager.run_scheduled()
 

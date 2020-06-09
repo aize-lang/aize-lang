@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from abc import ABCMeta
-
 from aizec.common import *
 
 from aizec.aize_ast import *
@@ -126,12 +124,12 @@ class BuiltinsCreator:
 
 class CreateIR(ASTVisitor):
     @classmethod
-    def create_ir(cls, program: ProgramAST) -> ProgramIR:
-        return cls(program).visit_program(program)
+    def create_ir(cls, program: ProgramAST) -> IR:
+        return IR(cls(program).visit_program(program))
 
     def visit_program(self, program: ProgramAST) -> ProgramIR:
-        data = ProgramData(UnknownTypeSymbol(Position.new_none()), UnknownTypeSymbol(Position.new_none()))
-        return ProgramIR([self.visit_source(source) for source in program.sources], NoNamespaceSymbol(), data)
+        data = ProgramData(UnknownTypeSymbol(Position.new_none()))
+        return ProgramIR([self.visit_source(source) for source in program.sources], NoNamespaceSymbol())
 
     def visit_source(self, source: SourceAST):
         return SourceIR([self.visit_top_level(top_level) for top_level in source.top_levels], source.source.get_name(), NoNamespaceSymbol())
@@ -205,277 +203,60 @@ class CreateIR(ASTVisitor):
         return GetTypeIR(type.var, UnknownTypeSymbol(type.pos), type.pos)
 
 
-class IRVisitor(ABC):
-    @abstractmethod
-    def visit_program(self, program: ProgramIR):
-        pass
-
-    @abstractmethod
-    def visit_source(self, source: SourceIR):
-        pass
-
-    def visit_top_level(self, top_level: TopLevelIR):
-        if isinstance(top_level, ClassIR):
-            return self.visit_class(top_level)
-        elif isinstance(top_level, FunctionIR):
-            return self.visit_function(top_level)
-        else:
-            raise TypeError(f"Expected a top-level node, got {top_level}")
-
-    @abstractmethod
-    def visit_class(self, cls: ClassIR):
-        pass
-
-    @abstractmethod
-    def visit_function(self, func: FunctionIR):
-        pass
-
-    @abstractmethod
-    def visit_field(self, attr: FieldIR):
-        pass
-
-    @abstractmethod
-    def visit_method_def(self, method: MethodDefIR):
-        pass
-
-    @abstractmethod
-    def visit_param(self, param: ParamIR):
-        pass
-
-    def visit_stmt(self, stmt: StmtIR):
-        if isinstance(stmt, ReturnIR):
-            return self.visit_return(stmt)
-        else:
-            raise TypeError(f"Expected a stmt node, got {stmt}")
-
-    @abstractmethod
-    def visit_return(self, ret: ReturnIR):
-        pass
-
-    def visit_expr(self, expr: ExprIR):
-        if isinstance(expr, IntIR):
-            return self.visit_int(expr)
-        else:
-            raise TypeError(f"Expected a expr node, got {expr}")
-
-    @abstractmethod
-    def visit_int(self, num: IntIR):
-        pass
-
-    @abstractmethod
-    def visit_ann(self, ann: AnnotationIR):
-        pass
-
-    def visit_type(self, type: TypeIR):
-        if isinstance(type, GetTypeIR):
-            return self.visit_get_type(type)
-        else:
-            raise TypeError(f"Expected a type node, got {type}")
-
-    @abstractmethod
-    def visit_get_type(self, type: GetTypeIR):
-        pass
-
-
-class PassesRegister:
-    _instance_ = None
-
-    def __init__(self):
-        self._passes: Dict[str, IRPass] = {}
-
-    @classmethod
-    def _instance(cls):
-        if cls._instance_ is None:
-            cls._instance_ = cls()
-        return cls._instance_
-
-    @classmethod
-    @overload
-    def register(cls, pass_: IRPass) -> IRPass:
-        pass
-
-    @classmethod
-    @overload
-    def register(cls, *, to_sequences: Iterable[str] = None) -> Callable[[IRPass], IRPass]:
-        pass
-
-    @classmethod
-    def register(cls, pass_: IRPass = None, *, to_sequences: Iterable[str] = None):
-        inst = cls._instance()
-        if to_sequences is None:
-            to_sequences = []
-        to_sequences = set(to_sequences)
-
-        def _register(ir_pass: IRPass):
-            for seq_name in to_sequences:
-                seq = inst.get_pass(seq_name)
-                if isinstance(seq, IRPassSequence):
-                    seq.add_pass(ir_pass)
-                else:
-                    raise ValueError(f"{seq_name} not a IRPassSequence")
-            inst._passes[ir_pass.name] = ir_pass
-            return ir_pass
-
-        if pass_ is None:
-            return _register
-        else:
-            return _register(pass_)
-
-    @classmethod
-    def get_pass(cls, name: str) -> IRPass:
-        return cls._instance()._passes[name]
-
-
-class IRPass(ABC):
-    def __init__(self, name: str):
-        self.name: str = name
-
-    @abstractmethod
-    def get_prerequisites(self) -> Set[str]:
-        pass
-
-    @abstractmethod
-    def apply_pass(self, program: ProgramIR) -> Set[str]:
-        pass
-
-
-# region Metaclass Magic
-class IRPassMetaclass(IRPass, ABC, ABCMeta):
-    pass
-
-
-class IRPassClass:
-    __metaclass__ = IRPassMetaclass
-
-    name: str
-
-    def __init_subclass__(cls):
-        cls.name = cls.get_name()
-
-    @classmethod
-    def get_name(cls) -> str:
-        return cls.__name__
-
-    @classmethod
-    @abstractmethod
-    def get_prerequisites(cls) -> Set[str]:
-        pass
-
-    @classmethod
-    @abstractmethod
-    def apply_pass(cls, program: ProgramIR) -> Set[str]:
-        pass
-# endregion
-
-
-class IRTreePass(IRVisitor, IRPassClass, ABC):
-    def __init__(self, program: ProgramIR):
-        self._table = SymbolTable()
-        self.data: ProgramData = program.data
-
-    @classmethod
-    def apply_pass(cls, program: ProgramIR) -> Set[str]:
-        cls(program).visit_program(program)
-        MessageHandler.flush_messages()
-        return {cls.name}
-
-    def enter_namespace(self, namespace: NamespaceSymbol):
-        return self._table.enter(namespace)
-
-    def enter_node(self, node: WithNamespace):
-        namespace = node.namespace
-        if namespace.namespace is not None:
-            if namespace.namespace is not self.current_namespace:
-                raise ValueError("When entering a namespace, it must be a child of the current namespace")
-        return self._table.enter(node.namespace)
-
-    @property
-    def current_namespace(self) -> NamespaceSymbol:
-        return self._table.current_namespace
-
-    def visit_program(self, program: ProgramIR):
-        with self.enter_node(program):
-            for source in program.sources:
-                self.visit_source(source)
-
-    def visit_source(self, source: SourceIR):
-        with self.enter_node(source):
-            for top_level in source.top_levels:
-                self.visit_top_level(top_level)
-
-    def visit_function(self, func: FunctionIR):
-        pass
-
-    def visit_class(self, cls: ClassIR):
-        pass
-
-    def visit_field(self, attr: FieldIR):
-        pass
-
-    def visit_method_def(self, method: MethodDefIR):
-        pass
-
-    def visit_param(self, param: ParamIR):
-        pass
-
-    def visit_return(self, ret: ReturnIR):
-        pass
-
-    def visit_int(self, num: IntIR):
-        pass
-
-    def visit_ann(self, ann: AnnotationIR):
-        pass
-
-    def visit_get_type(self, type: GetTypeIR):
-        pass
-
-
-class IRPassSequence(IRPass):
-    def __init__(self, name: str, passes: List[IRPass] = None):
-        super().__init__(name)
-        self.passes = [] if passes is None else passes
-
-    def get_prerequisites(self) -> Set[str]:
-        return self._common
-
-    def add_pass(self, ir_pass: IRPass):
-        self.passes.append(ir_pass)
-        return ir_pass
-
-    @property
-    def _common(self):
-        return reduce(set.intersection, (pass_.get_prerequisites() for pass_ in self.passes))
-
-    def apply_pass(self, program: ProgramIR) -> Set[str]:
-        run_passes = {self.name}
-        for pass_ in self.passes:
-            run_passes |= pass_.apply_pass(program)
-        return run_passes
-
-
 DefaultPasses = IRPassSequence("DefaultPasses")
 PassesRegister.register(DefaultPasses)
 
 
+class ProgramData:
+    def __init__(self, int32: TypeSymbol):
+        self.int32 = int32
+
+
+class BuiltinsData(Extension):
+    def general(self, set_to: ProgramData = None) -> ProgramData:
+        return super().general(set_to)
+
+    def program(self, node: ProgramIR, set_to: ProgramData = None) -> ProgramData:
+        raise NotImplementedError()
+
+
 @PassesRegister.register(to_sequences=['DefaultPasses'])
-class CreateBuiltins(IRTreePass):
+class CreateBuiltinsData(IRTreePass):
+    def __init__(self, ir: IR):
+        super().__init__(ir)
+
+        self.builtins: BuiltinsData = self.add_ext(BuiltinsData)
+
     @classmethod
-    def get_prerequisites(cls) -> Set[str]:
+    def get_required_passes(cls) -> Set[str]:
+        return set()
+
+    @classmethod
+    def get_required_extensions(cls) -> Set[Type[Extension]]:
+        return set()
+
+    def visit_program(self, program: ProgramIR):
+        int32 = IntTypeSymbol("int32", 32, Position.new_builtin("int32"))
+
+        data = ProgramData(int32)
+        self.builtins.general(set_to=data)
+
+
+@PassesRegister.register(to_sequences=['DefaultPasses'])
+class InitNamespace(IRTreePass):
+    @classmethod
+    def get_required_passes(cls) -> Set[str]:
+        return set()
+
+    @classmethod
+    def get_required_extensions(cls) -> Set[Type[Extension]]:
         return set()
 
     def visit_program(self, program: ProgramIR):
         builtin_namespace = NamespaceSymbol("<builtins>", Position.new_none())
-        BuiltinsCreator.add_builtins(program.data, builtin_namespace)
-
         program.namespace = builtin_namespace
 
-
-@PassesRegister.register(to_sequences=['DefaultPasses'])
-class InitSources(IRTreePass):
-    @classmethod
-    def get_prerequisites(cls) -> Set[str]:
-        return {'CreateBuiltins'}
+        super().visit_program(program)
 
     def visit_source(self, source: SourceIR):
         global_namespace = NamespaceSymbol(f"<{source.source_name} globals>", Position.new_source(source.source_name))
@@ -487,16 +268,30 @@ class InitSources(IRTreePass):
 @PassesRegister.register(to_sequences=['DefaultPasses'])
 class DeclareTypes(IRTreePass):
     @classmethod
-    def get_prerequisites(cls) -> Set[str]:
-        return {'CreateBuiltins', 'InitSources'}
+    def get_required_passes(cls) -> Set[str]:
+        return set()
+
+    @classmethod
+    def get_required_extensions(cls) -> Set[Type[Extension]]:
+        return set()
 
 
-@PassesRegister.register(to_sequences=['DefaultPasses'])
+# @PassesRegister.register(to_sequences=['DefaultPasses'])
 class ResolveTypes(IRTreePass):
-    def __init__(self, program: ProgramIR):
-        super().__init__(program)
+    def __init__(self, ir: IR):
+        super().__init__(ir)
         self._current_func: Optional[FunctionIR] = None
         self._current_func_type: Optional[FunctionTypeSymbol] = None
+
+        self.builtins = self.get_ext(BuiltinsData)
+
+    @classmethod
+    def get_required_passes(cls) -> Set[str]:
+        return {'InitNamespace'}
+
+    @classmethod
+    def get_required_extensions(cls) -> Set[Type[Extension]]:
+        return {BuiltinsData}
 
     @property
     def current_func(self):
@@ -520,10 +315,6 @@ class ResolveTypes(IRTreePass):
             yield
         self._current_func = old_func
         self._current_func_type = old_type
-
-    @classmethod
-    def get_prerequisites(cls) -> Set[str]:
-        return {'CreateBuiltins', 'InitSources', 'DeclareTypes'}
 
     def visit_function(self, func: FunctionIR):
         for param in func.params:
@@ -569,7 +360,7 @@ class ResolveTypes(IRTreePass):
 
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal
-        num.ret_type = self.data.int32
+        num.ret_type = self.builtins.general().int32
 
     def visit_get_type(self, type: GetTypeIR):
         try:
