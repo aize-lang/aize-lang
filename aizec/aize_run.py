@@ -4,11 +4,10 @@ from aizec.common import *
 
 from aizec.aize_error import AizeMessage, MessageHandler, Reporter, ErrorLevel, FailFlag
 from aizec.aize_parser import AizeParser
-from aizec.aize_semantics import CreateIR
 from aizec.aize_source import Source, FileSource, Position, StreamSource
 
 from aizec.aize_ast import ProgramAST, SourceAST
-from aizec.aize_ir import IR, PassesRegister, PassScheduler, IRPass
+from aizec.aize_ir import IR, PassScheduler, CreateIR, PassAlias
 
 
 __all__ = ['FrontendManager', 'IRManager', 'BackendManager',
@@ -139,8 +138,8 @@ class IRManager:
 
         self.scheduler = PassScheduler(self.ir, [])
 
-    def schedule_pass(self, pass_name: str) -> bool:
-        return self.scheduler.schedule(PassesRegister.get_pass(pass_name))
+    def schedule_pass(self, ir_pass: PassAlias) -> bool:
+        return self.scheduler.schedule(ir_pass)
 
     def run_scheduled(self):
         self.scheduler.run_scheduled()

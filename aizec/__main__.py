@@ -2,6 +2,7 @@ import argparse
 
 from aizec.common import *
 from aizec.aize_run import FrontendManager, IRManager, BackendManager, fail_callback
+from aizec.aize_semantics import DefaultPasses
 
 
 def make_arg_parser():
@@ -37,7 +38,7 @@ def main():
         frontend.trace_imports()
 
         ir_manager = IRManager(frontend.get_ir())
-        ir_manager.schedule_pass('DefaultPasses')
+        ir_manager.schedule_pass(DefaultPasses)
         ir_manager.run_scheduled()
 
 

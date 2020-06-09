@@ -4,6 +4,8 @@ from abc import ABCMeta
 
 from aizec.common import *
 
+from aizec.aize_ast import *
+
 from aizec.aize_source import *
 from aizec.aize_symbols import *
 from aizec.aize_error import MessageHandler
@@ -23,6 +25,86 @@ class IR:
         self.program = program
         self.extensions: Dict[Type[Extension], Extension] = {}
         self.ran_passes: Set[PassAlias] = set()
+
+
+class CreateIR(ASTVisitor):
+    @classmethod
+    def create_ir(cls, program: ProgramAST) -> IR:
+        return IR(cls(program).visit_program(program))
+
+    def visit_program(self, program: ProgramAST) -> ProgramIR:
+        return ProgramIR([self.visit_source(source) for source in program.sources], NoNamespaceSymbol())
+
+    def visit_source(self, source: SourceAST):
+        return SourceIR([self.visit_top_level(top_level) for top_level in source.top_levels], source.source.get_name(), NoNamespaceSymbol())
+
+    def visit_function(self, func: FunctionAST):
+        ann = self.visit_ann(func.ret)
+        return FunctionIR(
+            name=func.name,
+            params=[self.visit_param(param) for param in func.params],
+            ret=ann.type,
+            body=[self.visit_stmt(stmt) for stmt in func.body],
+            symbol=UnknownVariableSymbol(func.pos),
+            namespace=NoNamespaceSymbol(),
+            pos=func.pos
+        )
+
+    def visit_class(self, cls: ClassAST):
+        fields = {}
+        methods = {}
+        for cls_stmt in cls.body:
+            if isinstance(cls_stmt, AttrAST):
+                fields[cls_stmt.name] = self.visit_attr(cls_stmt)
+            elif isinstance(cls_stmt, MethodAST):
+                if isinstance(cls_stmt, MethodImplAST):
+                    methods[cls_stmt.name] = self.visit_method(cls_stmt)
+                else:
+                    pass
+            else:
+                raise Exception()
+        return ClassIR(cls.name, fields, methods, cls.pos)
+
+    def visit_attr(self, attr: AttrAST):
+        ann = self.visit_ann(attr.annotation)
+        return FieldIR(attr.name, ann.type, attr.pos)
+
+    def visit_method_sig(self, method: MethodSigAST):
+        pass
+
+    def visit_method_impl(self, method: MethodImplAST):
+        ret_ann = self.visit_ann(method.ret)
+        return MethodDefIR(
+            name=method.name,
+            params=[self.visit_param(param) for param in method.params],
+            ret=ret_ann.type,
+            body=[self.visit_stmt(stmt) for stmt in method.body],
+            pos=method.pos
+        )
+
+    def visit_param(self, param: ParamAST):
+        ann = self.visit_ann(param.annotation)
+        return ParamIR(
+            name=param.name,
+            type=ann.type,
+            symbol=VariableSymbol(param.name, UnknownTypeSymbol(param.pos), param.pos),
+            pos=param.pos
+        )
+
+    def visit_return(self, ret: ReturnStmtAST):
+        return ReturnIR(self.visit_expr(ret.value), ret.pos)
+
+    def visit_int(self, num: IntLiteralAST):
+        return IntIR(num.num, num.pos)
+
+    def visit_ann(self, ann: ExprAST):
+        return AnnotationIR(self.visit_type(ann), ann.pos)
+
+    def handle_malformed_type(self, type: ExprAST):
+        return MalformedTypeIR(UnknownTypeSymbol(type.pos), type.pos)
+
+    def visit_get_type(self, type: GetVarExprAST):
+        return GetTypeIR(type.var, UnknownTypeSymbol(type.pos), type.pos)
 
 
 # region IR Extension
