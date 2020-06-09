@@ -212,7 +212,7 @@ class ProgramData:
         self.int32 = int32
 
 
-class BuiltinsData(Extension):
+class LiteralData(Extension):
     def general(self, set_to: ProgramData = None) -> ProgramData:
         return super().general(set_to)
 
@@ -221,31 +221,14 @@ class BuiltinsData(Extension):
 
 
 @PassesRegister.register(to_sequences=['DefaultPasses'])
-class CreateBuiltinsData(IRTreePass):
+class InitNamespace(IRTreePass):
     def __init__(self, ir: IR):
         super().__init__(ir)
 
-        self.builtins: BuiltinsData = self.add_ext(BuiltinsData)
+        self.builtins: LiteralData = self.add_ext(LiteralData)
 
     @classmethod
-    def get_required_passes(cls) -> Set[str]:
-        return set()
-
-    @classmethod
-    def get_required_extensions(cls) -> Set[Type[Extension]]:
-        return set()
-
-    def visit_program(self, program: ProgramIR):
-        int32 = IntTypeSymbol("int32", 32, Position.new_builtin("int32"))
-
-        data = ProgramData(int32)
-        self.builtins.general(set_to=data)
-
-
-@PassesRegister.register(to_sequences=['DefaultPasses'])
-class InitNamespace(IRTreePass):
-    @classmethod
-    def get_required_passes(cls) -> Set[str]:
+    def get_required_passes(cls) -> Set[PassAlias]:
         return set()
 
     @classmethod
@@ -254,6 +237,13 @@ class InitNamespace(IRTreePass):
 
     def visit_program(self, program: ProgramIR):
         builtin_namespace = NamespaceSymbol("<builtins>", Position.new_none())
+
+        int32 = IntTypeSymbol("int", 32, Position.new_builtin("int"))
+        builtin_namespace.define_type(int32)
+
+        data = ProgramData(int32)
+        self.builtins.general(set_to=data)
+
         program.namespace = builtin_namespace
 
         super().visit_program(program)
@@ -268,7 +258,7 @@ class InitNamespace(IRTreePass):
 @PassesRegister.register(to_sequences=['DefaultPasses'])
 class DeclareTypes(IRTreePass):
     @classmethod
-    def get_required_passes(cls) -> Set[str]:
+    def get_required_passes(cls) -> Set[PassAlias]:
         return set()
 
     @classmethod
@@ -276,22 +266,22 @@ class DeclareTypes(IRTreePass):
         return set()
 
 
-# @PassesRegister.register(to_sequences=['DefaultPasses'])
+@PassesRegister.register(to_sequences=['DefaultPasses'])
 class ResolveTypes(IRTreePass):
     def __init__(self, ir: IR):
         super().__init__(ir)
         self._current_func: Optional[FunctionIR] = None
         self._current_func_type: Optional[FunctionTypeSymbol] = None
 
-        self.builtins = self.get_ext(BuiltinsData)
+        self.builtins = self.get_ext(LiteralData)
 
     @classmethod
-    def get_required_passes(cls) -> Set[str]:
-        return {'InitNamespace'}
+    def get_required_passes(cls) -> Set[PassAlias]:
+        return {InitNamespace}
 
     @classmethod
     def get_required_extensions(cls) -> Set[Type[Extension]]:
-        return {BuiltinsData}
+        return {LiteralData}
 
     @property
     def current_func(self):

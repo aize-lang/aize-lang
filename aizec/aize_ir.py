@@ -12,7 +12,7 @@ from aizec.aize_error import MessageHandler
 __all__ = ['NodeIR', 'TopLevelIR', 'AnnotationIR', 'ProgramIR', 'StmtIR', 'ExprIR', 'ReturnIR',
            'MethodDeclIR', 'IntIR', 'FieldIR', 'TypeIR', 'FunctionIR', 'GetTypeIR', 'SourceIR',
            'MethodDefIR', 'ParamIR', 'TextIR', 'ClassIR', 'MalformedTypeIR', 'WithNamespace',
-           'IR', 'Extension', 'PassesRegister', 'PassScheduler', 'IRPassSequence', 'IRTreePass']
+           'IR', 'Extension', 'PassesRegister', 'PassScheduler', 'IRPassSequence', 'IRTreePass', 'PassAlias']
 
 
 T = TypeVar('T')
@@ -22,7 +22,7 @@ class IR:
     def __init__(self, program: ProgramIR):
         self.program = program
         self.extensions: Dict[Type[Extension], Extension] = {}
-        self.ran_passes: Set[str] = set()
+        self.ran_passes: Set[PassAlias] = set()
 
 
 # region IR Extension
@@ -185,7 +185,7 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
 
         MessageHandler.flush_messages()
 
-        ir.ran_passes.add(cls.name)
+        ir.ran_passes.add(cls)
 
     @classmethod
     def can_run(cls, ir: IR) -> bool:
@@ -197,7 +197,7 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
 
     @classmethod
     @abstractmethod
-    def get_required_passes(cls) -> Set[str]:
+    def get_required_passes(cls) -> Set[PassAlias]:
         pass
 
     @classmethod
@@ -286,6 +286,9 @@ class IRPassSequence(IRPass):
         scheduler.run_scheduled()
 
 
+PassAlias = Union[IRPass, Type[IRTreePass]]
+
+
 class PassesRegister:
     _instance_ = None
 
@@ -360,6 +363,7 @@ class PassScheduler:
 # endregion
 
 
+# TODO Move Namespace and other Semantic Analysis Extensions actually into Extensions
 class NodeIR:
     pass
 
