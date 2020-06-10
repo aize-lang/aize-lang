@@ -8,6 +8,7 @@ from aizec.aize_source import Source, FileSource, Position, StreamSource
 
 from aizec.aize_ast import ProgramAST, SourceAST
 from aizec.aize_ir import IR, PassScheduler, PassAlias
+from aizec.aize_llvm_backend import GenerateLLVM, AizeLLVM
 
 
 __all__ = ['FrontendManager', 'IRManager', 'BackendManager',
@@ -146,6 +147,16 @@ class IRManager:
 
 
 class BackendManager:
-    def __init__(self):
-        # TODO
-        pass
+    def __init__(self, ir: IR):
+        self.ir: IR = ir
+
+        self._created_llvm = False
+
+    def generate_llvm(self):
+        PassScheduler(self.ir, [GenerateLLVM]).run_scheduled()
+        self._created_llvm = True
+
+    def get_llvm(self) -> AizeLLVM:
+        if not self._created_llvm:
+            self.generate_llvm()
+        return GenerateLLVM.get_llvm(self.ir)

@@ -41,6 +41,9 @@ def main():
         ir_manager.schedule_pass(DefaultPasses)
         ir_manager.run_scheduled()
 
+        backend = BackendManager(ir_manager.ir)
+        print(backend.get_llvm().llvm_ir)
+
 
 if __name__ == '__main__':
     main()

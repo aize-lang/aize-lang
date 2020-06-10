@@ -312,6 +312,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         self.ir.extensions[ext_type] = ext
         return ext
 
+    def has_ext(self, ext_type: Type[E]) -> bool:
+        return ext_type in self.ir.extensions
+
     def get_ext(self, ext_type: Type[E]) -> E:
         try:
             return self.ir.extensions[ext_type]
@@ -421,11 +424,11 @@ class PassesRegister:
 
 
 class PassScheduler:
-    def __init__(self, ir: IR, scheduled_passes: List[IRPass]):
+    def __init__(self, ir: IR, scheduled_passes: List[PassAlias]):
         self.ir = ir
-        self.scheduled_passes: List[IRPass] = scheduled_passes
+        self.scheduled_passes: List[PassAlias] = scheduled_passes
 
-    def schedule(self, ir_pass: IRPass) -> bool:
+    def schedule(self, ir_pass: PassAlias) -> bool:
         if ir_pass in self.scheduled_passes:
             return False
         else:
