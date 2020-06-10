@@ -7,7 +7,7 @@ from aizec.aize_parser import AizeParser
 from aizec.aize_source import Source, FileSource, Position, StreamSource
 
 from aizec.aize_ast import ProgramAST, SourceAST
-from aizec.aize_ir import IR, PassScheduler, CreateIR, PassAlias
+from aizec.aize_ir import IR, PassScheduler, PassAlias
 
 
 __all__ = ['FrontendManager', 'IRManager', 'BackendManager',
@@ -76,7 +76,7 @@ class FrontendManager:
         return ProgramAST([ast for ast in self._sources.values()])
 
     def get_ir(self) -> IR:
-        return CreateIR.create_ir(self.get_program_ast())
+        return IR.from_ast(self.get_program_ast())
 
     def add_source(self, source: Source):
         if source in self._sources:

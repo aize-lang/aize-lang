@@ -13,6 +13,11 @@ from aizec.aize_source import *
 from aizec.aize_symbols import *
 
 
+class LLVMData(Extension):
+    def general(self, set_to = None):
+        raise NotImplementedError()
+
+
 class GenerateLLVM(IRTreePass):
     def __init__(self, aize_ir: IR):
         super().__init__(aize_ir)

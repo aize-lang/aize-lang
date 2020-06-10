@@ -5,15 +5,12 @@ from abc import ABCMeta
 from aizec.common import *
 
 from aizec.aize_ast import *
-
 from aizec.aize_source import *
-from aizec.aize_symbols import *
-from aizec.aize_error import MessageHandler
 
 
 __all__ = ['NodeIR', 'TopLevelIR', 'AnnotationIR', 'ProgramIR', 'StmtIR', 'ExprIR', 'ReturnIR',
            'MethodDeclIR', 'IntIR', 'FieldIR', 'TypeIR', 'FunctionIR', 'GetTypeIR', 'SourceIR',
-           'MethodDefIR', 'ParamIR', 'TextIR', 'ClassIR', 'MalformedTypeIR', 'WithNamespace',
+           'MethodDefIR', 'ParamIR', 'TextIR', 'ClassIR', 'MalformedTypeIR',
            'IR', 'Extension', 'PassesRegister', 'PassScheduler', 'IRPassSequence', 'IRTreePass', 'PassAlias']
 
 
@@ -26,92 +23,88 @@ class IR:
         self.extensions: Dict[Type[Extension], Extension] = {}
         self.ran_passes: Set[PassAlias] = set()
 
-
-class CreateIR(ASTVisitor):
     @classmethod
-    def create_ir(cls, program: ProgramAST) -> IR:
-        return IR(cls(program).visit_program(program))
+    def from_ast(cls, program: ProgramAST) -> IR:
+        return cls(cls.CreateIR(program).visit_program(program))
 
-    def visit_program(self, program: ProgramAST) -> ProgramIR:
-        return ProgramIR([self.visit_source(source) for source in program.sources], NoNamespaceSymbol())
+    class CreateIR(ASTVisitor):
+        def visit_program(self, program: ProgramAST) -> ProgramIR:
+            return ProgramIR([self.visit_source(source) for source in program.sources])
 
-    def visit_source(self, source: SourceAST):
-        return SourceIR([self.visit_top_level(top_level) for top_level in source.top_levels], source.source.get_name(), NoNamespaceSymbol())
+        def visit_source(self, source: SourceAST):
+            return SourceIR([self.visit_top_level(top_level) for top_level in source.top_levels], source.source.get_name())
 
-    def visit_function(self, func: FunctionAST):
-        ann = self.visit_ann(func.ret)
-        return FunctionIR(
-            name=func.name,
-            params=[self.visit_param(param) for param in func.params],
-            ret=ann.type,
-            body=[self.visit_stmt(stmt) for stmt in func.body],
-            symbol=UnknownVariableSymbol(func.pos),
-            namespace=NoNamespaceSymbol(),
-            pos=func.pos
-        )
+        def visit_function(self, func: FunctionAST):
+            ann = self.visit_ann(func.ret)
+            return FunctionIR(
+                name=func.name,
+                params=[self.visit_param(param) for param in func.params],
+                ret=ann.type,
+                body=[self.visit_stmt(stmt) for stmt in func.body],
+                pos=func.pos
+            )
 
-    def visit_class(self, cls: ClassAST):
-        fields = {}
-        methods = {}
-        for cls_stmt in cls.body:
-            if isinstance(cls_stmt, AttrAST):
-                fields[cls_stmt.name] = self.visit_attr(cls_stmt)
-            elif isinstance(cls_stmt, MethodAST):
-                if isinstance(cls_stmt, MethodImplAST):
-                    methods[cls_stmt.name] = self.visit_method(cls_stmt)
+        def visit_class(self, cls: ClassAST):
+            fields = {}
+            methods = {}
+            for cls_stmt in cls.body:
+                if isinstance(cls_stmt, AttrAST):
+                    fields[cls_stmt.name] = self.visit_attr(cls_stmt)
+                elif isinstance(cls_stmt, MethodAST):
+                    if isinstance(cls_stmt, MethodImplAST):
+                        methods[cls_stmt.name] = self.visit_method(cls_stmt)
+                    else:
+                        pass
                 else:
-                    pass
-            else:
-                raise Exception()
-        return ClassIR(cls.name, fields, methods, cls.pos)
+                    raise Exception()
+            return ClassIR(cls.name, fields, methods, cls.pos)
 
-    def visit_attr(self, attr: AttrAST):
-        ann = self.visit_ann(attr.annotation)
-        return FieldIR(attr.name, ann.type, attr.pos)
+        def visit_attr(self, attr: AttrAST):
+            ann = self.visit_ann(attr.annotation)
+            return FieldIR(attr.name, ann.type, attr.pos)
 
-    def visit_method_sig(self, method: MethodSigAST):
-        pass
+        def visit_method_sig(self, method: MethodSigAST):
+            pass
 
-    def visit_method_impl(self, method: MethodImplAST):
-        ret_ann = self.visit_ann(method.ret)
-        return MethodDefIR(
-            name=method.name,
-            params=[self.visit_param(param) for param in method.params],
-            ret=ret_ann.type,
-            body=[self.visit_stmt(stmt) for stmt in method.body],
-            pos=method.pos
-        )
+        def visit_method_impl(self, method: MethodImplAST):
+            ret_ann = self.visit_ann(method.ret)
+            return MethodDefIR(
+                name=method.name,
+                params=[self.visit_param(param) for param in method.params],
+                ret=ret_ann.type,
+                body=[self.visit_stmt(stmt) for stmt in method.body],
+                pos=method.pos
+            )
 
-    def visit_param(self, param: ParamAST):
-        ann = self.visit_ann(param.annotation)
-        return ParamIR(
-            name=param.name,
-            type=ann.type,
-            symbol=VariableSymbol(param.name, UnknownTypeSymbol(param.pos), param.pos),
-            pos=param.pos
-        )
+        def visit_param(self, param: ParamAST):
+            ann = self.visit_ann(param.annotation)
+            return ParamIR(
+                name=param.name,
+                type=ann.type,
+                pos=param.pos
+            )
 
-    def visit_return(self, ret: ReturnStmtAST):
-        return ReturnIR(self.visit_expr(ret.value), ret.pos)
+        def visit_return(self, ret: ReturnStmtAST):
+            return ReturnIR(self.visit_expr(ret.value), ret.pos)
 
-    def visit_int(self, num: IntLiteralAST):
-        return IntIR(num.num, num.pos)
+        def visit_int(self, num: IntLiteralAST):
+            return IntIR(num.num, num.pos)
 
-    def visit_ann(self, ann: ExprAST):
-        return AnnotationIR(self.visit_type(ann), ann.pos)
+        def visit_ann(self, ann: ExprAST):
+            return AnnotationIR(self.visit_type(ann), ann.pos)
 
-    def handle_malformed_type(self, type: ExprAST):
-        return MalformedTypeIR(UnknownTypeSymbol(type.pos), type.pos)
+        def handle_malformed_type(self, type: ExprAST):
+            return MalformedTypeIR(type.pos)
 
-    def visit_get_type(self, type: GetVarExprAST):
-        return GetTypeIR(type.var, UnknownTypeSymbol(type.pos), type.pos)
+        def visit_get_type(self, type: GetVarExprAST):
+            return GetTypeIR(type.var, type.pos)
 
 
 # region IR Extension
 class Extension:
-    def __init__(self, _general_data: Any, node_data: Dict[NodeIR, Any]):
+    def __init__(self, _general_data: Any, node_data: Dict[NodeIR, Dict[Type[NodeIR], Any]]):
         self._general_data: Any = _general_data
-        self._node_data = node_data
+        self._node_data: Dict[NodeIR, Dict[Type[NodeIR]], Any] = node_data
 
     @classmethod
     def new(cls: Type[E]) -> E:
@@ -126,8 +119,38 @@ class Extension:
     @abstractmethod
     def program(self, node: ProgramIR, set_to: T = None) -> T:
         if set_to is not None:
-            self._node_data[node] = set_to
-        return self._node_data[node]
+            self._node_data.setdefault(node, {})[ProgramIR] = set_to
+        return self._node_data[node][ProgramIR]
+
+    @abstractmethod
+    def source(self, node: SourceIR, set_to: T = None) -> T:
+        if set_to is not None:
+            self._node_data.setdefault(node, {})[SourceIR] = set_to
+        return self._node_data[node][SourceIR]
+
+    @abstractmethod
+    def function(self, node: FunctionIR, set_to: T = None) -> T:
+        if set_to is not None:
+            self._node_data.setdefault(node, {})[FunctionIR] = set_to
+        return self._node_data[node][FunctionIR]
+
+    @abstractmethod
+    def param(self, node: ParamIR, set_to: T = None) -> T:
+        if set_to is not None:
+            self._node_data.setdefault(node, {})[ParamIR] = set_to
+        return self._node_data[node][ParamIR]
+
+    @abstractmethod
+    def expr(self, node: ExprIR, set_to: T = None) -> T:
+        if set_to is not None:
+            self._node_data.setdefault(node, {})[ExprIR] = set_to
+        return self._node_data[node][ExprIR]
+
+    @abstractmethod
+    def type(self, node: TypeIR, set_to: T = None) -> T:
+        if set_to is not None:
+            self._node_data.setdefault(node, {})[TypeIR] = set_to
+        return self._node_data[node][TypeIR]
 
 
 E = TypeVar('E', bound=Extension)
@@ -207,13 +230,6 @@ class IRVisitor(ABC):
         pass
 
 
-class IRPassInfo(NamedTuple):
-    required_passes: Set[str]
-    required_extensions: Set[str]
-    runs_passes: Set[str]
-    adds_extensions: Set[str]
-
-
 class IRPass(ABC):
     def __init__(self, name: str):
         self.name: str = name
@@ -258,16 +274,19 @@ class IRPassClass:
 
 class IRTreePass(IRVisitor, IRPassClass, ABC):
     def __init__(self, ir: IR):
-        self._table = SymbolTable()
         self.ir = ir
 
     @classmethod
     def run_pass(cls, ir: IR):
-        cls(ir).visit_program(ir.program)
+        pass_class = cls(ir)
+        pass_class.visit_program(ir.program)
 
-        MessageHandler.flush_messages()
+        if pass_class.was_successful():
+            ir.ran_passes.add(cls)
 
-        ir.ran_passes.add(cls)
+    @abstractmethod
+    def was_successful(self) -> bool:
+        pass
 
     @classmethod
     def can_run(cls, ir: IR) -> bool:
@@ -299,29 +318,11 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         except KeyError:
             raise ValueError(f"Extension {ext_type} has not been added to the ir yet. Specify that requirement.")
 
-    def enter_namespace(self, namespace: NamespaceSymbol):
-        return self._table.enter(namespace)
-
-    def enter_node(self, node: WithNamespace):
-        namespace = node.namespace
-        if namespace.namespace is not None:
-            if namespace.namespace is not self.current_namespace:
-                raise ValueError("When entering a namespace, it must be a child of the current namespace")
-        return self._table.enter(node.namespace)
-
-    @property
-    def current_namespace(self) -> NamespaceSymbol:
-        return self._table.current_namespace
-
     def visit_program(self, program: ProgramIR):
-        with self.enter_node(program):
-            for source in program.sources:
-                self.visit_source(source)
+        pass
 
     def visit_source(self, source: SourceIR):
-        with self.enter_node(source):
-            for top_level in source.top_levels:
-                self.visit_top_level(top_level)
+        pass
 
     def visit_function(self, func: FunctionIR):
         pass
@@ -394,19 +395,18 @@ class PassesRegister:
         pass
 
     @classmethod
-    def register(cls, pass_: IRPass = None, *, to_sequences: Iterable[str] = None):
+    def register(cls, pass_: IRPass = None, *, to_sequences: Iterable[PassAlias] = None):
         inst = cls._instance()
         if to_sequences is None:
             to_sequences = []
         to_sequences = set(to_sequences)
 
         def _register(ir_pass: IRPass):
-            for seq_name in to_sequences:
-                seq = inst.get_pass(seq_name)
+            for seq in to_sequences:
                 if isinstance(seq, IRPassSequence):
                     seq.add_pass(ir_pass)
                 else:
-                    raise ValueError(f"{seq_name} not a IRPassSequence")
+                    raise ValueError(f"{seq.name} not a IRPassSequence")
             inst._passes[ir_pass.name] = ir_pass
             return ir_pass
 
@@ -445,26 +445,19 @@ class PassScheduler:
 # endregion
 
 
-# TODO Move Namespace and other Semantic Analysis Extensions actually into Extensions
 class NodeIR:
     pass
 
 
-class WithNamespace(Protocol):
-    namespace: NamespaceSymbol
-
-
 class ProgramIR(NodeIR):
-    def __init__(self, sources: List[SourceIR], namespace: NamespaceSymbol):
+    def __init__(self, sources: List[SourceIR]):
         self.sources = sources
-        self.namespace = namespace
 
 
 class SourceIR(NodeIR):
-    def __init__(self, top_levels: List[TopLevelIR], source_name: str, namespace: NamespaceSymbol):
+    def __init__(self, top_levels: List[TopLevelIR], source_name: str):
         self.top_levels = top_levels
         self.source_name = source_name
-        self.namespace = namespace
 
 
 class TextIR(Positioned, NodeIR):
@@ -477,20 +470,12 @@ class TopLevelIR(TextIR):
 
 
 class FunctionIR(TopLevelIR):
-    def __init__(self,
-                 name: str,
-                 params: List[ParamIR], ret: TypeIR,
-                 body: List[StmtIR],
-                 symbol: VariableSymbol, namespace: NamespaceSymbol,
-                 pos: Position):
+    def __init__(self, name: str, params: List[ParamIR], ret: TypeIR, body: List[StmtIR], pos: Position):
         super().__init__(pos)
         self.name = name
         self.params = params
         self.ret = ret
         self.body = body
-
-        self.symbol = symbol
-        self.namespace = namespace
 
 
 class ClassIR(TopLevelIR):
@@ -524,11 +509,10 @@ class MethodDefIR(TextIR):
 
 
 class ParamIR(TextIR):
-    def __init__(self, name: str, type: TypeIR, symbol: VariableSymbol, pos: Position):
+    def __init__(self, name: str, type: TypeIR, pos: Position):
         super().__init__(pos)
         self.name = name
         self.type = type
-        self.symbol = symbol
 
 
 class StmtIR(TextIR):
@@ -542,14 +526,12 @@ class ReturnIR(StmtIR):
 
 
 class ExprIR(TextIR):
-    def __init__(self, ret_type: TypeSymbol, pos: Position):
-        super().__init__(pos)
-        self.ret_type: TypeSymbol = ret_type
+    pass
 
 
 class IntIR(ExprIR):
     def __init__(self, num: int, pos: Position):
-        super().__init__(UnknownTypeSymbol(pos), pos)
+        super().__init__(pos)
         self.num = num
 
 
@@ -560,19 +542,18 @@ class AnnotationIR(TextIR):
 
 
 class TypeIR(TextIR):
-    def __init__(self, resolved_type: TypeSymbol, pos: Position):
+    def __init__(self, pos: Position):
         super().__init__(pos)
-        self.resolved_type = resolved_type
 
 
 class MalformedTypeIR(TypeIR):
-    def __init__(self, resolved_type: TypeSymbol, pos: Position):
-        super().__init__(resolved_type, pos)
+    def __init__(self, pos: Position):
+        super().__init__(pos)
 
 
 class GetTypeIR(TypeIR):
-    def __init__(self, name: str, resolved_type: TypeSymbol, pos: Position):
-        super().__init__(resolved_type, pos)
+    def __init__(self, name: str, pos: Position):
+        super().__init__(pos)
         self.name = name
 
 

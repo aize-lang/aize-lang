@@ -95,55 +95,112 @@ class TypeCheckingError(AizeMessage):
 # endregion
 
 
-class BuiltinsCreator:
-    def __init__(self, namespace: NamespaceSymbol):
-        self.namespace = namespace
-
-    def create_pos(self, name: str):
-        return Position.new_builtin(name)
-
-    def create_type(self, name: str):
-        type_symbol = TypeSymbol(name, self.create_pos(name))
-        self.namespace.define_type(type_symbol)
-        return type_symbol
-
-    def create_int_type(self, name: str, bit_size: int):
-        int_type_symbol = IntTypeSymbol(name, bit_size, self.create_pos(name))
-        self.namespace.define_type(int_type_symbol)
-        return int_type_symbol
-
-    @classmethod
-    def add_builtins(cls, data: ProgramData, namespace: NamespaceSymbol):
-        creator = cls(namespace)
-        data.int32 = creator.create_int_type("int", bit_size=32)
-
-        # returned instead of an actual type whenever an inconsistency in types occurs
-        data.error_placeholder = creator.create_type("<type check error>")
-
-
 DefaultPasses = IRPassSequence("DefaultPasses")
 PassesRegister.register(DefaultPasses)
 
 
-class ProgramData:
-    def __init__(self, int32: TypeSymbol):
-        self.int32 = int32
-
-
 class LiteralData(Extension):
+    class ProgramData:
+        def __init__(self, int32: TypeSymbol):
+            self.int32 = int32
+
     def general(self, set_to: ProgramData = None) -> ProgramData:
         return super().general(set_to)
 
-    def program(self, node: ProgramIR, set_to: ProgramData = None) -> ProgramData:
+    def program(self, node: ProgramIR, set_to=None):
+        raise NotImplementedError()
+
+    def source(self, node: SourceIR, set_to=None):
+        raise NotImplementedError()
+
+    def function(self, node: FunctionIR, set_to=None):
+        raise NotImplementedError()
+
+    def param(self, node: ParamIR, set_to=None):
+        raise NotImplementedError()
+
+    def expr(self, node: ExprIR, set_to=None):
+        raise NotImplementedError()
+
+    def type(self, node: TypeIR, set_to=None):
         raise NotImplementedError()
 
 
-@PassesRegister.register(to_sequences=['DefaultPasses'])
-class InitNamespace(IRTreePass):
+class SymbolData(Extension):
+    def general(self, set_to=None):
+        raise NotImplementedError()
+
+    class ProgramData:
+        def __init__(self, builtins: NamespaceSymbol):
+            self.builtins = builtins
+
+    def program(self, node: ProgramIR, set_to: ProgramData = None) -> ProgramData:
+        return super().program(node, set_to)
+
+    class SourceData:
+        def __init__(self, globals: NamespaceSymbol):
+            self.globals = globals
+
+    def source(self, node: SourceIR, set_to: SourceData = None) -> SourceData:
+        return super().source(node, set_to)
+
+    class FunctionData:
+        def __init__(self, symbol: VariableSymbol, namespace: NamespaceSymbol):
+            self.symbol = symbol
+            self.namespace = namespace
+
+    def function(self, node: FunctionIR, set_to: FunctionData = None) -> FunctionData:
+        return super().function(node, set_to)
+
+    class ParamData:
+        def __init__(self, symbol: VariableSymbol):
+            self.symbol = symbol
+
+    def param(self, node: ParamIR, set_to: ParamData = None) -> ParamData:
+        return super().param(node, set_to)
+
+    class ExprData:
+        def __init__(self, return_type: TypeSymbol):
+            self.return_type: TypeSymbol = return_type
+
+    def expr(self, node: ExprIR, set_to: ExprData = None) -> ExprData:
+        return super().expr(node, set_to)
+
+    class TypeData:
+        def __init__(self, resolved_type: TypeSymbol):
+            self.resolved_type: TypeSymbol = resolved_type
+
+    def type(self, node: TypeIR, set_to: TypeData = None) -> TypeData:
+        return super().type(node, set_to)
+
+
+class IRSymbolsPass(IRTreePass, ABC):
+    def __init__(self, ir: IR):
+        super().__init__(ir)
+        self._table = SymbolTable()
+
+    def was_successful(self) -> bool:
+        MessageHandler.flush_messages()
+        return True
+
+    def enter_namespace(self, namespace: NamespaceSymbol):
+        if namespace.namespace is not None:
+            if namespace.namespace is not self.current_namespace:
+                raise ValueError("When entering a namespace, it must be a child of the current namespace")
+        return self._table.enter(namespace)
+
+    @property
+    def current_namespace(self) -> NamespaceSymbol:
+        return self._table.current_namespace
+
+
+@PassesRegister.register(to_sequences=[DefaultPasses])
+class InitSymbols(IRSymbolsPass):
     def __init__(self, ir: IR):
         super().__init__(ir)
 
         self.builtins: LiteralData = self.add_ext(LiteralData)
+        self.symbols: SymbolData = self.add_ext(SymbolData)
 
     @classmethod
     def get_required_passes(cls) -> Set[PassAlias]:
@@ -155,51 +212,51 @@ class InitNamespace(IRTreePass):
 
     def visit_program(self, program: ProgramIR):
         builtin_namespace = NamespaceSymbol("<builtins>", Position.new_none())
+        self.symbols.program(program, set_to=SymbolData.ProgramData(builtin_namespace))
 
         int32 = IntTypeSymbol("int", 32, Position.new_builtin("int"))
         builtin_namespace.define_type(int32)
 
-        data = ProgramData(int32)
-        self.builtins.general(set_to=data)
+        self.builtins.general(set_to=LiteralData.ProgramData(int32))
 
-        program.namespace = builtin_namespace
-
-        super().visit_program(program)
+        with self.enter_namespace(builtin_namespace):
+            for source in program.sources:
+                self.visit_source(source)
 
     def visit_source(self, source: SourceIR):
         global_namespace = NamespaceSymbol(f"<{source.source_name} globals>", Position.new_source(source.source_name))
         self.current_namespace.define_namespace(global_namespace, visible=False)
+        self.symbols.source(source, set_to=SymbolData.SourceData(global_namespace))
 
-        source.namespace = global_namespace
 
-
-@PassesRegister.register(to_sequences=['DefaultPasses'])
-class DeclareTypes(IRTreePass):
+@PassesRegister.register(to_sequences=[DefaultPasses])
+class DeclareTypes(IRSymbolsPass):
     @classmethod
     def get_required_passes(cls) -> Set[PassAlias]:
-        return set()
+        return {InitSymbols}
 
     @classmethod
     def get_required_extensions(cls) -> Set[Type[Extension]]:
-        return set()
+        return {LiteralData, SymbolData}
 
 
-@PassesRegister.register(to_sequences=['DefaultPasses'])
-class ResolveTypes(IRTreePass):
+@PassesRegister.register(to_sequences=[DefaultPasses])
+class ResolveTypes(IRSymbolsPass):
     def __init__(self, ir: IR):
         super().__init__(ir)
         self._current_func: Optional[FunctionIR] = None
         self._current_func_type: Optional[FunctionTypeSymbol] = None
 
-        self.builtins = self.get_ext(LiteralData)
+        self.builtins: LiteralData = self.get_ext(LiteralData)
+        self.symbols: SymbolData = self.get_ext(SymbolData)
 
     @classmethod
     def get_required_passes(cls) -> Set[PassAlias]:
-        return {InitNamespace}
+        return {InitSymbols, DeclareTypes}
 
     @classmethod
     def get_required_extensions(cls) -> Set[Type[Extension]]:
-        return {LiteralData}
+        return {LiteralData, SymbolData}
 
     @property
     def current_func(self):
@@ -219,31 +276,43 @@ class ResolveTypes(IRTreePass):
     def in_function(self, func: FunctionIR, type: FunctionTypeSymbol):
         old_func, self._current_func = self._current_func, func
         old_type, self._current_func_type = self._current_func_type, type
-        with self.enter_node(func):
+        with self.enter_namespace(self.symbols.function(func).namespace):
             yield
         self._current_func = old_func
         self._current_func_type = old_type
+
+    def visit_program(self, program: ProgramIR):
+        with self.enter_namespace(self.symbols.program(program).builtins):
+            for source in program.sources:
+                self.visit_source(source)
+
+    def visit_source(self, source: SourceIR):
+        with self.enter_namespace(self.symbols.source(source).globals):
+            for top_level in source.top_levels:
+                self.visit_top_level(top_level)
 
     def visit_function(self, func: FunctionIR):
         for param in func.params:
             self.visit_param(param)
         self.visit_type(func.ret)
-        params = [param.type.resolved_type for param in func.params]
-        ret = func.ret.resolved_type
+        params = [self.symbols.type(param.type).resolved_type for param in func.params]
+        ret = self.symbols.type(func.ret).resolved_type
         func_type = FunctionTypeSymbol(params, ret, func.pos)
 
-        func.value = VariableSymbol(func.name, func_type, func.pos)
+        func_value = VariableSymbol(func.name, func_type, func.pos)
         try:
-            self.current_namespace.define_value(func.value)
+            self.current_namespace.define_value(func_value)
         except DuplicateSymbolError as err:
             msg = DefinitionError.name_existing(func, err.old_symbol)
             MessageHandler.handle_message(msg)
 
-        func.namespace = NamespaceSymbol(f"<{func.name} body>", func.pos)
+        func_namespace = NamespaceSymbol(f"<{func.name} body>", func.pos)
+        self.symbols.function(func, set_to=SymbolData.FunctionData(func_value, func_namespace))
+
         with self.in_function(func, func_type):
             for param in func.params:
                 try:
-                    func.namespace.define_value(param.symbol)
+                    func_namespace.define_value(self.symbols.param(param).symbol)
                 except DuplicateSymbolError as err:
                     msg = DefinitionError.param_repeated(func, param, param.name)
                     MessageHandler.handle_message(msg)
@@ -254,12 +323,13 @@ class ResolveTypes(IRTreePass):
 
     def visit_param(self, param: ParamIR):
         self.visit_type(param.type)
-        param.symbol = VariableSymbol(param.name, param.type.resolved_type, param.pos)
+        symbol = VariableSymbol(param.name, self.symbols.type(param.type).resolved_type, param.pos)
+        self.symbols.param(param, set_to=SymbolData.ParamData(symbol))
 
     def visit_return(self, ret: ReturnIR):
         self.visit_expr(ret.expr)
         expected = self.current_func_type.ret
-        got = ret.expr.ret_type
+        got = self.symbols.expr(ret.expr).return_type
         if expected.is_super_of(got):
             return
         else:
@@ -268,7 +338,7 @@ class ResolveTypes(IRTreePass):
 
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal
-        num.ret_type = self.builtins.general().int32
+        self.symbols.expr(num, SymbolData.ExprData(self.builtins.general().int32))
 
     def visit_get_type(self, type: GetTypeIR):
         try:
@@ -277,4 +347,4 @@ class ResolveTypes(IRTreePass):
             msg = DefinitionError.name_undefined(type, err.failed_name)
             MessageHandler.handle_message(msg)
             resolved_type = ErroredTypeSymbol(type.pos)
-        type.resolved_type = resolved_type
+        self.symbols.type(type, SymbolData.TypeData(resolved_type))
