@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import os
+import subprocess
+
 import llvmlite.ir as ir
 import llvmlite.binding as llvm
 
 from aizec.common import *
+from aizec.aize_error import MessageHandler
 
 from aizec.aize_ir import *
+from aizec.aize_symbols import *
 from aizec.aize_semantics import LiteralData, SymbolData, ResolveTypes
 
-from aizec.aize_error import AizeMessage, Reporter, MessageHandler, ErrorLevel
-from aizec.aize_symbols import *
+from aizec.aize_backend import Backend
 
 
 class LLVMData(Extension):
@@ -67,10 +71,10 @@ class GenerateLLVM(IRTreePass):
         return {ResolveTypes}
 
     @classmethod
-    def get_llvm(cls, aize_ir: IR) -> AizeLLVM:
+    def get_llvm(cls, aize_ir: IR) -> ir.Module:
         if LLVMData not in aize_ir.extensions:
             raise ValueError("GenerateLLVM has not been run over the ir yet.")
-        return AizeLLVM(aize_ir.extensions[LLVMData].general().mod)
+        return aize_ir.extensions[LLVMData].general().mod
 
     def was_successful(self) -> bool:
         MessageHandler.flush_messages()
@@ -130,6 +134,41 @@ class GenerateLLVM(IRTreePass):
         self.llvm.type(type, set_to=LLVMData.TypeData(llvm_type))
 
 
-class AizeLLVM:
-    def __init__(self, llvm_ir: ir.Module):
-        self.llvm_ir = llvm_ir
+class LLVMBackend(Backend):
+    llvm.initialize()
+    llvm.initialize_native_target()
+    llvm.initialize_native_asmprinter()
+
+    def __init__(self, aize_ir: IR):
+        super().__init__(aize_ir)
+        self.llvm_ir = self.to_llvm(aize_ir)
+
+    @staticmethod
+    def to_llvm(aize_ir: IR) -> ir.Module:
+        PassScheduler(aize_ir, [GenerateLLVM]).run_scheduled()
+        return GenerateLLVM.get_llvm(aize_ir)
+
+    def run(self):
+        target = llvm.Target.from_default_triple()
+        machine = target.create_target_machine(codemodel='small')
+
+        llvm_mod = llvm.parse_assembly(str(self.llvm_ir))
+        object_data = machine.emit_object(llvm_mod)
+
+        if self.output_path is None:
+            self.output_path = Path("a.exe")
+
+        with self.output_path.open("wb") as out:
+            out.write(object_data)
+
+        if os.name == 'nt':
+            this_file = Path(__file__).absolute()
+            windows_link_dir = this_file.parent / "windows-link"
+            lld_link = windows_link_dir / "lld-link.exe"
+            link_to = windows_link_dir / "x64"
+            subprocess.call([
+                f"{lld_link}",
+                f"{self.output_path}", f"-out:{self.output_path}",
+                f"-libpath:{link_to}", "-defaultlib:libcmt"
+            ])
+

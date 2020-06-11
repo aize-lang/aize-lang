@@ -27,6 +27,7 @@ class IR:
     def from_ast(cls, program: ProgramAST) -> IR:
         return cls(cls.CreateIR(program).visit_program(program))
 
+    # region IR Creator
     class CreateIR(ASTVisitor):
         def visit_program(self, program: ProgramAST) -> ProgramIR:
             return ProgramIR([self.visit_source(source) for source in program.sources])
@@ -98,6 +99,7 @@ class IR:
 
         def visit_get_type(self, type: GetVarExprAST):
             return GetTypeIR(type.var, type.pos)
+    # endregion
 
 
 # region IR Extension

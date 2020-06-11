@@ -1,14 +1,20 @@
+from __future__ import annotations
+
 import io
 
 from aizec.common import *
 
 from aizec.aize_error import AizeMessage, MessageHandler, Reporter, ErrorLevel, FailFlag
-from aizec.aize_parser import AizeParser
 from aizec.aize_source import Source, FileSource, Position, StreamSource
 
 from aizec.aize_ast import ProgramAST, SourceAST
+from aizec.aize_parser import AizeParser
+
 from aizec.aize_ir import IR, PassScheduler, PassAlias
-from aizec.aize_llvm_backend import GenerateLLVM, AizeLLVM
+from aizec.aize_semantics import DefaultPasses
+
+from aizec.aize_backend import Backend
+from aizec.aize_llvm_backend import LLVMBackend
 
 
 __all__ = ['FrontendManager', 'IRManager', 'BackendManager',
@@ -139,6 +145,9 @@ class IRManager:
 
         self.scheduler = PassScheduler(self.ir, [])
 
+    def schedule_default_passes(self):
+        self.scheduler.schedule(DefaultPasses)
+
     def schedule_pass(self, ir_pass: PassAlias) -> bool:
         return self.scheduler.schedule(ir_pass)
 
@@ -146,17 +155,20 @@ class IRManager:
         self.scheduler.run_scheduled()
 
 
-class BackendManager:
-    def __init__(self, ir: IR):
+T = TypeVar('T', bound=Backend)
+
+
+class BackendManager(Generic[T]):
+    def __init__(self, ir: IR, backend_type: Type[T]):
         self.ir: IR = ir
+        self.backend: T = backend_type.create(ir)
 
-        self._created_llvm = False
+    @classmethod
+    def create_llvm(cls, ir: IR) -> BackendManager[LLVMBackend]:
+        return cls(ir, LLVMBackend)
 
-    def generate_llvm(self):
-        PassScheduler(self.ir, [GenerateLLVM]).run_scheduled()
-        self._created_llvm = True
+    def set_output(self, output: Optional[Path]):
+        self.backend.set_output(output)
 
-    def get_llvm(self) -> AizeLLVM:
-        if not self._created_llvm:
-            self.generate_llvm()
-        return GenerateLLVM.get_llvm(self.ir)
+    def run_backend(self):
+        self.backend.run()
