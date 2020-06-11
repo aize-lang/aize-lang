@@ -36,6 +36,7 @@ def main():
         backend = BackendManager.create_llvm(ir_manager.ir)
         backend.set_output(output_file)
         backend.run_backend()
+        backend.run_output()
 
 
 if __name__ == '__main__':

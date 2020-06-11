@@ -145,7 +145,7 @@ class LLVMBackend(Backend):
         PassScheduler(aize_ir, [GenerateLLVM]).run_scheduled()
         return GenerateLLVM.get_llvm(aize_ir)
 
-    def run(self):
+    def run_backend(self):
         target = llvm.Target.from_default_triple()
         machine = target.create_target_machine(codemodel='small')
 
@@ -169,3 +169,6 @@ class LLVMBackend(Backend):
             linker.link_files()
         finally:
             temp_path.unlink()
+
+    def run_output(self):
+        Linker.process_call(self.output_path)

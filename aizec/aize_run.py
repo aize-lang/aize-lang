@@ -171,4 +171,7 @@ class BackendManager(Generic[T]):
         self.backend.set_output(output)
 
     def run_backend(self):
-        self.backend.run()
+        self.backend.run_backend()
+
+    def run_output(self):
+        self.backend.run_output()

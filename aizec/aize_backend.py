@@ -25,7 +25,11 @@ class Backend(ABC):
         return cls(ir)
 
     @abstractmethod
-    def run(self):
+    def run_backend(self):
+        pass
+
+    @abstractmethod
+    def run_output(self):
         pass
 
 
@@ -57,8 +61,15 @@ class Linker(ABC):
         else:
             raise Exception("No available linkers")
 
-    @abstractmethod
+    @classmethod
+    def process_call(cls, args: List[Union[str, Path]], suppress_output=False):
+        SystemInfo.create_native().process_call(args, suppress_output)
+
     def link_files(self):
+        self._link_files(SystemInfo.create_native())
+
+    @abstractmethod
+    def _link_files(self, info: SystemInfo):
         pass
 
 
@@ -73,6 +84,10 @@ class SystemInfo:
         else:
             os_name = '<unknown>'
         return cls(os_name)
+
+    @property
+    def aizec_dir(self):
+        return Path(__file__).parent
 
     def is_windows(self):
         return self._os_name == 'windows'
@@ -102,6 +117,13 @@ class SystemInfo:
             return False
         else:
             return True
+
+    def process_call(self, args: List[Union[str, Path]], suppress_output=False):
+        kwargs = {}
+        if suppress_output:
+            kwargs['stdout'] = subprocess.PIPE
+            kwargs['stderr'] = subprocess.PIPE
+        subprocess.call(args, **kwargs)
 
 
 class LinkerRegistry:
@@ -146,16 +168,16 @@ class GCCLinker(Linker):
     def is_preferred(cls) -> bool:
         return True
 
-    def link_files(self):
+    def _link_files(self, info: SystemInfo):
         invocation = ["gcc"]
         invocation += self.to_link
         invocation += [f"-o{self.out_path}"]
-        subprocess.call(invocation)
+        info.process_call(invocation)
 
 
 @LinkerRegistry.register
 class BuiltinWindowsLinker(Linker):
-    WINDOWS_LINK = Path(__file__).absolute().parent / "windows-link"
+    WINDOWS_LINK = SystemInfo.create_native().aizec_dir / "windows-link"
 
     @classmethod
     def get_name(cls) -> str:
@@ -174,9 +196,7 @@ class BuiltinWindowsLinker(Linker):
     def is_preferred(cls) -> bool:
         return False
 
-    def link_files(self):
-        this_file = Path(__file__).absolute()
-
+    def _link_files(self, info: SystemInfo):
         lld_link = self.WINDOWS_LINK / "lld-link.exe"
         link_to = self.WINDOWS_LINK / "x64"
 
@@ -184,4 +204,4 @@ class BuiltinWindowsLinker(Linker):
         invocation += self.to_link
         invocation += [f"-out:{self.out_path}"]
         invocation += [f"-libpath:{link_to}", "-defaultlib:libcmt"]
-        subprocess.call(invocation)
+        info.process_call(invocation)
