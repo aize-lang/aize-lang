@@ -40,6 +40,9 @@ class LLVMData(Extension):
     def expr(self, node: ExprIR, set_to: ExprData = None) -> ExprData:
         return super().expr(node, set_to)
 
+    def get_var(self, node: GetVarIR, set_to=None):
+        raise NotImplementedError()
+
     class TypeData:
         def __init__(self, llvm_type: ir.Type):
             self.llvm_type = llvm_type
@@ -53,6 +56,7 @@ class GenerateLLVM(IRTreePass):
         super().__init__(aize_ir)
 
         self.symbols: SymbolData = self.get_ext(SymbolData)
+        self.literals: LiteralData = self.get_ext(LiteralData)
         self.llvm: LLVMData = self.add_ext(LLVMData)
 
         self.llvm.general(set_to=LLVMData.GeneralData(ir.Module()))
@@ -84,6 +88,8 @@ class GenerateLLVM(IRTreePass):
     def resolve_type(self, type: TypeSymbol) -> ir.Type:
         if isinstance(type, IntTypeSymbol):
             llvm_type = ir.IntType(type.bit_size)
+        elif isinstance(type, FunctionTypeSymbol):
+            llvm_type = ir.FunctionType(self.resolve_type(type.ret), [self.resolve_type(param) for param in type.params])
         else:
             raise NotImplementedError(type)
         return llvm_type
@@ -125,6 +131,28 @@ class GenerateLLVM(IRTreePass):
         llvm_type = self.resolve_type(self.symbols.expr(num).return_type)
         self.llvm.expr(num, set_to=LLVMData.ExprData(ir.Constant(llvm_type, num.num)))
 
+    def visit_call(self, call: CallIR):
+        self.visit_expr(call.callee)
+        callee_val = self.llvm.expr(call.callee).val
+        arg_vals = []
+        for arg in call.arguments:
+            self.visit_expr(arg)
+            arg_val = self.llvm.expr(arg).val
+            arg_vals.append(arg_val)
+
+        llvm_val = self.builder.call(callee_val, arg_vals)
+
+        self.llvm.expr(call, LLVMData.ExprData(llvm_val))
+
+    def visit_get_var(self, get_var: GetVarIR):
+        symbol = self.symbols.get_var(get_var).symbol
+        if symbol == self.literals.general().puts:
+            llvm_val = ir.Function(self.mod, self.resolve_type(symbol.type), "puts")
+        else:
+            # Todo
+            raise Exception()
+        self.llvm.expr(get_var, LLVMData.ExprData(llvm_val))
+
     def visit_get_type(self, type: GetTypeIR):
         resolved: TypeSymbol = self.symbols.type(type).resolved_type
         llvm_type = self.resolve_type(resolved)
@@ -139,36 +167,54 @@ class LLVMBackend(Backend):
     def __init__(self, aize_ir: IR):
         super().__init__(aize_ir)
         self.llvm_ir = self.to_llvm(aize_ir)
+        self.emit_llvm = False
 
     @staticmethod
     def to_llvm(aize_ir: IR) -> ir.Module:
         PassScheduler(aize_ir, [GenerateLLVM]).run_scheduled()
         return GenerateLLVM.get_llvm(aize_ir)
 
+    def handle_option(self, option: str) -> bool:
+        if option == 'emit-llvm':
+            self.emit_llvm = True
+            return True
+        else:
+            return False
+
     def run_backend(self):
+        if self.output_path is None:
+            output_form = Path.cwd() / Path("a")
+            output_path = output_form.with_suffix(".exe")
+            self.output_path = output_path
+        else:
+            output_form = self.output_path.absolute().parent
+            output_path = self.output_path
+
+        if self.emit_llvm:
+            llvm_file = self.output_path.with_suffix(".ll")
+            with llvm_file.open("w") as file:
+                file.write(str(self.llvm_ir))
+
         target = llvm.Target.from_default_triple()
         machine = target.create_target_machine(codemodel='small')
 
         llvm_mod = llvm.parse_assembly(str(self.llvm_ir))
         object_data = machine.emit_object(llvm_mod)
 
-        if self.output_path is None:
-            self.output_path = Path("a.exe")
-
-        temp_dir = self.output_path.parent
-        if (temp_path := temp_dir / 'temp.o').exists():
+        if (temp_path := output_form.with_suffix(".o")).exists():
             i = 0
-            while (temp_path := (temp_dir / f"temp_{i}.o")).exists():
+            while (temp_path := (output_form + f"_{i}").with_suffix(".o")).exists():
                 i += 1
 
         with temp_path.open("wb") as out:
             out.write(object_data)
 
         try:
-            linker = Linker.get_linker("")([temp_path], self.output_path)
+            linker = Linker.get_linker("")([temp_path], output_path)
             linker.link_files()
         finally:
             temp_path.unlink()
 
     def run_output(self):
-        Linker.process_call(self.output_path)
+        return_code = Linker.process_call([self.output_path])
+        print("Returned with code:", return_code)

@@ -20,6 +20,10 @@ class Backend(ABC):
     def set_output(self, path: Optional[Path]):
         self.output_path = path
 
+    @abstractmethod
+    def handle_option(self, option: str) -> bool:
+        pass
+
     @classmethod
     def create(cls: Type[T], ir: IR) -> T:
         return cls(ir)
@@ -62,8 +66,8 @@ class Linker(ABC):
             raise Exception("No available linkers")
 
     @classmethod
-    def process_call(cls, args: List[Union[str, Path]], suppress_output=False):
-        SystemInfo.create_native().process_call(args, suppress_output)
+    def process_call(cls, args: List[Union[str, Path]], suppress_output=False) -> int:
+        return SystemInfo.create_native().process_call(args, suppress_output)
 
     def link_files(self):
         self._link_files(SystemInfo.create_native())
@@ -123,7 +127,8 @@ class SystemInfo:
         if suppress_output:
             kwargs['stdout'] = subprocess.PIPE
             kwargs['stderr'] = subprocess.PIPE
-        subprocess.call(args, **kwargs)
+        return_code = subprocess.call(args, **kwargs)
+        return return_code
 
 
 class LinkerRegistry:

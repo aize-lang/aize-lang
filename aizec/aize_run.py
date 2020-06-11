@@ -170,6 +170,11 @@ class BackendManager(Generic[T]):
     def set_output(self, output: Optional[Path]):
         self.backend.set_output(output)
 
+    def set_option(self, option: str):
+        if not self.backend.handle_option(option):
+            # TODO signal message handler
+            pass
+
     def run_backend(self):
         self.backend.run_backend()
 

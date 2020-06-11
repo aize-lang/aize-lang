@@ -86,6 +86,11 @@ class TypeCheckingError(AizeMessage):
         error = cls(offender.pos.get_source_name(), offender.pos, f"Expected type {expected}, got type {got}", note)
         return error
 
+    @classmethod
+    def function_callee(cls, callee: TextIR, got: TypeSymbol):
+        error = cls(callee.pos.get_source_name(), callee.pos, f"Expected a function to call, got {got}")
+        return error
+
     def display(self, reporter: Reporter):
         reporter.positioned_error("Type Checking Error", self.msg, self.pos)
         if self.note is not None:
@@ -100,11 +105,12 @@ PassesRegister.register(DefaultPasses)
 
 
 class LiteralData(Extension):
-    class ProgramData:
-        def __init__(self, int32: TypeSymbol):
+    class BuiltinData:
+        def __init__(self, int32: TypeSymbol, puts: VariableSymbol):
             self.int32 = int32
+            self.puts = puts
 
-    def general(self, set_to: ProgramData = None) -> ProgramData:
+    def general(self, set_to: BuiltinData = None) -> BuiltinData:
         return super().general(set_to)
 
     def program(self, node: ProgramIR, set_to=None):
@@ -120,6 +126,9 @@ class LiteralData(Extension):
         raise NotImplementedError()
 
     def expr(self, node: ExprIR, set_to=None):
+        raise NotImplementedError()
+
+    def get_var(self, node: GetVarIR, set_to=None):
         raise NotImplementedError()
 
     def type(self, node: TypeIR, set_to=None):
@@ -165,6 +174,13 @@ class SymbolData(Extension):
 
     def expr(self, node: ExprIR, set_to: ExprData = None) -> ExprData:
         return super().expr(node, set_to)
+
+    class GetVarData:
+        def __init__(self, symbol: VariableSymbol):
+            self.symbol = symbol
+
+    def get_var(self, node: GetVarIR, set_to: GetVarData = None) -> GetVarData:
+        return super().get_var(node, set_to)
 
     class TypeData:
         def __init__(self, resolved_type: TypeSymbol):
@@ -217,7 +233,11 @@ class InitSymbols(IRSymbolsPass):
         int32 = IntTypeSymbol("int", 32, Position.new_builtin("int"))
         builtin_namespace.define_type(int32)
 
-        self.builtins.general(set_to=LiteralData.ProgramData(int32))
+        puts_type = FunctionTypeSymbol([int32], int32, Position.new_builtin("puts"))
+        puts = VariableSymbol("puts", puts_type, Position.new_builtin("puts"))
+        builtin_namespace.define_value(puts)
+
+        self.builtins.general(set_to=LiteralData.BuiltinData(int32, puts))
 
         with self.enter_namespace(builtin_namespace):
             for source in program.sources:
@@ -307,6 +327,7 @@ class ResolveTypes(IRSymbolsPass):
             MessageHandler.handle_message(msg)
 
         func_namespace = NamespaceSymbol(f"<{func.name} body>", func.pos)
+        self.current_namespace.define_namespace(func_namespace, visible=False)
         self.symbols.function(func, set_to=SymbolData.FunctionData(func_value, func_namespace))
 
         with self.in_function(func, func_type):
@@ -332,9 +353,41 @@ class ResolveTypes(IRSymbolsPass):
         got = self.symbols.expr(ret.expr).return_type
         if expected.is_super_of(got):
             return
+        elif isinstance(got, ErroredTypeSymbol):
+            return
         else:
             msg = TypeCheckingError.from_nodes(ret, self.current_func, expected, got)
             MessageHandler.handle_message(msg)
+
+    def visit_call(self, call: CallIR):
+        self.visit_expr(call.callee)
+        for arg in call.arguments:
+            self.visit_expr(arg)
+        callee_type = self.symbols.expr(call.callee).return_type
+        arg_types = [self.symbols.expr(arg).return_type for arg in call.arguments]
+
+        # TODO argument checking, maybe when zip-strict is a thing
+
+        if isinstance(callee_type, FunctionTypeSymbol):
+            return_type = callee_type.ret
+        elif isinstance(callee_type, ErroredTypeSymbol):
+            return_type = callee_type
+        else:
+            msg = TypeCheckingError.function_callee(call.callee, callee_type)
+            MessageHandler.handle_message(msg)
+            return_type = ErroredTypeSymbol(call.pos)
+
+        self.symbols.expr(call, SymbolData.ExprData(return_type))
+
+    def visit_get_var(self, get_var: GetVarIR):
+        try:
+            value = self.current_namespace.lookup_value(get_var.var_name)
+        except FailedLookupError:
+            msg = DefinitionError.name_undefined(get_var, get_var.var_name)
+            MessageHandler.handle_message(msg)
+            value = ErroredVariableSymbol(get_var.pos)
+        self.symbols.expr(get_var, SymbolData.ExprData(value.type))
+        self.symbols.get_var(get_var, SymbolData.GetVarData(value))
 
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal

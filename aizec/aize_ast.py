@@ -90,8 +90,20 @@ class ASTVisitor(ABC):
     def visit_expr(self, expr: ExprAST):
         if isinstance(expr, IntLiteralAST):
             return self.visit_int(expr)
+        elif isinstance(expr, CallExprAST):
+            return self.visit_call(expr)
+        elif isinstance(expr, GetVarExprAST):
+            return self.visit_get_var(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
+
+    @abstractmethod
+    def visit_call(self, call: CallExprAST):
+        pass
+
+    @abstractmethod
+    def visit_get_var(self, get_var: GetVarExprAST):
+        pass
 
     @abstractmethod
     def visit_int(self, num: IntLiteralAST):

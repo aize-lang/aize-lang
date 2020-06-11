@@ -8,10 +8,25 @@ from aizec.aize_ast import *
 from aizec.aize_source import *
 
 
-__all__ = ['NodeIR', 'TopLevelIR', 'AnnotationIR', 'ProgramIR', 'StmtIR', 'ExprIR', 'ReturnIR',
-           'MethodDeclIR', 'IntIR', 'FieldIR', 'TypeIR', 'FunctionIR', 'GetTypeIR', 'SourceIR',
-           'MethodDefIR', 'ParamIR', 'TextIR', 'ClassIR', 'MalformedTypeIR',
-           'IR', 'Extension', 'PassesRegister', 'PassScheduler', 'IRPassSequence', 'IRTreePass', 'PassAlias']
+__all__ = [
+    'IR',
+
+    'Extension',
+
+    'PassAlias',
+    'PassesRegister', 'PassScheduler',
+    'IRTreePass', 'IRPassSequence',
+
+    'NodeIR', 'TextIR',
+    'ProgramIR', 'SourceIR',
+    'TopLevelIR', 'FunctionIR', 'ClassIR',
+    'FieldIR', 'MethodDeclIR', 'MethodDefIR',
+    'ParamIR',
+    'StmtIR','ReturnIR',
+    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR',
+    'AnnotationIR',
+    'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
+]
 
 
 T = TypeVar('T')
@@ -88,6 +103,12 @@ class IR:
         def visit_return(self, ret: ReturnStmtAST):
             return ReturnIR(self.visit_expr(ret.value), ret.pos)
 
+        def visit_call(self, call: CallExprAST):
+            return CallIR(self.visit_expr(call.left), [self.visit_expr(arg) for arg in call.args], call.pos)
+
+        def visit_get_var(self, get_var: GetVarExprAST):
+            return GetVarIR(get_var.var, get_var.pos)
+
         def visit_int(self, num: IntLiteralAST):
             return IntIR(num.num, num.pos)
 
@@ -118,41 +139,38 @@ class Extension:
             self._general_data = set_to
         return self._general_data
 
+    def _get_data(self, node: NodeIR, type: Type[NodeIR], set_to: T) -> T:
+        if set_to is not None:
+            self._node_data.setdefault(node, {})[type] = set_to
+        return self._node_data[node][type]
+
     @abstractmethod
     def program(self, node: ProgramIR, set_to: T = None) -> T:
-        if set_to is not None:
-            self._node_data.setdefault(node, {})[ProgramIR] = set_to
-        return self._node_data[node][ProgramIR]
+        return self._get_data(node, ProgramIR, set_to)
 
     @abstractmethod
     def source(self, node: SourceIR, set_to: T = None) -> T:
-        if set_to is not None:
-            self._node_data.setdefault(node, {})[SourceIR] = set_to
-        return self._node_data[node][SourceIR]
+        return self._get_data(node, SourceIR, set_to)
 
     @abstractmethod
     def function(self, node: FunctionIR, set_to: T = None) -> T:
-        if set_to is not None:
-            self._node_data.setdefault(node, {})[FunctionIR] = set_to
-        return self._node_data[node][FunctionIR]
+        return self._get_data(node, FunctionIR, set_to)
 
     @abstractmethod
     def param(self, node: ParamIR, set_to: T = None) -> T:
-        if set_to is not None:
-            self._node_data.setdefault(node, {})[ParamIR] = set_to
-        return self._node_data[node][ParamIR]
+        return self._get_data(node, ParamIR, set_to)
 
     @abstractmethod
     def expr(self, node: ExprIR, set_to: T = None) -> T:
-        if set_to is not None:
-            self._node_data.setdefault(node, {})[ExprIR] = set_to
-        return self._node_data[node][ExprIR]
+        return self._get_data(node, ExprIR, set_to)
+
+    @abstractmethod
+    def get_var(self, node: GetVarIR, set_to: T = None) -> T:
+        return self._get_data(node, GetVarIR, set_to)
 
     @abstractmethod
     def type(self, node: TypeIR, set_to: T = None) -> T:
-        if set_to is not None:
-            self._node_data.setdefault(node, {})[TypeIR] = set_to
-        return self._node_data[node][TypeIR]
+        return self._get_data(node, TypeIR, set_to)
 
 
 E = TypeVar('E', bound=Extension)
@@ -210,8 +228,20 @@ class IRVisitor(ABC):
     def visit_expr(self, expr: ExprIR):
         if isinstance(expr, IntIR):
             return self.visit_int(expr)
+        elif isinstance(expr, CallIR):
+            return self.visit_call(expr)
+        elif isinstance(expr, GetVarIR):
+            return self.visit_get_var(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
+
+    @abstractmethod
+    def visit_call(self, call: CallIR):
+        pass
+
+    @abstractmethod
+    def visit_get_var(self, get_var: GetVarIR):
+        pass
 
     @abstractmethod
     def visit_int(self, num: IntIR):
@@ -347,6 +377,12 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     def visit_return(self, ret: ReturnIR):
         pass
 
+    def visit_call(self, call: CallIR):
+        pass
+
+    def visit_get_var(self, get_var: GetVarIR):
+        pass
+
     def visit_int(self, num: IntIR):
         pass
 
@@ -450,10 +486,18 @@ class PassScheduler:
 # endregion
 
 
+# region Base Nodes
 class NodeIR:
     pass
 
 
+class TextIR(Positioned, NodeIR):
+    def __init__(self, pos: Position):
+        super().__init__(pos)
+# endregion
+
+
+# region Program Nodes
 class ProgramIR(NodeIR):
     def __init__(self, sources: List[SourceIR]):
         self.sources = sources
@@ -463,13 +507,10 @@ class SourceIR(NodeIR):
     def __init__(self, top_levels: List[TopLevelIR], source_name: str):
         self.top_levels = top_levels
         self.source_name = source_name
+# endregion
 
 
-class TextIR(Positioned, NodeIR):
-    def __init__(self, pos: Position):
-        super().__init__(pos)
-
-
+# region Top Level Nodes
 class TopLevelIR(TextIR):
     pass
 
@@ -491,6 +532,7 @@ class ClassIR(TopLevelIR):
         self.methods = methods
 
 
+# region Class Statement Nodes
 class FieldIR(TextIR):
     def __init__(self, name: str, type: TypeIR, pos: Position):
         super().__init__(pos)
@@ -511,15 +553,20 @@ class MethodDefIR(TextIR):
         self.params = params
         self.ret = ret
         self.body = body
+# endregion
+# endregion
 
 
+# region Parameter Node
 class ParamIR(TextIR):
     def __init__(self, name: str, type: TypeIR, pos: Position):
         super().__init__(pos)
         self.name = name
         self.type = type
+# endregion
 
 
+# region Statement Nodes
 class StmtIR(TextIR):
     pass
 
@@ -528,24 +575,43 @@ class ReturnIR(StmtIR):
     def __init__(self, expr: ExprIR, pos: Position):
         super().__init__(pos)
         self.expr = expr
+# endregion
 
 
+# region Expression Nodes
 class ExprIR(TextIR):
     pass
+
+
+class CallIR(ExprIR):
+    def __init__(self, callee: ExprIR, arguments: List[ExprIR], pos: Position):
+        super().__init__(pos)
+        self.callee = callee
+        self.arguments = arguments
+
+
+class GetVarIR(ExprIR):
+    def __init__(self, var_name: str, pos: Position):
+        super().__init__(pos)
+        self.var_name = var_name
 
 
 class IntIR(ExprIR):
     def __init__(self, num: int, pos: Position):
         super().__init__(pos)
         self.num = num
+# endregion
 
 
+# region Annotation Node
 class AnnotationIR(TextIR):
     def __init__(self, type: TypeIR, pos: Position):
         super().__init__(pos)
         self.type = type
+# endregion
 
 
+# region Type Nodes
 class TypeIR(TextIR):
     def __init__(self, pos: Position):
         super().__init__(pos)
@@ -560,6 +626,7 @@ class GetTypeIR(TypeIR):
     def __init__(self, name: str, pos: Position):
         super().__init__(pos)
         self.name = name
+# endregion
 
 
 # if __name__ == '__main__':

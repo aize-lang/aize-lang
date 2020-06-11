@@ -7,9 +7,9 @@ from aizec.aize_source import Position
 
 __all__ = [
     'Symbol',
-    'VariableSymbol', 'UnknownVariableSymbol',
+    'VariableSymbol', 'ErroredVariableSymbol',
     'NamespaceSymbol', 'NoNamespaceSymbol',
-    'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'UnknownTypeSymbol', 'ErroredTypeSymbol',
+    'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'ErroredTypeSymbol',
     'SymbolTable',
     'FailedLookupError', 'DuplicateSymbolError'
 ]
@@ -59,9 +59,9 @@ class VariableSymbol(Symbol):
         """A reference to the symbol of the type of this variable"""
 
 
-class UnknownVariableSymbol(VariableSymbol):
+class ErroredVariableSymbol(VariableSymbol):
     def __init__(self, pos: Position):
-        super().__init__("<unresolved>", UnknownTypeSymbol(pos) ,pos)
+        super().__init__("<errored value>", ErroredTypeSymbol(pos) ,pos)
 
 
 class TypeSymbol(Symbol):
@@ -71,14 +71,6 @@ class TypeSymbol(Symbol):
     def is_super_of(self, sub: TypeSymbol) -> bool:
         """Check if `other` is a subtype of this type"""
         return sub is self
-
-
-class UnknownTypeSymbol(TypeSymbol):
-    def __init__(self, pos: Position):
-        super().__init__("<unresolved>", pos)
-
-    def is_super_of(self, sub: TypeSymbol) -> bool:
-        raise ValueError("Cannot compare unknown type symbols")
 
 
 class ErroredTypeSymbol(TypeSymbol):
@@ -167,6 +159,8 @@ class NamespaceSymbol(Symbol):
             lookup_chain = [self]
         else:
             lookup_chain = self.parents(nearest_first=nearest)
+
+        # print(lookup_chain, [ns.value_symbols for ns in lookup_chain])
 
         for namespace in lookup_chain:
             if name in namespace.value_symbols:

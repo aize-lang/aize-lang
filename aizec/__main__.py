@@ -10,6 +10,7 @@ def make_arg_parser():
 
     parser.add_argument("file")
     parser.add_argument("-o", "--output", default=None)
+    parser.add_argument("--backend-opt", action='append')
 
     return parser
 
@@ -23,6 +24,7 @@ def main():
         output_file = None
     else:
         output_file = Path(args.output)
+    backend_options: List[str] = args.backend_opt
 
     with fail_callback(lambda c: exit(0)):
         frontend = FrontendManager(Path.cwd(), Path(__file__))
@@ -35,6 +37,8 @@ def main():
 
         backend = BackendManager.create_llvm(ir_manager.ir)
         backend.set_output(output_file)
+        for opt in backend_options:
+            backend.set_option(opt)
         backend.run_backend()
         backend.run_output()
 
