@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import os
-import subprocess
-
 import llvmlite.ir as ir
 import llvmlite.binding as llvm
 
@@ -13,7 +10,7 @@ from aizec.aize_ir import *
 from aizec.aize_symbols import *
 from aizec.aize_semantics import LiteralData, SymbolData, ResolveTypes
 
-from aizec.aize_backend import Backend
+from aizec.aize_backend import Backend, Linker
 
 
 class LLVMData(Extension):
@@ -158,17 +155,17 @@ class LLVMBackend(Backend):
         if self.output_path is None:
             self.output_path = Path("a.exe")
 
-        with self.output_path.open("wb") as out:
+        temp_dir = self.output_path.parent
+        if (temp_path := temp_dir / 'temp.o').exists():
+            i = 0
+            while (temp_path := (temp_dir / f"temp_{i}.o")).exists():
+                i += 1
+
+        with temp_path.open("wb") as out:
             out.write(object_data)
 
-        if os.name == 'nt':
-            this_file = Path(__file__).absolute()
-            windows_link_dir = this_file.parent / "windows-link"
-            lld_link = windows_link_dir / "lld-link.exe"
-            link_to = windows_link_dir / "x64"
-            subprocess.call([
-                f"{lld_link}",
-                f"{self.output_path}", f"-out:{self.output_path}",
-                f"-libpath:{link_to}", "-defaultlib:libcmt"
-            ])
-
+        try:
+            linker = Linker.get_linker("")([temp_path], self.output_path)
+            linker.link_files()
+        finally:
+            temp_path.unlink()
