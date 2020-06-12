@@ -176,7 +176,8 @@ class SymbolData(Extension):
         return super().expr(node, set_to)
 
     class GetVarData:
-        def __init__(self, symbol: VariableSymbol):
+        def __init__(self, declarer: NodeIR, symbol: VariableSymbol):
+            self.declarer = declarer
             self.symbol = symbol
 
     def get_var(self, node: GetVarIR, set_to: GetVarData = None) -> GetVarData:
@@ -188,6 +189,16 @@ class SymbolData(Extension):
 
     def type(self, node: TypeIR, set_to: TypeData = None) -> TypeData:
         return super().type(node, set_to)
+
+    # region Extension Extensions
+    class DeclData:
+        def __init__(self, declarer: NodeIR, declares: VariableSymbol):
+            self.declarer = declarer
+            self.declares = declares
+
+    def decl(self, node: NodeIR, set_to: DeclData = None) -> DeclData:
+        return super().ext(node, 'decl', set_to)
+    # endregion
 
 
 class IRSymbolsPass(IRTreePass, ABC):
@@ -234,7 +245,7 @@ class InitSymbols(IRSymbolsPass):
         builtin_namespace.define_type(int32)
 
         puts_type = FunctionTypeSymbol([int32], int32, Position.new_builtin("puts"))
-        puts = VariableSymbol("puts", puts_type, Position.new_builtin("puts"))
+        puts = VariableSymbol("puts", program, puts_type, Position.new_builtin("puts"))
         builtin_namespace.define_value(puts)
 
         self.builtins.general(set_to=LiteralData.BuiltinData(int32, puts))
@@ -319,7 +330,7 @@ class ResolveTypes(IRSymbolsPass):
         ret = self.symbols.type(func.ret).resolved_type
         func_type = FunctionTypeSymbol(params, ret, func.pos)
 
-        func_value = VariableSymbol(func.name, func_type, func.pos)
+        func_value = VariableSymbol(func.name, func, func_type, func.pos)
         try:
             self.current_namespace.define_value(func_value)
         except DuplicateSymbolError as err:
@@ -329,6 +340,7 @@ class ResolveTypes(IRSymbolsPass):
         func_namespace = NamespaceSymbol(f"<{func.name} body>", func.pos)
         self.current_namespace.define_namespace(func_namespace, visible=False)
         self.symbols.function(func, set_to=SymbolData.FunctionData(func_value, func_namespace))
+        self.symbols.decl(func, set_to=SymbolData.DeclData(func, func_value))
 
         with self.in_function(func, func_type):
             for param in func.params:
@@ -344,7 +356,7 @@ class ResolveTypes(IRSymbolsPass):
 
     def visit_param(self, param: ParamIR):
         self.visit_type(param.type)
-        symbol = VariableSymbol(param.name, self.symbols.type(param.type).resolved_type, param.pos)
+        symbol = VariableSymbol(param.name, param, self.symbols.type(param.type).resolved_type, param.pos)
         self.symbols.param(param, set_to=SymbolData.ParamData(symbol))
 
     def visit_return(self, ret: ReturnIR):
@@ -385,9 +397,9 @@ class ResolveTypes(IRSymbolsPass):
         except FailedLookupError:
             msg = DefinitionError.name_undefined(get_var, get_var.var_name)
             MessageHandler.handle_message(msg)
-            value = ErroredVariableSymbol(get_var.pos)
+            value = ErroredVariableSymbol(get_var, get_var.pos)
         self.symbols.expr(get_var, SymbolData.ExprData(value.type))
-        self.symbols.get_var(get_var, SymbolData.GetVarData(value))
+        self.symbols.get_var(get_var, SymbolData.GetVarData(value.declarer, value))
 
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal

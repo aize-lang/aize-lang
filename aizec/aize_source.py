@@ -5,8 +5,7 @@ from aizec.common import *
 
 __all__ = [
     'Source', 'StreamSource', 'FileSource',
-    'Position', 'TextPosition', 'BuiltinPosition', 'SourcePosition',
-    'Positioned'
+    'Position', 'TextPosition', 'BuiltinPosition', 'SourcePosition'
 ]
 
 
@@ -88,11 +87,6 @@ class FileSource(Source):
 
     def get_path(self) -> Union[Path, None]:
         return self.path
-
-
-class Positioned:
-    def __init__(self, pos: Position):
-        self.pos = pos
 
 
 class Position:

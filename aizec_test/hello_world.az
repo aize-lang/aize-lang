@@ -1,5 +1,10 @@
 
 
+def fibo(n: int) -> int {
+    return n;
+}
+
+
 def main() -> int {
-    return puts(97);
+    return fibo(97);
 }

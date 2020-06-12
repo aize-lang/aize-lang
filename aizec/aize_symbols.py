@@ -4,6 +4,8 @@ from aizec.common import *
 
 from aizec.aize_source import Position
 
+from aizec.aize_ir import NodeIR
+
 
 __all__ = [
     'Symbol',
@@ -52,16 +54,18 @@ class Symbol:
 
 
 class VariableSymbol(Symbol):
-    def __init__(self, name: str, type: TypeSymbol, pos: Position):
+    def __init__(self, name: str, declarer: NodeIR, type: TypeSymbol, pos: Position):
         super().__init__(name, pos)
+
+        self.declarer: NodeIR = declarer
 
         self.type: TypeSymbol = type
         """A reference to the symbol of the type of this variable"""
 
 
 class ErroredVariableSymbol(VariableSymbol):
-    def __init__(self, pos: Position):
-        super().__init__("<errored value>", ErroredTypeSymbol(pos) ,pos)
+    def __init__(self, declarer: NodeIR, pos: Position):
+        super().__init__("<errored value>", declarer, ErroredTypeSymbol(pos) ,pos)
 
 
 class TypeSymbol(Symbol):

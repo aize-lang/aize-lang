@@ -150,9 +150,9 @@ class SourceAST(NodeAST):
         return [top_level for top_level in self.top_levels if isinstance(top_level, ImportAST)]
 
 
-class TextAST(Positioned, NodeAST):
+class TextAST(NodeAST):
     def __init__(self, pos: Position):
-        super().__init__(pos)
+        self.pos = pos
 
 
 class TopLevelAST(TextAST):

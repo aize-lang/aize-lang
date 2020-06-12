@@ -125,9 +125,9 @@ class IR:
 
 # region IR Extension
 class Extension:
-    def __init__(self, _general_data: Any, node_data: Dict[NodeIR, Dict[Type[NodeIR], Any]]):
+    def __init__(self, _general_data: Any, node_data: Dict[NodeIR, Dict[str, Any]]):
         self._general_data: Any = _general_data
-        self._node_data: Dict[NodeIR, Dict[Type[NodeIR]], Any] = node_data
+        self._node_data: Dict[NodeIR, Dict[str, Any]] = node_data
 
     @classmethod
     def new(cls: Type[E]) -> E:
@@ -139,38 +139,44 @@ class Extension:
             self._general_data = set_to
         return self._general_data
 
-    def _get_data(self, node: NodeIR, type: Type[NodeIR], set_to: T) -> T:
+    def _get_data(self, node: NodeIR, type: str, set_to: T) -> T:
         if set_to is not None:
             self._node_data.setdefault(node, {})[type] = set_to
-        return self._node_data[node][type]
+        try:
+            return self._node_data[node][type]
+        except KeyError:
+            raise ValueError(f"The node of type {node.__class__.__qualname__} has not extensions of type {self.__class__.__qualname__} for class {type!r}")
 
     @abstractmethod
     def program(self, node: ProgramIR, set_to: T = None) -> T:
-        return self._get_data(node, ProgramIR, set_to)
+        return self._get_data(node, 'program', set_to)
 
     @abstractmethod
     def source(self, node: SourceIR, set_to: T = None) -> T:
-        return self._get_data(node, SourceIR, set_to)
+        return self._get_data(node, 'source', set_to)
 
     @abstractmethod
     def function(self, node: FunctionIR, set_to: T = None) -> T:
-        return self._get_data(node, FunctionIR, set_to)
+        return self._get_data(node, 'function', set_to)
 
     @abstractmethod
     def param(self, node: ParamIR, set_to: T = None) -> T:
-        return self._get_data(node, ParamIR, set_to)
+        return self._get_data(node, 'param', set_to)
 
     @abstractmethod
     def expr(self, node: ExprIR, set_to: T = None) -> T:
-        return self._get_data(node, ExprIR, set_to)
+        return self._get_data(node, 'expr', set_to)
 
     @abstractmethod
     def get_var(self, node: GetVarIR, set_to: T = None) -> T:
-        return self._get_data(node, GetVarIR, set_to)
+        return self._get_data(node, 'get_var', set_to)
 
     @abstractmethod
     def type(self, node: TypeIR, set_to: T = None) -> T:
-        return self._get_data(node, TypeIR, set_to)
+        return self._get_data(node, 'type', set_to)
+
+    def ext(self, node: NodeIR, type: str, set_to: T = None) -> T:
+        return self._get_data(node, type, set_to)
 
 
 E = TypeVar('E', bound=Extension)
@@ -408,6 +414,7 @@ class IRPassSequence(IRPass):
     def run_pass(self, ir: IR):
         scheduler = PassScheduler(ir, self.passes.copy())
         scheduler.run_scheduled()
+        ir.ran_passes.add(self)
 
 
 PassAlias = Union[IRPass, Type[IRTreePass]]
@@ -491,9 +498,9 @@ class NodeIR:
     pass
 
 
-class TextIR(Positioned, NodeIR):
+class TextIR(NodeIR):
     def __init__(self, pos: Position):
-        super().__init__(pos)
+        self.pos = pos
 # endregion
 
 
