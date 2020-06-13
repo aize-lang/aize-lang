@@ -9,6 +9,7 @@ from aizec.aize_error import MessageHandler
 from aizec.aize_ir import *
 from aizec.aize_symbols import *
 from aizec.aize_semantics import LiteralData, SymbolData, DefaultPasses
+from aizec.aize_ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias, PassScheduler
 
 from aizec.aize_backend import Backend, Linker
 
@@ -206,12 +207,35 @@ class DefineFunctions(IRTreePass):
         self.builder.position_at_start(llvm_func.append_basic_block("entry"))
         for stmt in func.body:
             self.visit_stmt(stmt)
+        if not self.builder.block.is_terminated:
+            self.builder.unreachable()
+
+    def visit_if(self, if_: IfStmtIR):
+        self.visit_expr(if_.cond)
+        cond = self.llvm.expr(if_.cond).val
+        with self.builder.if_else(cond) as (then_do, else_do):
+            with then_do:
+                self.visit_stmt(if_.then_do)
+            with else_do:
+                self.visit_stmt(if_.else_do)
+
+    def visit_block(self, block: BlockIR):
+        for stmt in block.stmts:
+            self.visit_stmt(stmt)
 
     def visit_return(self, ret: ReturnIR):
         expr = ret.expr
         self.visit_expr(expr)
         llvm_val = self.llvm.expr(expr).val
         self.builder.ret(llvm_val)
+
+    def visit_compare(self, cmp: CompareIR):
+        self.visit_expr(cmp.left)
+        self.visit_expr(cmp.right)
+        left = self.llvm.expr(cmp.left).val
+        right = self.llvm.expr(cmp.right).val
+        llvm_val = self.builder.icmp_signed("<", left, right)
+        self.llvm.expr(cmp, set_to=LLVMData.ExprData(llvm_val))
 
     def visit_int(self, num: IntIR):
         # TODO add bit-size symbol data for int so resolve type is not needed

@@ -10,7 +10,8 @@ from aizec.aize_source import Source, FileSource, Position, StreamSource
 from aizec.aize_ast import ProgramAST, SourceAST
 from aizec.aize_parser import AizeParser
 
-from aizec.aize_ir import IR, PassScheduler, PassAlias
+from aizec.aize_ir import IR
+from aizec.aize_ir_pass import PassScheduler, PassAlias
 from aizec.aize_semantics import DefaultPasses
 
 from aizec.aize_backend import Backend

@@ -3,6 +3,7 @@ from __future__ import annotations
 from aizec.common import *
 
 from aizec.aize_ir import *
+from aizec.aize_ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias
 
 from aizec.aize_error import AizeMessage, Reporter, MessageHandler, ErrorLevel
 from aizec.aize_source import *
@@ -10,6 +11,7 @@ from aizec.aize_symbols import *
 
 
 # region Errors
+# TODO Errors could be unified into one class with multiple constructors
 class DefinitionError(AizeMessage):
     def __init__(self, msg: str, pos: Position, note: AizeMessage = None):
         super().__init__(ErrorLevel.ERROR)
@@ -87,6 +89,11 @@ class TypeCheckingError(AizeMessage):
         return error
 
     @classmethod
+    def from_node(cls, offender: TextIR, expected: TypeSymbol, got: TypeSymbol):
+        error = cls(offender.pos.get_source_name(), offender.pos, f"Expected type {expected}, got type {got}")
+        return error
+
+    @classmethod
     def function_callee(cls, callee: TextIR, got: TypeSymbol):
         error = cls(callee.pos.get_source_name(), callee.pos, f"Expected a function to call, got {got}")
         return error
@@ -97,6 +104,16 @@ class TypeCheckingError(AizeMessage):
             reporter.separate()
             with reporter.indent():
                 self.note.display(reporter)
+
+
+class FlowError(AizeMessage):
+    def __init__(self, msg: str, pos: Position):
+        super().__init__(ErrorLevel.ERROR)
+        self.msg = msg
+        self.pos = pos
+
+    def display(self, reporter: Reporter):
+        reporter.positioned_error("Control Flow Error", self.msg, self.pos)
 # endregion
 
 
@@ -106,7 +123,8 @@ PassesRegister.register(DefaultPasses)
 
 class LiteralData(Extension):
     class BuiltinData:
-        def __init__(self, int32: TypeSymbol, puts: VariableSymbol):
+        def __init__(self, int32: TypeSymbol, boolean: TypeSymbol, puts: VariableSymbol):
+            self.boolean = boolean
             self.int32 = int32
             self.puts = puts
 
@@ -123,6 +141,9 @@ class LiteralData(Extension):
         raise NotImplementedError()
 
     def param(self, node: ParamIR, set_to=None):
+        raise NotImplementedError()
+
+    def stmt(self, node: StmtIR, set_to=None):
         raise NotImplementedError()
 
     def expr(self, node: ExprIR, set_to=None):
@@ -167,6 +188,13 @@ class SymbolData(Extension):
 
     def param(self, node: ParamIR, set_to: ParamData = None) -> ParamData:
         return super().param(node, set_to)
+
+    class StmtData:
+        def __init__(self, is_terminal: bool):
+            self.is_terminal = is_terminal
+
+    def stmt(self, node: StmtIR, set_to: StmtData = None) -> StmtData:
+        return super().stmt(node, set_to)
 
     class ExprData:
         def __init__(self, return_type: TypeSymbol):
@@ -244,11 +272,14 @@ class InitSymbols(IRSymbolsPass):
         int32 = IntTypeSymbol("int", 32, Position.new_builtin("int"))
         builtin_namespace.define_type(int32)
 
+        boolean = IntTypeSymbol("bool", 1, Position.new_builtin("bool"))
+        builtin_namespace.define_type(boolean)
+
         puts_type = FunctionTypeSymbol([int32], int32, Position.new_builtin("puts"))
         puts = VariableSymbol("puts", program, puts_type, Position.new_builtin("puts"))
         builtin_namespace.define_value(puts)
 
-        self.builtins.general(set_to=LiteralData.BuiltinData(int32, puts))
+        self.builtins.general(set_to=LiteralData.BuiltinData(int32, boolean, puts))
 
         with self.enter_namespace(builtin_namespace):
             for source in program.sources:
@@ -350,26 +381,112 @@ class ResolveTypes(IRSymbolsPass):
                     msg = DefinitionError.param_repeated(func, param, param.name)
                     MessageHandler.handle_message(msg)
 
+        is_terminated = False
         with self.in_function(func, func_type):
             for stmt in func.body:
                 self.visit_stmt(stmt)
+                stmt_terminates = self.symbols.stmt(stmt).is_terminal
+                if stmt_terminates:
+                    if not is_terminated:
+                        is_terminated = True
+                    else:
+                        # TODO Error
+                        is_terminated = True
+        # TODO if return is void or (), then it does not need to be terminated
+        if not is_terminated:
+            msg = FlowError("Function ends without always terminating", func.pos)
+            MessageHandler.handle_message(msg)
 
     def visit_param(self, param: ParamIR):
         self.visit_type(param.type)
         symbol = VariableSymbol(param.name, param, self.symbols.type(param.type).resolved_type, param.pos)
         self.symbols.param(param, set_to=SymbolData.ParamData(symbol))
 
+    def visit_if(self, if_: IfStmtIR):
+        self.visit_expr(if_.cond)
+        expected = self.builtins.general().boolean
+        got = self.symbols.expr(if_.cond).return_type
+        if expected.is_super_of(got):
+            pass
+        elif isinstance(got, ErroredTypeSymbol):
+            pass
+        else:
+            msg = TypeCheckingError.from_node(if_.cond, expected, got)
+            MessageHandler.handle_message(msg)
+        self.visit_stmt(if_.else_do)
+        self.visit_stmt(if_.then_do)
+        is_terminal = self.symbols.stmt(if_.else_do).is_terminal and self.symbols.stmt(if_.then_do).is_terminal
+        self.symbols.stmt(if_, set_to=SymbolData.StmtData(is_terminal))
+
+    def visit_block(self, block: BlockIR):
+        # TODO scope
+        block_is_terminal = False
+        for stmt in block.stmts:
+            self.visit_stmt(stmt)
+            stmt_is_terminal = self.symbols.stmt(stmt).is_terminal
+            if stmt_is_terminal:
+                if not block_is_terminal:
+                    block_is_terminal = True
+                else:
+                    # TODO ERROR (multiple returns, unreachable)
+                    block_is_terminal = True
+        self.symbols.stmt(block, set_to=SymbolData.StmtData(block_is_terminal))
+
     def visit_return(self, ret: ReturnIR):
         self.visit_expr(ret.expr)
         expected = self.current_func_type.ret
         got = self.symbols.expr(ret.expr).return_type
         if expected.is_super_of(got):
-            return
+            pass
         elif isinstance(got, ErroredTypeSymbol):
-            return
+            pass
         else:
             msg = TypeCheckingError.from_nodes(ret, self.current_func, expected, got)
             MessageHandler.handle_message(msg)
+        self.symbols.stmt(ret, set_to=SymbolData.StmtData(True))
+
+    class CheckResult:
+        def __init__(self, result: str, node: TextIR, got: TypeSymbol, expected: TypeSymbol):
+            if result in ['error', 'pass', 'fail']:
+                self.result = result
+            else:
+                raise ValueError("result is not valid")
+            self.node = node
+            self.got = got
+            self.expected = expected
+
+        def handle(self, success_type: TypeSymbol = None, this_node: TextIR = None) -> TypeSymbol:
+            if this_node is None:
+                this_node = self.node
+            if success_type is None:
+                success_type = self.got
+            if self.result == 'pass':
+                return success_type
+            elif self.result == 'fail':
+                msg = TypeCheckingError.from_node(self.node, self.expected, self.got)
+                MessageHandler.handle_message(msg)
+                return ErroredTypeSymbol(this_node.pos)
+            else:
+                return self.got
+
+    def check_types(self, *types: Tuple[TextIR, TypeSymbol, TypeSymbol]) -> CheckResult:
+        for node, got, expected in types:
+            if isinstance(got, ErroredTypeSymbol):
+                return self.CheckResult('error', node, got, expected)
+            elif expected.is_super_of(got):
+                return self.CheckResult('pass', node, got, expected)
+            else:
+                return self.CheckResult('fail', node, got, expected)
+
+    def visit_compare(self, cmp: CompareIR):
+        self.visit_expr(cmp.left)
+        self.visit_expr(cmp.right)
+        int32 = self.builtins.general().int32
+        boolean = self.builtins.general().boolean
+        left = self.symbols.expr(cmp.left).return_type
+        right = self.symbols.expr(cmp.right).return_type
+        return_type = self.check_types((cmp.left, left, int32), (cmp.right, right, int32)).handle(success_type=boolean, this_node=cmp)
+        self.symbols.expr(cmp, SymbolData.ExprData(return_type))
 
     def visit_call(self, call: CallIR):
         self.visit_expr(call.callee)
@@ -380,6 +497,7 @@ class ResolveTypes(IRSymbolsPass):
 
         # TODO argument checking, maybe when zip-strict is a thing
 
+        # TODO create a single function for this
         if isinstance(callee_type, FunctionTypeSymbol):
             return_type = callee_type.ret
         elif isinstance(callee_type, ErroredTypeSymbol):
@@ -399,7 +517,7 @@ class ResolveTypes(IRSymbolsPass):
             MessageHandler.handle_message(msg)
             value = ErroredVariableSymbol(get_var, get_var.pos)
         self.symbols.expr(get_var, SymbolData.ExprData(value.type))
-        self.symbols.get_var(get_var, SymbolData.GetVarData(value.declarer, value))
+        self.symbols.get_var(get_var, set_to=SymbolData.GetVarData(value.declarer, value))
 
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal

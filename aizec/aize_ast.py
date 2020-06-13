@@ -80,8 +80,20 @@ class ASTVisitor(ABC):
     def visit_stmt(self, stmt: StmtAST):
         if isinstance(stmt, ReturnStmtAST):
             return self.visit_return(stmt)
+        elif isinstance(stmt, IfStmtAST):
+            return self.visit_if(stmt)
+        elif isinstance(stmt, BlockStmtAST):
+            return self.visit_block(stmt)
         else:
             raise TypeError(f"Expected a stmt node, got {stmt}")
+
+    @abstractmethod
+    def visit_block(self, block: BlockStmtAST):
+        pass
+
+    @abstractmethod
+    def visit_if(self, if_: IfStmtAST):
+        pass
 
     @abstractmethod
     def visit_return(self, ret: ReturnStmtAST):
@@ -94,8 +106,14 @@ class ASTVisitor(ABC):
             return self.visit_call(expr)
         elif isinstance(expr, GetVarExprAST):
             return self.visit_get_var(expr)
+        elif isinstance(expr, LTExprAST):
+            return self.visit_lt(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
+
+    @abstractmethod
+    def visit_lt(self, lt: LTExprAST):
+        pass
 
     @abstractmethod
     def visit_call(self, call: CallExprAST):
