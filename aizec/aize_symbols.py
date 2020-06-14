@@ -86,12 +86,13 @@ class ErroredTypeSymbol(TypeSymbol):
 
 
 class IntTypeSymbol(TypeSymbol):
-    def __init__(self, name: str, bit_size: int, pos: Position):
+    def __init__(self, name: str, signed: bool, bit_size: int, pos: Position):
         super().__init__(name, pos)
+        self.is_signed = signed
         self.bit_size = bit_size
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
-        return isinstance(sub, IntTypeSymbol) and sub.bit_size <= self.bit_size
+        return isinstance(sub, IntTypeSymbol) and sub.is_signed == self.is_signed and sub.bit_size <= self.bit_size
 
 
 class FunctionTypeSymbol(TypeSymbol):

@@ -1,14 +1,14 @@
 
 
-def fibo(n: int) -> int {
+def fibo(n: int32) -> int32 {
     if (n < 2) {
         return n;
     } else {
-        return n;
+        return fibo(n-1) + fibo(n-2);
     }
 }
 
 
-def main() -> int {
-    return fibo(97);
+def main() -> int32 {
+    return fibo(17);
 }

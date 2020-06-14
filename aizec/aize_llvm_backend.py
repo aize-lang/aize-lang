@@ -45,6 +45,12 @@ class LLVMData(Extension):
     def expr(self, node: ExprIR, set_to: ExprData = None) -> ExprData:
         return super().expr(node, set_to)
 
+    def compare(self, node: CompareIR, set_to=None):
+        raise NotImplementedError()
+
+    def arithmetic(self, node: ArithmeticIR, set_to=None):
+        raise NotImplementedError()
+
     def get_var(self, node: GetVarIR, set_to=None):
         raise NotImplementedError()
 
@@ -232,10 +238,28 @@ class DefineFunctions(IRTreePass):
     def visit_compare(self, cmp: CompareIR):
         self.visit_expr(cmp.left)
         self.visit_expr(cmp.right)
+        is_signed = self.symbols.compare(cmp).is_signed
         left = self.llvm.expr(cmp.left).val
         right = self.llvm.expr(cmp.right).val
-        llvm_val = self.builder.icmp_signed("<", left, right)
+        if is_signed:
+            llvm_val = self.builder.icmp_signed(cmp.op, left, right)
+        else:
+            llvm_val = self.builder.icmp_unsigned(cmp.op, left, right)
         self.llvm.expr(cmp, set_to=LLVMData.ExprData(llvm_val))
+
+    def visit_arithmetic(self, arith: ArithmeticIR):
+        self.visit_expr(arith.left)
+        self.visit_expr(arith.right)
+        is_signed = self.symbols.arithmetic(arith).is_signed
+        left = self.llvm.expr(arith.left).val
+        right = self.llvm.expr(arith.right).val
+        if arith.op == '+':
+            llvm_val = self.builder.add(left, right)
+        elif arith.op == '-':
+            llvm_val = self.builder.sub(left, right)
+        else:
+            raise NotImplementedError()
+        self.llvm.expr(arith, set_to=LLVMData.ExprData(llvm_val))
 
     def visit_int(self, num: IntIR):
         # TODO add bit-size symbol data for int so resolve type is not needed

@@ -17,7 +17,7 @@ __all__ = [
     'FieldIR', 'MethodDeclIR', 'MethodDefIR',
     'ParamIR',
     'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR',
-    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'CompareIR',
+    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'CompareIR', 'ArithmeticIR',
     'AnnotationIR',
     'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
 ]
@@ -106,6 +106,12 @@ class IR:
         def visit_lt(self, lt: LTExprAST):
             return CompareIR("<", self.visit_expr(lt.left), self.visit_expr(lt.right), lt.pos)
 
+        def visit_add(self, add: AddExprAST):
+            return ArithmeticIR("+", self.visit_expr(add.left), self.visit_expr(add.right), add.pos)
+
+        def visit_sub(self, sub: SubExprAST):
+            return ArithmeticIR("-", self.visit_expr(sub.left), self.visit_expr(sub.right), sub.pos)
+
         def visit_call(self, call: CallExprAST):
             return CallIR(self.visit_expr(call.left), [self.visit_expr(arg) for arg in call.args], call.pos)
 
@@ -173,6 +179,14 @@ class Extension:
     @abstractmethod
     def expr(self, node: ExprIR, set_to: T = None) -> T:
         return self._get_data(node, 'expr', set_to)
+
+    @abstractmethod
+    def compare(self, node: CompareIR, set_to: T = None) -> T:
+        return self._get_data(node, 'compare', set_to)
+
+    @abstractmethod
+    def arithmetic(self, node: ArithmeticIR, set_to: T = None) -> T:
+        return self._get_data(node, 'arithmetic', set_to)
 
     @abstractmethod
     def get_var(self, node: GetVarIR, set_to: T = None) -> T:
@@ -302,6 +316,14 @@ class ExprIR(TextIR):
 
 
 class CompareIR(ExprIR):
+    def __init__(self, op: str, left: ExprIR, right: ExprIR, pos: Position):
+        super().__init__(pos)
+        self.op = op
+        self.left = left
+        self.right = right
+
+
+class ArithmeticIR(ExprIR):
     def __init__(self, op: str, left: ExprIR, right: ExprIR, pos: Position):
         super().__init__(pos)
         self.op = op

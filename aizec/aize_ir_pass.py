@@ -78,11 +78,17 @@ class IRVisitor(ABC):
             return self.visit_get_var(expr)
         elif isinstance(expr, CompareIR):
             return self.visit_compare(expr)
+        elif isinstance(expr, ArithmeticIR):
+            return self.visit_arithmetic(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
 
     @abstractmethod
     def visit_compare(self, cmp: CompareIR):
+        pass
+
+    @abstractmethod
+    def visit_arithmetic(self, arith: ArithmeticIR):
         pass
 
     @abstractmethod
@@ -237,6 +243,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_compare(self, cmp: CompareIR):
+        pass
+
+    def visit_arithmetic(self, arith: ArithmeticIR):
         pass
 
     def visit_get_var(self, get_var: GetVarIR):

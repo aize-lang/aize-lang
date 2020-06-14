@@ -108,11 +108,23 @@ class ASTVisitor(ABC):
             return self.visit_get_var(expr)
         elif isinstance(expr, LTExprAST):
             return self.visit_lt(expr)
+        elif isinstance(expr, AddExprAST):
+            return self.visit_add(expr)
+        elif isinstance(expr, SubExprAST):
+            return self.visit_sub(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
 
     @abstractmethod
     def visit_lt(self, lt: LTExprAST):
+        pass
+
+    @abstractmethod
+    def visit_add(self, add: AddExprAST):
+        pass
+
+    @abstractmethod
+    def visit_sub(self, sub: SubExprAST):
         pass
 
     @abstractmethod
@@ -378,12 +390,10 @@ class DivExprAST(BinaryExprAST):
 
 class ModExprAST(BinaryExprAST):
     pass
-
 # endregion
 
 
 # region Unary
-
 class UnaryExprAST(ExprAST):
     def __init__(self, right: ExprAST, pos: Position):
         super().__init__(pos)

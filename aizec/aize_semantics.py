@@ -54,12 +54,10 @@ class DefinitionError(AizeMessage):
 
 
 class DefinitionNote(AizeMessage):
-    def __init__(self, source_name: str, pos: Position, msg: str):
+    def __init__(self, msg: str, pos: Position):
         super().__init__(ErrorLevel.NOTE)
-
-        self.source = source_name
-        self.pos = pos
         self.msg = msg
+        self.pos = pos
 
     @classmethod
     def from_node(cls, node: TextIR, msg: str):
@@ -67,43 +65,58 @@ class DefinitionNote(AizeMessage):
 
     @classmethod
     def from_pos(cls, pos: Position, msg: str):
-        return cls(pos.get_source_name(), pos, msg)
+        return cls(msg, pos)
 
     def display(self, reporter: Reporter):
         reporter.positioned_error("Note", self.msg, self.pos)
 
 
 class TypeCheckingError(AizeMessage):
-    def __init__(self, source_name: str, pos: Position, msg: str, note: AizeMessage = None):
+    def __init__(self, msg: str, pos: Position, notes: List[AizeMessage] = None):
         super().__init__(ErrorLevel.ERROR)
-        self.source = source_name
         self.pos = pos
         self.msg = msg
 
-        self.note = note
+        self.notes = [] if notes is None else notes
 
     @classmethod
     def from_nodes(cls, offender: TextIR, definition: TextIR, expected: TypeSymbol, got: TypeSymbol):
         note = DefinitionNote.from_pos(definition.pos, "Declared here")
-        error = cls(offender.pos.get_source_name(), offender.pos, f"Expected type {expected}, got type {got}", note)
+        error = cls(f"Expected type {expected}, got type {got}", offender.pos, [note])
         return error
 
     @classmethod
     def from_node(cls, offender: TextIR, expected: TypeSymbol, got: TypeSymbol):
-        error = cls(offender.pos.get_source_name(), offender.pos, f"Expected type {expected}, got type {got}")
+        error = cls(f"Expected type {expected}, got type {got}", offender.pos)
         return error
 
     @classmethod
     def function_callee(cls, callee: TextIR, got: TypeSymbol):
-        error = cls(callee.pos.get_source_name(), callee.pos, f"Expected a function to call, got {got}")
+        error = cls(f"Expected a function to call, got {got}", callee.pos)
+        return error
+
+    @classmethod
+    def expected_type_cls(cls, expecting_node: TextIR, offending_node: TextIR, cls_name: str, got: TypeSymbol):
+        note = DefinitionNote.from_pos(offending_node.pos, f"Expression is instead of type {got}")
+        error = cls(f"Arguments must be {cls_name}", expecting_node.pos, [note])
         return error
 
     def display(self, reporter: Reporter):
         reporter.positioned_error("Type Checking Error", self.msg, self.pos)
-        if self.note is not None:
+        for note in self.notes:
             reporter.separate()
             with reporter.indent():
-                self.note.display(reporter)
+                note.display(reporter)
+
+
+class MismatchedTypesError(AizeMessage):
+    def __init__(self, msg: str, pos: Position):
+        super().__init__(ErrorLevel.ERROR)
+        self.msg = msg
+        self.pos = pos
+
+    def display(self, reporter: Reporter):
+        reporter.positioned_error("Control Flow Error", self.msg, self.pos)
 
 
 class FlowError(AizeMessage):
@@ -123,9 +136,12 @@ PassesRegister.register(DefaultPasses)
 
 class LiteralData(Extension):
     class BuiltinData:
-        def __init__(self, int32: TypeSymbol, boolean: TypeSymbol, puts: VariableSymbol):
-            self.boolean = boolean
-            self.int32 = int32
+        def __init__(self,
+                     uint: Dict[int, TypeSymbol],
+                     sint: Dict[int, TypeSymbol],
+                     puts: VariableSymbol):
+            self.uint = uint
+            self.sint = sint
             self.puts = puts
 
     def general(self, set_to: BuiltinData = None) -> BuiltinData:
@@ -147,6 +163,12 @@ class LiteralData(Extension):
         raise NotImplementedError()
 
     def expr(self, node: ExprIR, set_to=None):
+        raise NotImplementedError()
+
+    def compare(self, node: CompareIR, set_to=None):
+        raise NotImplementedError()
+
+    def arithmetic(self, node: ArithmeticIR, set_to=None):
         raise NotImplementedError()
 
     def get_var(self, node: GetVarIR, set_to=None):
@@ -202,6 +224,20 @@ class SymbolData(Extension):
 
     def expr(self, node: ExprIR, set_to: ExprData = None) -> ExprData:
         return super().expr(node, set_to)
+
+    class CompareData:
+        def __init__(self, is_signed: bool):
+            self.is_signed = is_signed
+
+    def compare(self, node: CompareIR, set_to: CompareData = None) -> CompareData:
+        return super().compare(node, set_to)
+
+    class ArithmeticData:
+        def __init__(self, is_signed: bool):
+            self.is_signed = is_signed
+
+    def arithmetic(self, node: ArithmeticIR, set_to: ArithmeticData = None) -> ArithmeticData:
+        return super().arithmetic(node, set_to)
 
     class GetVarData:
         def __init__(self, declarer: NodeIR, symbol: VariableSymbol):
@@ -269,17 +305,27 @@ class InitSymbols(IRSymbolsPass):
         builtin_namespace = NamespaceSymbol("<builtins>", Position.new_none())
         self.symbols.program(program, set_to=SymbolData.ProgramData(builtin_namespace))
 
-        int32 = IntTypeSymbol("int", 32, Position.new_builtin("int"))
-        builtin_namespace.define_type(int32)
+        def def_int(name, signed, bits):
+            i = IntTypeSymbol(name, signed, bits, Position.new_none())
+            builtin_namespace.define_type(i)
+            return i
 
-        boolean = IntTypeSymbol("bool", 1, Position.new_builtin("bool"))
-        builtin_namespace.define_type(boolean)
+        uint1 = def_int("bool", False, 1)
+        uint8 = def_int("uint8", False, 8)
+        uint32 = def_int("uint32", False, 32)
+        uint64 = def_int("uint64", False, 64)
 
-        puts_type = FunctionTypeSymbol([int32], int32, Position.new_builtin("puts"))
-        puts = VariableSymbol("puts", program, puts_type, Position.new_builtin("puts"))
+        int8 = def_int("int8", True, 8)
+        int32 = def_int("int32", True, 32)
+        int64 = def_int("int64", True, 64)
+
+        puts_type = FunctionTypeSymbol([int32], int32, Position.new_none())
+        puts = VariableSymbol("puts", program, puts_type, Position.new_none())
         builtin_namespace.define_value(puts)
 
-        self.builtins.general(set_to=LiteralData.BuiltinData(int32, boolean, puts))
+        self.builtins.general(set_to=LiteralData.BuiltinData({1: uint1, 8: uint8, 32: uint32, 64: uint64},
+                                                             {8: int8, 32: int32, 64: int64},
+                                                             puts))
 
         with self.enter_namespace(builtin_namespace):
             for source in program.sources:
@@ -404,7 +450,7 @@ class ResolveTypes(IRSymbolsPass):
 
     def visit_if(self, if_: IfStmtIR):
         self.visit_expr(if_.cond)
-        expected = self.builtins.general().boolean
+        expected = self.builtins.general().uint[1]
         got = self.symbols.expr(if_.cond).return_type
         if expected.is_super_of(got):
             pass
@@ -445,48 +491,73 @@ class ResolveTypes(IRSymbolsPass):
             MessageHandler.handle_message(msg)
         self.symbols.stmt(ret, set_to=SymbolData.StmtData(True))
 
-    class CheckResult:
-        def __init__(self, result: str, node: TextIR, got: TypeSymbol, expected: TypeSymbol):
-            if result in ['error', 'pass', 'fail']:
-                self.result = result
-            else:
-                raise ValueError("result is not valid")
-            self.node = node
-            self.got = got
-            self.expected = expected
-
-        def handle(self, success_type: TypeSymbol = None, this_node: TextIR = None) -> TypeSymbol:
-            if this_node is None:
-                this_node = self.node
-            if success_type is None:
-                success_type = self.got
-            if self.result == 'pass':
-                return success_type
-            elif self.result == 'fail':
-                msg = TypeCheckingError.from_node(self.node, self.expected, self.got)
-                MessageHandler.handle_message(msg)
-                return ErroredTypeSymbol(this_node.pos)
-            else:
-                return self.got
-
-    def check_types(self, *types: Tuple[TextIR, TypeSymbol, TypeSymbol]) -> CheckResult:
-        for node, got, expected in types:
-            if isinstance(got, ErroredTypeSymbol):
-                return self.CheckResult('error', node, got, expected)
-            elif expected.is_super_of(got):
-                return self.CheckResult('pass', node, got, expected)
-            else:
-                return self.CheckResult('fail', node, got, expected)
+    def check_error_type(self, *types: TypeSymbol) -> Optional[TypeSymbol]:
+        for type in types:
+            if isinstance(type, ErroredTypeSymbol):
+                return type
+        return None
 
     def visit_compare(self, cmp: CompareIR):
         self.visit_expr(cmp.left)
         self.visit_expr(cmp.right)
-        int32 = self.builtins.general().int32
-        boolean = self.builtins.general().boolean
         left = self.symbols.expr(cmp.left).return_type
         right = self.symbols.expr(cmp.right).return_type
-        return_type = self.check_types((cmp.left, left, int32), (cmp.right, right, int32)).handle(success_type=boolean, this_node=cmp)
+
+        if errored_type := self.check_error_type():
+            return_type = errored_type
+        else:
+            for node, node_type in [(cmp.left, left), (cmp.right, right)]:
+                if not isinstance(node_type, IntTypeSymbol):
+                    msg = TypeCheckingError.expected_type_cls(cmp, node, "integers", node_type)
+                    MessageHandler.handle_message(msg)
+                    return_type = ErroredTypeSymbol(cmp.pos)
+                    break
+            else:
+                left, right = cast(IntTypeSymbol, left), cast(IntTypeSymbol, right)
+                if left.is_signed == right.is_signed:
+                    is_signed = left.is_signed
+                    return_type = self.builtins.general().uint[1]
+                else:
+                    left_note = DefinitionNote(f"Left is of type {left}", cmp.left.pos)
+                    right_note = DefinitionNote(f"Right is of type {right}", cmp.right.pos)
+                    msg = TypeCheckingError("Signed and Unsigned Integers cannot be mixed in comparison operations",
+                                            cmp.pos, [left_note, right_note])
+                    MessageHandler.handle_message(msg)
+                    return_type = ErroredTypeSymbol(cmp.pos)
+                
         self.symbols.expr(cmp, SymbolData.ExprData(return_type))
+        self.symbols.compare(cmp, SymbolData.CompareData(is_signed))
+
+    def visit_arithmetic(self, arith: ArithmeticIR):
+        self.visit_expr(arith.left)
+        self.visit_expr(arith.right)
+        left = self.symbols.expr(arith.left).return_type
+        right = self.symbols.expr(arith.right).return_type
+
+        return_type: TypeSymbol
+        if errored_type := self.check_error_type(left, right):
+            return_type = errored_type
+        else:
+            for node, node_type in [(arith.left, left), (arith.right, right)]:
+                if not isinstance(node_type, IntTypeSymbol):
+                    msg = TypeCheckingError.expected_type_cls(arith, node, "integers", node_type)
+                    MessageHandler.handle_message(msg)
+                    return_type = ErroredTypeSymbol(arith.pos)
+                    break
+            else:
+                left, right = cast(IntTypeSymbol, left), cast(IntTypeSymbol, right)
+                if left.is_signed == right.is_signed:
+                    is_signed = left.is_signed
+                    return_type = max(left, right, key=lambda t: t.bit_size)
+                else:
+                    left_note = DefinitionNote(f"Left is of type {left}", arith.left.pos)
+                    right_note = DefinitionNote(f"Right is of type {right}", arith.right.pos)
+                    msg = TypeCheckingError("Signed and Unsigned Integers cannot be mixed in arithmetic operations", arith.pos, [left_note, right_note])
+                    MessageHandler.handle_message(msg)
+                    return_type = ErroredTypeSymbol(arith.pos)
+
+        self.symbols.expr(arith, SymbolData.ExprData(return_type))
+        self.symbols.arithmetic(arith, SymbolData.ArithmeticData(is_signed))
 
     def visit_call(self, call: CallIR):
         self.visit_expr(call.callee)
@@ -521,7 +592,7 @@ class ResolveTypes(IRSymbolsPass):
 
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal
-        self.symbols.expr(num, SymbolData.ExprData(self.builtins.general().int32))
+        self.symbols.expr(num, SymbolData.ExprData(self.builtins.general().sint[32]))
 
     def visit_get_type(self, type: GetTypeIR):
         try:
