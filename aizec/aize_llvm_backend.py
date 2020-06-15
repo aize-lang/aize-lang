@@ -317,6 +317,37 @@ class LLVMBackend(Backend):
         else:
             return False
 
+    @staticmethod
+    def create_function_passes(llvm_mod: llvm.ModuleRef, machine: llvm.TargetMachine):
+        fpmb = llvm.create_pass_manager_builder()
+        fpmb.opt_level = 3
+        fpmb.inlining_threshold = 225
+
+        fpm = llvm.create_function_pass_manager(llvm_mod)
+        machine.add_analysis_passes(fpm)
+        fpmb.populate(fpm)
+        fpm.add_dead_code_elimination_pass()
+        fpm.add_cfg_simplification_pass()
+        fpm.add_instruction_combining_pass()
+        fpm.add_licm_pass()
+        fpm.add_sccp_pass()
+        fpm.add_sroa_pass()
+        fpm.add_type_based_alias_analysis_pass()
+        fpm.add_basic_alias_analysis_pass()
+
+        return fpm
+
+    @staticmethod
+    def create_module_passes(machine: llvm.TargetMachine):
+        pmb = llvm.create_pass_manager_builder()
+        pmb.inlining_threshold = 225
+
+        pm = llvm.ModulePassManager()
+        machine.add_analysis_passes(pm)
+        pmb.populate(pm)
+
+        return pm
+
     def run_backend(self):
         if self.output_path is None:
             output_form = Path.cwd() / Path("a")
@@ -326,15 +357,26 @@ class LLVMBackend(Backend):
             output_form = self.output_path.absolute().parent
             output_path = self.output_path
 
-        if self.emit_llvm:
-            llvm_file = self.output_path.with_suffix(".ll")
-            with llvm_file.open("w") as file:
-                file.write(str(self.llvm_ir))
-
         target = llvm.Target.from_default_triple()
         machine = target.create_target_machine(codemodel='small')
 
+        self.llvm_ir.triple = target.triple
         llvm_mod = llvm.parse_assembly(str(self.llvm_ir))
+
+        for func in llvm_mod.functions:
+            fpm = self.create_function_passes(llvm_mod, machine)
+            fpm.initialize()
+            fpm.run(func)
+            fpm.finalize()
+
+        pm = self.create_module_passes(machine)
+        pm.run(llvm_mod)
+
+        if self.emit_llvm:
+            llvm_file = self.output_path.with_suffix(".ll")
+            with llvm_file.open("w") as file:
+                file.write(str(llvm_mod))
+
         object_data = machine.emit_object(llvm_mod)
 
         if (temp_path := output_form.with_suffix(".o")).exists():
