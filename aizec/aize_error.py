@@ -131,9 +131,10 @@ class MessageHandler:
 
         fail = False
         fail_causes = []
-        for error in self.messages:
+        for n, error in enumerate(self.messages):
             error.display(reporter)
-            reporter.separate()
+            if (n+1) < len(self.messages):
+                reporter.separate()
             if error.level >= self._config.fail_ge:
                 fail_causes.append(error)
                 fail = True

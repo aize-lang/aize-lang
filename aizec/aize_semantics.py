@@ -96,9 +96,15 @@ class TypeCheckingError(AizeMessage):
         return error
 
     @classmethod
+    def expected_return_type(cls, expected: TypeSymbol, got: TypeSymbol, where: Position, definition: Position):
+        note = DefinitionNote(f"Return type declared here", definition)
+        error = cls(f"Expected type {expected}, got type {got}", where, [note])
+        return error
+
+    @classmethod
     def expected_type_cls(cls, expecting_node: TextIR, offending_node: TextIR, cls_name: str, got: TypeSymbol):
         note = DefinitionNote.from_pos(offending_node.pos, f"Expression is instead of type {got}")
-        error = cls(f"Arguments must be {cls_name}", expecting_node.pos, [note])
+        error = cls(f"Expression must be of type {cls_name}", expecting_node.pos, [note])
         return error
 
     def display(self, reporter: Reporter):
@@ -487,7 +493,7 @@ class ResolveTypes(IRSymbolsPass):
         elif isinstance(got, ErroredTypeSymbol):
             pass
         else:
-            msg = TypeCheckingError.from_nodes(ret, self.current_func, expected, got)
+            msg = TypeCheckingError.expected_return_type(expected, got, ret.expr.pos, self.current_func.ret.pos)
             MessageHandler.handle_message(msg)
         self.symbols.stmt(ret, set_to=SymbolData.StmtData(True))
 
@@ -503,6 +509,7 @@ class ResolveTypes(IRSymbolsPass):
         left = self.symbols.expr(cmp.left).return_type
         right = self.symbols.expr(cmp.right).return_type
 
+        is_signed = False
         if errored_type := self.check_error_type():
             return_type = errored_type
         else:
@@ -535,6 +542,7 @@ class ResolveTypes(IRSymbolsPass):
         right = self.symbols.expr(arith.right).return_type
 
         return_type: TypeSymbol
+        is_signed = False
         if errored_type := self.check_error_type(left, right):
             return_type = errored_type
         else:

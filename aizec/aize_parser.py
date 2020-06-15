@@ -65,28 +65,63 @@ class Token:
         self.columns = columns
 
     def pos(self):
-        return Position.new_text(self.source, self.line_no, self.columns)
+        return Position.new_text(self.source, self.line_no, self.columns, False)
 
     def __repr__(self):
         return f"Token({self.text!r}, {self.type!r})"
+
+
+class SourceLoader:
+    def __init__(self, source: Source):
+        self.source = source
+        self.stream = source.get_stream()
+
+        self._loaded: str = ""
+        self._is_done = False
+        self._line: str = ""
+
+    @property
+    def _last(self):
+        return self._loaded[-1]
+
+    def is_done(self) -> bool:
+        return self._is_done
+
+    def advance(self):
+        if self._is_done:
+            return
+        char = self.stream.read(1)
+        if char == '':
+            self.source.add_line(self._line)
+            self._is_done = True
+        else:
+            if char == '\n':
+                self.source.add_line(self._line)
+                self._line = ""
+            else:
+                self._line += char
+            self._loaded += char
+
+    def get_char(self, index: int):
+        while index >= len(self._loaded) and not self._is_done:
+            self.advance()
+        if self._is_done:
+            return "\0"
+        else:
+            return self._loaded[index]
 
 
 class Scanner:
     def __init__(self, source: Source):
         self.source = source
 
-        self._curr_line: str = ""
-        self._curr_char: str = "\0"
-        self._line_pos: int = 0
-        """The index after that of the character currently in self._curr_char"""
+        self.loader = SourceLoader(source)
+        self.index = 0
+        self.line_no = 1
+        self.line_index = 1
+        """1-indexed position on the line (1 means self.curr is the first character of the line)"""
 
-        self._line_no: int = 1
-        # """Is in fact 1-indexed, but starts at 0 since advance() increments it instantly"""
-        self._token: str = ""
-        self._token_line_pos = 1
-
-        self._is_last_line = False
-        self._is_done = False
+        self._building_tokens: List[str] = []
 
     @classmethod
     def scan_source(cls, source: Source) -> Iterator[Token]:
@@ -95,63 +130,19 @@ class Scanner:
 
     # region utility methods
     def is_done(self) -> bool:
-        return self._is_done
-
-    def is_last_line(self) -> bool:
-        return self._is_last_line
-
-    def at_line_end(self) -> bool:
-        return self._line_pos == len(self._curr_line)
-
-    def load_next_line(self):
-        if self.is_last_line():
-            self._curr_line = ""
-            self._line_pos = 0
-            return
-        line = ""
-        while (char := self.source.read_char()) not in ("", "\n"):
-            line += char
-        if char == "":
-            self._is_last_line = True
-        self.source.add_line(line)
-        self._curr_line = line
-        self._line_pos = 0
-        self._line_no += 1
-
-    def advance(self):
-        self._token += self._curr_char
-        if self._line_pos == 1:
-            self._token_line_pos = 1
-        else:
-            self._token_line_pos += 1
-
-        # Keep loading lines until we reach a line with at least a character or the end
-        while not self.is_last_line() and self.at_line_end():
-            self.load_next_line()
-        if self.at_line_end():
-            self._is_done = True
-        if self.is_done():
-            self._curr_char = "\0"
-        else:
-            self._curr_char = self._curr_line[self._line_pos]
-            self._line_pos += 1
-
-    def init(self):
-        self._line_no = 0
-
-        while not self.is_last_line() and self.at_line_end():
-            self.load_next_line()
-        if self.at_line_end():
-            self._is_done = True
-        if self.is_done():
-            self._curr_char = "\0"
-        else:
-            self._curr_char = self._curr_line[self._line_pos]
-            self._line_pos += 1
+        return self.loader.is_done()
 
     @property
     def curr(self):
-        return self._curr_char
+        return self.loader.get_char(self.index)
+
+    def advance(self):
+        for i in range(len(self._building_tokens)):
+            self._building_tokens[i] += self.curr
+        self.loader.advance()
+        if not self.is_done():
+            self.index += 1
+            self.line_index += 1
 
     def match_basic(self) -> Union[Token, None]:
         if self.curr in BASIC_TOKENS.children:
@@ -169,22 +160,23 @@ class Scanner:
 
     @contextlib.contextmanager
     def start_token(self, type: Union[str, None] = None):
-        self._token = ""
-        line_no = self._line_no
-        start_line_pos = self._token_line_pos
+        self._building_tokens.append("")
+        start_line_no = self.line_no
+        start_line_index = self.line_index
 
         token = Token.__new__(Token)
         yield token
 
-        text = self._token
+        text = self._building_tokens.pop()
         if type is None:
             type = text
+        end_line_no = self.line_no
+        end_line_index = self.line_index
 
-        token.__init__(text, type, self.source, line_no, (start_line_pos+1, self._token_line_pos+1))
+        token.__init__(text, type, self.source, start_line_no, (start_line_index, end_line_index))
     # endregion
 
     def iter_tokens(self) -> Iterator[Token]:
-        self.init()
         while not self.is_done():
             token = self.match_basic()
             if token:
@@ -219,23 +211,26 @@ class Scanner:
                     yield token
                 elif self.curr == "#":
                     with self.start_token("<comment>") as token:
-                        by_itself = self.at_line_end()
                         self.advance()
-                        if not by_itself:
-                            if self.curr == " ":
-                                while not self.at_line_end() and not self.is_done():
-                                    self.advance()
+                        at_line_end = self.curr == '\n'
+                        if self.curr in (" ", "\n", "\0"):
+                            while self.curr != '\n' and not self.is_done():
                                 self.advance()
-                                continue
-                        else:
                             continue
-                    MessageHandler.handle_message(ParseError(f"Comment must be followed by a space", token.pos()))
+                    MessageHandler.handle_message(ParseError(f"Comment must be followed by a space or newline", token.pos()))
+                elif self.curr == '\n':
+                    self.advance()
+                    self.line_no += 1
+                    self.line_index = 1
+                    continue
                 elif self.curr in ('\t', ' '):
                     self.advance()
                     continue
+                elif self.curr == '\0':
+                    break
                 else:
                     with self.start_token("<unexpected characters>") as token:
-                        while self.curr not in TOKENIZE_ABLE:
+                        while self.curr not in TOKENIZE_ABLE and not self.is_done():
                             self.advance()
                     if len(token.text) == 1:
                         MessageHandler.handle_message(ParseError(f"Cannot tokenize character '{token.text!s}'", token.pos()))
@@ -243,9 +238,8 @@ class Scanner:
                         MessageHandler.handle_message(ParseError(f"Cannot tokenize characters '{token.text!s}'", token.pos()))
                     else:
                         raise ValueError(self.curr)
-
         while True:
-            yield Token('<eof>', '<eof>', self.source, self._line_no, (self._line_pos+1, self._line_pos+1))
+            yield Token('<eof>', '<eof>', self.source, self.line_no, (self.line_index, self.line_index))
 
 
 class SyncFlag(Exception):
@@ -507,7 +501,7 @@ class AizeParser:
 
         end = self.match_exc(";")
 
-        return ImportAST(anchor, path, start.pos() + end.pos())
+        return ImportAST(anchor, path, start.pos().to(end.pos()))
 
     def parse_function(self):
         start = self.match("def")
@@ -640,27 +634,27 @@ class AizeParser:
             if self.curr.type == "<":
                 self.match("<")
                 right = self.parse_add()
-                expr = LTExprAST(expr, right, start.pos())
+                expr = LTExprAST(expr, right, expr.pos.to(right.pos))
             elif self.curr.type == ">":
                 self.match(">")
                 right = self.parse_add()
-                expr = GTExprAST(expr, right, start.pos())
+                expr = GTExprAST(expr, right, expr.pos.to(right.pos))
             elif self.curr.type == "<=":
                 self.match("<=")
                 right = self.parse_add()
-                expr = LEExprAST(expr, right, start.pos())
+                expr = LEExprAST(expr, right, expr.pos.to(right.pos))
             elif self.curr.type == ">=":
                 self.match(">=")
                 right = self.parse_add()
-                expr = GEExprAST(expr, right, start.pos())
+                expr = GEExprAST(expr, right, expr.pos.to(right.pos))
             elif self.curr.type == "==":
                 self.match("==")
                 right = self.parse_add()
-                expr = EQExprAST(expr, right, start.pos())
+                expr = EQExprAST(expr, right, expr.pos.to(right.pos))
             elif self.curr.type == "!=":
                 self.match("!=")
                 right = self.parse_add()
-                expr = NEExprAST(expr, right, start.pos())
+                expr = NEExprAST(expr, right, expr.pos.to(right.pos))
         return expr
 
     def parse_add(self):
@@ -670,11 +664,11 @@ class AizeParser:
             if self.curr.type == "+":
                 self.match("+")
                 right = self.parse_mul()
-                expr = AddExprAST(expr, right, start.pos())
+                expr = AddExprAST(expr, right, expr.pos.to(right.pos))
             elif self.curr.type == "-":
                 self.match("-")
                 right = self.parse_mul()
-                expr = SubExprAST(expr, right, start.pos())
+                expr = SubExprAST(expr, right, expr.pos.to(right.pos))
         return expr
 
     def parse_mul(self):
@@ -684,11 +678,11 @@ class AizeParser:
             if self.curr.type == "*":
                 self.match("*")
                 right = self.parse_unary()
-                expr = MulExprAST(expr, right, start.pos())
+                expr = MulExprAST(expr, right, expr.pos.to(right.pos))
             elif self.curr.type == "/":
                 self.match("/")
                 right = self.parse_unary()
-                expr = DivExprAST(expr, right, start.pos())
+                expr = DivExprAST(expr, right, expr.pos.to(right.pos))
             # elif self.curr.type == "//":
             #     self.match("//")
             #     right = self.parse_unary()
@@ -696,7 +690,7 @@ class AizeParser:
             elif self.curr.type == "%":
                 self.match("%")
                 right = self.parse_unary()
-                expr = ModExprAST(expr, right, start.pos())
+                expr = ModExprAST(expr, right, expr.pos.to(right.pos))
         return expr
 
     def parse_unary(self):
@@ -704,13 +698,13 @@ class AizeParser:
             start = self.curr
             if self.match("-"):
                 right = self.parse_unary()
-                return NegExprAST(right, start.pos())
+                return NegExprAST(right, start.pos().to(right.pos))
             elif self.match("!"):
                 right = self.parse_unary()
-                return NotExprAST(right, start.pos())
+                return NotExprAST(right, start.pos().to(right.pos))
             elif self.match("~"):
                 right = self.parse_unary()
-                return InvExprAST(right, start.pos())
+                return InvExprAST(right, start.pos().to(right.pos))
         return self.parse_call()
 
     def parse_call(self):
@@ -718,17 +712,17 @@ class AizeParser:
         while True:
             if start := self.match("("):
                 args = []
-                while not self.match(")"):
+                while not (end := self.match(")")):
                     arg = self.parse_expr()
                     args.append(arg)
                     if not self.match(","):
-                        self.match_exc(")")
+                        end = self.match_exc(")")
                         break
-                expr = CallExprAST(expr, args, start.pos())
+                expr = CallExprAST(expr, args, expr.pos.to(end.pos()))
             elif start := self.match("."):
                 # TODO maybe also match number for tuples?
                 attr = self.match_exc(Token.IDENTIFIER_TYPE)
-                expr = GetAttrExprAST(expr, attr.text, start.pos())
+                expr = GetAttrExprAST(expr, attr.text, expr.pos.to(attr.pos()))
             # TODO Namespaces
             # elif self.match("::"):
             #     start = self.prev

@@ -118,8 +118,8 @@ class IR:
         def visit_get_var(self, get_var: GetVarExprAST):
             return GetVarIR(get_var.var, get_var.pos)
 
-        def visit_int(self, num: IntLiteralAST):
-            return IntIR(num.num, num.pos)
+        def visit_int(self, literal: IntLiteralAST):
+            return IntIR(literal.num, literal.pos)
 
         def visit_ann(self, ann: ExprAST):
             return AnnotationIR(self.visit_type(ann), ann.pos)

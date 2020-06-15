@@ -94,6 +94,9 @@ class IntTypeSymbol(TypeSymbol):
     def is_super_of(self, sub: TypeSymbol) -> bool:
         return isinstance(sub, IntTypeSymbol) and sub.is_signed == self.is_signed and sub.bit_size <= self.bit_size
 
+    def __str__(self):
+        return self.name
+
 
 class FunctionTypeSymbol(TypeSymbol):
     def __init__(self, params: List[TypeSymbol], ret: TypeSymbol, pos: Position):

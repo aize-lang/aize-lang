@@ -39,25 +39,25 @@ class TestErrorMessages:
         return err
 
     def test_good_position1(self, dummy_source, cap_err):
-        pos = Position.new_text(dummy_source, 1, (1, 5))
+        pos = Position.new_text(dummy_source, 1, (1, 5), False)
         with pytest.raises(FailFlag) as exc_info:
             MessageHandler.handle_message(PositionedError("Dummy Error", "Testing a Position", pos))
             MessageHandler.flush_messages()
         cap_err.seek(0)
         err = cap_err.read()
-        assert err == 'In <dummy>:\nDummy Error: Testing a Position:\n     1 | This is a test\n         ^^^^\n\n'
+        assert err == 'In <dummy>:\nDummy Error: Testing a Position:\n     1 | This is a test\n         ^^^^\n'
 
     def test_good_position2(self, dummy_source, cap_err):
-        pos = Position.new_text(dummy_source, 1, (1, 15))
+        pos = Position.new_text(dummy_source, 1, (1, 15), False)
         with pytest.raises(FailFlag) as exc_info:
             MessageHandler.handle_message(PositionedError("Dummy Error", "Testing a Position", pos))
             MessageHandler.flush_messages()
         cap_err.seek(0)
         err = cap_err.read()
-        assert err == 'In <dummy>:\nDummy Error: Testing a Position:\n     1 | This is a test\n         ^^^^^^^^^^^^^^\n\n'
+        assert err == 'In <dummy>:\nDummy Error: Testing a Position:\n     1 | This is a test\n         ^^^^^^^^^^^^^^\n'
 
     def test_bad_position1(self, dummy_source, cap_err):
-        pos = Position.new_text(dummy_source, 0, (1, 5))
+        pos = Position.new_text(dummy_source, 0, (1, 5), False)
         with pytest.raises(IndexError) as exc_info:
             MessageHandler.handle_message(PositionedError("Dummy Error", "Testing a Position", pos))
             MessageHandler.flush_messages()
@@ -66,7 +66,7 @@ class TestErrorMessages:
         assert err == ''
 
     def test_bad_position2(self, dummy_source, cap_err):
-        pos = Position.new_text(dummy_source, 1, (70, 5))
+        pos = Position.new_text(dummy_source, 1, (70, 5), False)
         with pytest.raises(IndexError) as exc_info:
             MessageHandler.handle_message(PositionedError("Dummy Error", "Testing a Position", pos))
             MessageHandler.flush_messages()
@@ -76,7 +76,7 @@ class TestErrorMessages:
         assert err == ''
 
     def test_bad_position3(self, dummy_source, cap_err):
-        pos = Position.new_text(dummy_source, 1, (1, 16))
+        pos = Position.new_text(dummy_source, 1, (1, 16), False)
         with pytest.raises(IndexError) as exc_info:
             MessageHandler.handle_message(PositionedError("Dummy Error", "Testing a Position", pos))
             MessageHandler.flush_messages()

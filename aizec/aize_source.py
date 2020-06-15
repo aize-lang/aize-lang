@@ -31,8 +31,7 @@ class Source:
     def __hash__(self):
         return hash(self.get_unique())
 
-    def read_char(self) -> str:
-        """Return the next character of the Source, or an empty string if it is done"""
+    def get_stream(self) -> IO:
         raise NotImplementedError()
 
     def get_unique(self) -> Hashable:
@@ -57,8 +56,8 @@ class StreamSource(Source):
         self.name = name
         self.stream = stream
 
-    def read_char(self) -> str:
-        return self.stream.read(n=1)
+    def get_stream(self) -> IO:
+        return self.stream
 
     def get_unique(self) -> Hashable:
         return self.name
@@ -76,8 +75,8 @@ class FileSource(Source):
         self.path = path
         self.file_handle = file_handle
 
-    def read_char(self) -> str:
-        return self.file_handle.read(1)
+    def get_stream(self) -> IO:
+        return self.file_handle
 
     def get_unique(self) -> Hashable:
         return self.path
@@ -93,6 +92,9 @@ class Position:
     def get_source_name(self) -> str:
         raise NotImplementedError()
 
+    def to(self, other: Position):
+        raise NotImplementedError()
+
     def __repr__(self) -> str:
         raise NotImplementedError()
 
@@ -101,7 +103,7 @@ class Position:
         return BuiltinPosition(builtin_name)
 
     @classmethod
-    def new_text(cls, source: Source, line: int, columns: Tuple[int, int]) -> TextPosition:
+    def new_text(cls, source: Source, line: int, columns: Tuple[int, int], continued: bool) -> TextPosition:
         """
         Return a new Position object for a position in a text source.
 
@@ -109,8 +111,9 @@ class Position:
             source: The Source this Position is in.
             line: The position's line in the file, 1-indexed.
             columns: A Tuple of starting (inclusive) and ending (exclusive) position in the line, 1-indexed
+            continued: A boolean flag indicating whether this Position goes past this line
         """
-        return TextPosition(source, line, columns)
+        return TextPosition(source, line, columns, continued)
 
     @classmethod
     def new_source(cls, name: str) -> SourcePosition:
@@ -125,6 +128,9 @@ class NoPosition(Position):
     def get_source_name(self) -> str:
         return "<no position>"
 
+    def to(self, other: Position):
+        return self
+
     def __repr__(self):
         return f"NoPosition()"
 
@@ -132,6 +138,9 @@ class NoPosition(Position):
 class SourcePosition(Position):
     def __init__(self, name: str):
         self.name = name
+
+    def to(self, other: Position):
+        return self
 
     def get_source_name(self) -> str:
         return self.name
@@ -144,6 +153,9 @@ class BuiltinPosition(Position):
     def __init__(self, builtin_name: str):
         self.builtin_name: str = builtin_name
 
+    def to(self, other: Position):
+        return self
+
     def get_source_name(self):
         return f"builtin \"{self.builtin_name}\""
 
@@ -152,10 +164,11 @@ class BuiltinPosition(Position):
 
 
 class TextPosition(Position):
-    def __init__(self, source: Source, line_no: int, columns: Tuple[int, int]):
+    def __init__(self, source: Source, line_no: int, columns: Tuple[int, int], continued: bool):
         self._source = source
         self._line_no = line_no
         self._columns = columns
+        self._continued = continued
 
     def in_context(self) -> str:
         line = self._source.get_line(self._line_no - 1)
@@ -164,23 +177,26 @@ class TextPosition(Position):
         if not (1 <= self._columns[0] < self._columns[1]):
             raise IndexError("Start column must be valid")
         return f"{self._line_no:>6} | {line}\n" \
-               f"         {' ' * (self._columns[0]-1)}{'^' * (self._columns[1] - self._columns[0])}"
+               f"         {' ' * (self._columns[0]-1)}{'^' * (self._columns[1] - self._columns[0])}{'>' if self._continued else ''}"
 
     def get_source_name(self):
         return self._source.get_name()
 
-    def to(self, other: TextPosition) -> TextPosition:
-        if self._source is other._source:
-            if self._line_no == other._line_no:
-                columns = min(self._columns[0], other._columns[0]), max(self._columns[1], other._columns[1])
-                return TextPosition(self._source, self._line_no, columns)
+    def to(self, other: Position) -> Position:
+        if isinstance(other, TextPosition):
+            if self._source is other._source:
+                if self._line_no == other._line_no:
+                    columns = min(self._columns[0], other._columns[0]), max(self._columns[1], other._columns[1])
+                    return TextPosition(self._source, self._line_no, columns, False)
+                else:
+                    before, after = (self, other) if self._line_no < other._line_no else (other, self)
+                    before_len = len(self._source.get_line(before._line_no-1))
+                    columns = (before._columns[0], before_len)
+                    return TextPosition(before._source, before._line_no, columns, True)
             else:
-                raise ValueError("Not on same line")
+                raise ValueError("Not in same source")
         else:
-            raise ValueError("Not in same source")
-
-    def __add__(self, other: TextPosition) -> TextPosition:
-        return self.to(other)
+            return other
 
     def __repr__(self):
         return f"TextPosition(line={self._line_no}, columns={self._columns})"
