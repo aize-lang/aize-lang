@@ -579,7 +579,7 @@ class AizeParser:
 
     def parse_var(self) -> VarDeclStmtAST:
         start = self.match("var")
-        var = self.match_exc(Token.IDENTIFIER_TYPE).text
+        var = self.match_exc(Token.IDENTIFIER_TYPE)
         if self.match(":"):
             type = self.parse_type()
         else:
@@ -587,7 +587,7 @@ class AizeParser:
         self.match_exc("=")
         val = self.parse_expr()
         self.match_exc(";")
-        return VarDeclStmtAST(var, type, val, start.pos())
+        return VarDeclStmtAST(var.text, type, val, Position.combine(start.pos(), var.pos(), val.pos))
 
     def parse_return(self) -> ReturnStmtAST:
         start = self.match_exc("return")

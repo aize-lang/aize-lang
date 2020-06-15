@@ -16,7 +16,7 @@ __all__ = [
     'TopLevelIR', 'FunctionIR', 'ClassIR',
     'FieldIR', 'MethodDeclIR', 'MethodDefIR',
     'ParamIR',
-    'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR',
+    'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR',
     'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'CompareIR', 'ArithmeticIR',
     'AnnotationIR',
     'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
@@ -93,6 +93,9 @@ class IR:
                 type=ann.type,
                 pos=param.pos
             )
+
+        def visit_var_decl(self, decl: VarDeclStmtAST):
+            return VarDeclIR(decl.name, self.visit_ann(decl.annotation), self.visit_expr(decl.value), decl.pos)
 
         def visit_block(self, block: BlockStmtAST):
             return BlockIR([self.visit_stmt(stmt) for stmt in block.body], block.pos)
@@ -287,6 +290,14 @@ class ParamIR(TextIR):
 # region Statement Nodes
 class StmtIR(TextIR):
     pass
+
+
+class VarDeclIR(StmtIR):
+    def __init__(self, name: str, ann: AnnotationIR, value: ExprIR, pos: Position):
+        super().__init__(pos)
+        self.name = name
+        self.ann = ann
+        self.value = value
 
 
 class BlockIR(StmtIR):

@@ -84,8 +84,14 @@ class ASTVisitor(ABC):
             return self.visit_if(stmt)
         elif isinstance(stmt, BlockStmtAST):
             return self.visit_block(stmt)
+        elif isinstance(stmt, VarDeclStmtAST):
+            return self.visit_var_decl(stmt)
         else:
             raise TypeError(f"Expected a stmt node, got {stmt}")
+
+    @abstractmethod
+    def visit_var_decl(self, decl: VarDeclStmtAST):
+        pass
 
     @abstractmethod
     def visit_block(self, block: BlockStmtAST):

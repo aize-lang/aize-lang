@@ -38,6 +38,9 @@ class LLVMData(Extension):
     def param(self, node: ParamIR, set_to=None):
         raise NotImplementedError()
 
+    def stmt(self, node: StmtIR, set_to=None):
+        raise NotImplementedError()
+
     class ExprData:
         def __init__(self, val: ir.Value):
             self.val = val
@@ -224,6 +227,11 @@ class DefineFunctions(IRTreePass):
                 self.visit_stmt(if_.then_do)
             with else_do:
                 self.visit_stmt(if_.else_do)
+
+    def visit_var_decl(self, decl: VarDeclIR):
+        self.visit_expr(decl.value)
+        llvm_val = self.llvm.expr(decl.value).val
+        self.llvm.decl(decl, set_to=LLVMData.DeclData(value=llvm_val))
 
     def visit_block(self, block: BlockIR):
         for stmt in block.stmts:

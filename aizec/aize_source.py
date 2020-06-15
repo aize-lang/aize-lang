@@ -123,6 +123,10 @@ class Position:
     def new_none(cls) -> NoPosition:
         return NoPosition()
 
+    @classmethod
+    def combine(cls, position, *positions: Position):
+        return reduce(lambda a, b: a.to(b), positions, position)
+
 
 class NoPosition(Position):
     def get_source_name(self) -> str:

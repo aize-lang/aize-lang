@@ -22,8 +22,8 @@ class DefinitionError(AizeMessage):
 
     @classmethod
     def name_existing(cls, node: TextIR, existing: Symbol):
-        note = DefinitionNote.from_pos(existing.position, "Previously defined here")
-        error = cls.from_node(node, f"Name '{existing.name}' already defined", note)
+        note = DefinitionNote.from_pos(existing.position, "Previously declared here")
+        error = cls.from_node(node, f"Name '{existing.name}' already declared in this scope", note)
         return error
 
     @classmethod
@@ -470,6 +470,21 @@ class ResolveTypes(IRSymbolsPass):
         is_terminal = self.symbols.stmt(if_.else_do).is_terminal and self.symbols.stmt(if_.then_do).is_terminal
         self.symbols.stmt(if_, set_to=SymbolData.StmtData(is_terminal))
 
+    def visit_var_decl(self, decl: VarDeclIR):
+        self.visit_ann(decl.ann)
+        type = self.symbols.type(decl.ann.type).resolved_type
+
+        symbol = VariableSymbol(decl.name, decl, type, decl.pos)
+        try:
+            self.current_namespace.define_value(symbol)
+        except DuplicateSymbolError as err:
+            msg = DefinitionError.name_existing(decl, err.old_symbol)
+            MessageHandler.handle_message(msg)
+
+        self.visit_expr(decl.value)
+
+        self.symbols.stmt(decl, set_to=SymbolData.StmtData(is_terminal=False))
+
     def visit_block(self, block: BlockIR):
         # TODO scope
         block_is_terminal = False
@@ -601,6 +616,9 @@ class ResolveTypes(IRSymbolsPass):
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal
         self.symbols.expr(num, SymbolData.ExprData(self.builtins.general().sint[32]))
+
+    def visit_ann(self, ann: AnnotationIR):
+        self.visit_type(ann.type)
 
     def visit_get_type(self, type: GetTypeIR):
         try:

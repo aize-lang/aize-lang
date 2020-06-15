@@ -54,11 +54,17 @@ class IRVisitor(ABC):
             return self.visit_if(stmt)
         elif isinstance(stmt, BlockIR):
             return self.visit_block(stmt)
+        elif isinstance(stmt, VarDeclIR):
+            return self.visit_var_decl(stmt)
         else:
             raise TypeError(f"Expected a stmt node, got {stmt}")
 
     @abstractmethod
     def visit_if(self, if_: IfStmtIR):
+        pass
+
+    @abstractmethod
+    def visit_var_decl(self, decl: VarDeclIR):
         pass
 
     @abstractmethod
@@ -228,6 +234,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_param(self, param: ParamIR):
+        pass
+
+    def visit_var_decl(self, decl: VarDeclIR):
         pass
 
     def visit_if(self, if_: IfStmtIR):
