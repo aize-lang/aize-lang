@@ -16,9 +16,14 @@ class Backend(ABC):
     def __init__(self, ir: IR):
         self.ir = ir
         self.output_path: Optional[Path] = None
+        self.opt_level: Literal[0, 1] = 1
 
     def set_output(self, path: Optional[Path]):
         self.output_path = path
+
+    def set_opt_level(self, level: int):
+        assert level in (0, 1)
+        self.opt_level = level
 
     @abstractmethod
     def handle_option(self, option: str) -> bool:

@@ -393,14 +393,15 @@ class LLVMBackend(Backend):
         self.llvm_ir.triple = target.triple
         llvm_mod = llvm.parse_assembly(str(self.llvm_ir))
 
-        for func in llvm_mod.functions:
-            fpm = self.create_function_passes(llvm_mod, machine)
-            fpm.initialize()
-            fpm.run(func)
-            fpm.finalize()
+        if self.opt_level >= 1:
+            for func in llvm_mod.functions:
+                fpm = self.create_function_passes(llvm_mod, machine)
+                fpm.initialize()
+                fpm.run(func)
+                fpm.finalize()
 
-        pm = self.create_module_passes(machine)
-        pm.run(llvm_mod)
+            pm = self.create_module_passes(machine)
+            pm.run(llvm_mod)
 
         if self.emit_llvm:
             llvm_file = self.output_path.with_suffix(".ll")

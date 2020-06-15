@@ -4,7 +4,7 @@ import io
 
 from aizec.common import *
 
-from aizec.aize_error import AizeMessage, MessageHandler, Reporter, ErrorLevel, FailFlag
+from aizec.aize_error import AizeMessage, MessageHandler, FailFlag
 from aizec.aize_source import Source, FileSource, Position, StreamSource
 
 from aizec.aize_ast import ProgramAST, SourceAST
@@ -170,6 +170,9 @@ class BackendManager(Generic[T]):
 
     def set_output(self, output: Optional[Path]):
         self.backend.set_output(output)
+
+    def set_opt_level(self, level: int):
+        self.backend.set_opt_level(level)
 
     def set_option(self, option: str):
         if not self.backend.handle_option(option):
