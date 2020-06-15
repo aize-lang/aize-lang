@@ -56,6 +56,8 @@ class IRVisitor(ABC):
             return self.visit_block(stmt)
         elif isinstance(stmt, VarDeclIR):
             return self.visit_var_decl(stmt)
+        elif isinstance(stmt, ExprStmtIR):
+            return self.visit_expr_stmt(stmt)
         else:
             raise TypeError(f"Expected a stmt node, got {stmt}")
 
@@ -72,6 +74,10 @@ class IRVisitor(ABC):
         pass
 
     @abstractmethod
+    def visit_expr_stmt(self, stmt: ExprStmtIR):
+        pass
+
+    @abstractmethod
     def visit_return(self, ret: ReturnIR):
         pass
 
@@ -82,6 +88,8 @@ class IRVisitor(ABC):
             return self.visit_call(expr)
         elif isinstance(expr, GetVarIR):
             return self.visit_get_var(expr)
+        elif isinstance(expr, SetVarIR):
+            return self.visit_set_var(expr)
         elif isinstance(expr, CompareIR):
             return self.visit_compare(expr)
         elif isinstance(expr, ArithmeticIR):
@@ -103,6 +111,10 @@ class IRVisitor(ABC):
 
     @abstractmethod
     def visit_get_var(self, get_var: GetVarIR):
+        pass
+
+    @abstractmethod
+    def visit_set_var(self, set_var: SetVarIR):
         pass
 
     @abstractmethod
@@ -248,6 +260,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     def visit_return(self, ret: ReturnIR):
         pass
 
+    def visit_expr_stmt(self, stmt: ExprStmtIR):
+        pass
+
     def visit_call(self, call: CallIR):
         pass
 
@@ -258,6 +273,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_get_var(self, get_var: GetVarIR):
+        pass
+
+    def visit_set_var(self, set_var: SetVarIR):
         pass
 
     def visit_int(self, num: IntIR):

@@ -86,8 +86,14 @@ class ASTVisitor(ABC):
             return self.visit_block(stmt)
         elif isinstance(stmt, VarDeclStmtAST):
             return self.visit_var_decl(stmt)
+        elif isinstance(stmt, ExprStmtAST):
+            return self.visit_expr_stmt(stmt)
         else:
             raise TypeError(f"Expected a stmt node, got {stmt}")
+
+    @abstractmethod
+    def visit_expr_stmt(self, stmt: ExprStmtAST):
+        pass
 
     @abstractmethod
     def visit_var_decl(self, decl: VarDeclStmtAST):
@@ -112,12 +118,16 @@ class ASTVisitor(ABC):
             return self.visit_call(expr)
         elif isinstance(expr, GetVarExprAST):
             return self.visit_get_var(expr)
+        elif isinstance(expr, SetVarExprAST):
+            return self.visit_set_var(expr)
         elif isinstance(expr, LTExprAST):
             return self.visit_lt(expr)
         elif isinstance(expr, AddExprAST):
             return self.visit_add(expr)
         elif isinstance(expr, SubExprAST):
             return self.visit_sub(expr)
+        elif isinstance(expr, MulExprAST):
+            return self.visit_mul(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
 
@@ -134,11 +144,19 @@ class ASTVisitor(ABC):
         pass
 
     @abstractmethod
+    def visit_mul(self, mul: MulExprAST):
+        pass
+
+    @abstractmethod
     def visit_call(self, call: CallExprAST):
         pass
 
     @abstractmethod
     def visit_get_var(self, get_var: GetVarExprAST):
+        pass
+
+    @abstractmethod
+    def visit_set_var(self, set_var: SetVarExprAST):
         pass
 
     @abstractmethod

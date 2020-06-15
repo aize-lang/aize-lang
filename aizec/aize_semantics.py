@@ -96,6 +96,12 @@ class TypeCheckingError(AizeMessage):
         return error
 
     @classmethod
+    def expected_type(cls, expected: TypeSymbol, got: TypeSymbol, where: Position, declaration: Position):
+        note = DefinitionNote(f"Expected type declared here", declaration)
+        error = cls(f"Expected type {expected}, got type {got}", where, [note])
+        return error
+
+    @classmethod
     def expected_return_type(cls, expected: TypeSymbol, got: TypeSymbol, where: Position, definition: Position):
         note = DefinitionNote(f"Return type declared here", definition)
         error = cls(f"Expected type {expected}, got type {got}", where, [note])
@@ -180,6 +186,9 @@ class LiteralData(Extension):
     def get_var(self, node: GetVarIR, set_to=None):
         raise NotImplementedError()
 
+    def set_var(self, node: SetVarIR, set_to=None):
+        raise NotImplementedError()
+
     def type(self, node: TypeIR, set_to=None):
         raise NotImplementedError()
 
@@ -246,12 +255,18 @@ class SymbolData(Extension):
         return super().arithmetic(node, set_to)
 
     class GetVarData:
-        def __init__(self, declarer: NodeIR, symbol: VariableSymbol):
-            self.declarer = declarer
+        def __init__(self, symbol: VariableSymbol):
             self.symbol = symbol
 
     def get_var(self, node: GetVarIR, set_to: GetVarData = None) -> GetVarData:
         return super().get_var(node, set_to)
+
+    class SetVarData:
+        def __init__(self, symbol: VariableSymbol):
+            self.symbol = symbol
+
+    def set_var(self, node: SetVarIR, set_to: SetVarData = None) -> SetVarData:
+        return super().set_var(node, set_to)
 
     class TypeData:
         def __init__(self, resolved_type: TypeSymbol):
@@ -262,9 +277,10 @@ class SymbolData(Extension):
 
     # region Extension Extensions
     class DeclData:
-        def __init__(self, declarer: NodeIR, declares: VariableSymbol):
+        def __init__(self, declarer: NodeIR, declares: VariableSymbol, type: TypeSymbol):
             self.declarer = declarer
             self.declares = declares
+            self.type = type
 
     def decl(self, node: NodeIR, set_to: DeclData = None) -> DeclData:
         return super().ext(node, 'decl', set_to)
@@ -423,7 +439,7 @@ class ResolveTypes(IRSymbolsPass):
         func_namespace = NamespaceSymbol(f"<{func.name} body>", func.pos)
         self.current_namespace.define_namespace(func_namespace, visible=False)
         self.symbols.function(func, set_to=SymbolData.FunctionData(func_value, func_namespace))
-        self.symbols.decl(func, set_to=SymbolData.DeclData(func, func_value))
+        self.symbols.decl(func, set_to=SymbolData.DeclData(func, func_value, func_type))
 
         with self.in_function(func, func_type):
             for param in func.params:
@@ -470,9 +486,15 @@ class ResolveTypes(IRSymbolsPass):
         is_terminal = self.symbols.stmt(if_.else_do).is_terminal and self.symbols.stmt(if_.then_do).is_terminal
         self.symbols.stmt(if_, set_to=SymbolData.StmtData(is_terminal))
 
+    def visit_expr_stmt(self, stmt: ExprStmtIR):
+        self.visit_expr(stmt.expr)
+        self.symbols.stmt(stmt, set_to=SymbolData.StmtData(is_terminal=False))
+
     def visit_var_decl(self, decl: VarDeclIR):
         self.visit_ann(decl.ann)
         type = self.symbols.type(decl.ann.type).resolved_type
+
+        self.visit_expr(decl.value)
 
         symbol = VariableSymbol(decl.name, decl, type, decl.pos)
         try:
@@ -481,8 +503,7 @@ class ResolveTypes(IRSymbolsPass):
             msg = DefinitionError.name_existing(decl, err.old_symbol)
             MessageHandler.handle_message(msg)
 
-        self.visit_expr(decl.value)
-
+        self.symbols.decl(decl, set_to=SymbolData.DeclData(decl, symbol, type))
         self.symbols.stmt(decl, set_to=SymbolData.StmtData(is_terminal=False))
 
     def visit_block(self, block: BlockIR):
@@ -611,7 +632,33 @@ class ResolveTypes(IRSymbolsPass):
             MessageHandler.handle_message(msg)
             value = ErroredVariableSymbol(get_var, get_var.pos)
         self.symbols.expr(get_var, SymbolData.ExprData(value.type))
-        self.symbols.get_var(get_var, set_to=SymbolData.GetVarData(value.declarer, value))
+        self.symbols.get_var(get_var, set_to=SymbolData.GetVarData(value))
+
+    def visit_set_var(self, set_var: SetVarIR):
+        try:
+            variable = self.current_namespace.lookup_value(set_var.var_name)
+        except FailedLookupError:
+            msg = DefinitionError.name_undefined(set_var, set_var.var_name)
+            MessageHandler.handle_message(msg)
+            variable = ErroredVariableSymbol(set_var, set_var.pos)
+        variable_type = variable.type
+
+        self.visit_expr(set_var.value)
+        value_type = self.symbols.expr(set_var.value).return_type
+
+        return_type: TypeSymbol
+        if return_type := self.check_error_type(variable_type, value_type):
+            pass
+        else:
+            if variable_type.is_super_of(value_type):
+                return_type = value_type
+            else:
+                msg = TypeCheckingError.expected_type(variable_type, value_type, set_var.pos, variable.position)
+                MessageHandler.handle_message(msg)
+                return_type = ErroredTypeSymbol(set_var.pos)
+
+        self.symbols.expr(set_var, set_to=SymbolData.ExprData(return_type))
+        self.symbols.set_var(set_var, set_to=SymbolData.SetVarData(variable))
 
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal

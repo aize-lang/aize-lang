@@ -66,8 +66,8 @@ class LLVMData(Extension):
 
     # region Extension Extensions
     class DeclData:
-        def __init__(self, value: ir.Value):
-            self.value = value
+        def __init__(self, var: ir.Value):
+            self.var_ptr = var
 
     def decl(self, node: NodeIR, set_to: DeclData = None) -> DeclData:
         return super().ext(node, 'decl', set_to)
@@ -228,10 +228,18 @@ class DefineFunctions(IRTreePass):
             with else_do:
                 self.visit_stmt(if_.else_do)
 
+    def visit_expr_stmt(self, stmt: ExprStmtIR):
+        self.visit_expr(stmt.expr)
+
     def visit_var_decl(self, decl: VarDeclIR):
+        llvm_type = self.resolve_type(self.symbols.decl(decl).type)
+        llvm_val = self.builder.alloca(llvm_type)
+
         self.visit_expr(decl.value)
-        llvm_val = self.llvm.expr(decl.value).val
-        self.llvm.decl(decl, set_to=LLVMData.DeclData(value=llvm_val))
+        expr_val = self.llvm.expr(decl.value).val
+        self.builder.store(expr_val, llvm_val)
+
+        self.llvm.decl(decl, set_to=LLVMData.DeclData(var=llvm_val))
 
     def visit_block(self, block: BlockIR):
         for stmt in block.stmts:
@@ -265,6 +273,8 @@ class DefineFunctions(IRTreePass):
             llvm_val = self.builder.add(left, right)
         elif arith.op == '-':
             llvm_val = self.builder.sub(left, right)
+        elif arith.op == '*':
+            llvm_val = self.builder.mul(left, right)
         else:
             raise NotImplementedError()
         self.llvm.expr(arith, set_to=LLVMData.ExprData(llvm_val))
@@ -293,8 +303,20 @@ class DefineFunctions(IRTreePass):
             llvm_val = ir.Function(self.mod, self.resolve_type(symbol.type), "puts")
         else:
             declarer = symbol.declarer
-            llvm_val = self.llvm.decl(declarer).value
+            var_ptr = self.llvm.decl(declarer).var_ptr
+            llvm_val = self.builder.load(var_ptr)
         self.llvm.expr(get_var, LLVMData.ExprData(llvm_val))
+
+    def visit_set_var(self, set_var: SetVarIR):
+        symbol = self.symbols.set_var(set_var).symbol
+        var_ptr = self.llvm.decl(symbol.declarer).var_ptr
+
+        self.visit_expr(set_var.value)
+        expr_val = self.llvm.expr(set_var.value).val
+
+        self.builder.store(expr_val, var_ptr)
+
+        self.llvm.expr(set_var, set_to=LLVMData.ExprData(expr_val))
 
     def visit_get_type(self, type: GetTypeIR):
         resolved: TypeSymbol = self.symbols.type(type).resolved_type

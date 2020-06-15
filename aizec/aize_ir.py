@@ -16,8 +16,8 @@ __all__ = [
     'TopLevelIR', 'FunctionIR', 'ClassIR',
     'FieldIR', 'MethodDeclIR', 'MethodDefIR',
     'ParamIR',
-    'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR',
-    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'CompareIR', 'ArithmeticIR',
+    'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR',
+    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR',
     'AnnotationIR',
     'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
 ]
@@ -103,6 +103,9 @@ class IR:
         def visit_if(self, if_: IfStmtAST):
             return IfStmtIR(self.visit_expr(if_.cond), self.visit_stmt(if_.then_do), self.visit_stmt(if_.else_do), if_.pos)
 
+        def visit_expr_stmt(self, stmt: ExprStmtAST):
+            return ExprStmtIR(self.visit_expr(stmt.value), stmt.pos)
+
         def visit_return(self, ret: ReturnStmtAST):
             return ReturnIR(self.visit_expr(ret.value), ret.pos)
 
@@ -115,8 +118,14 @@ class IR:
         def visit_sub(self, sub: SubExprAST):
             return ArithmeticIR("-", self.visit_expr(sub.left), self.visit_expr(sub.right), sub.pos)
 
+        def visit_mul(self, mul: MulExprAST):
+            return ArithmeticIR("*", self.visit_expr(mul.left), self.visit_expr(mul.right), mul.pos)
+
         def visit_call(self, call: CallExprAST):
             return CallIR(self.visit_expr(call.left), [self.visit_expr(arg) for arg in call.args], call.pos)
+
+        def visit_set_var(self, set_var: SetVarExprAST):
+            return SetVarIR(set_var.var, self.visit_expr(set_var.value), set_var.pos)
 
         def visit_get_var(self, get_var: GetVarExprAST):
             return GetVarIR(get_var.var, get_var.pos)
@@ -194,6 +203,10 @@ class Extension:
     @abstractmethod
     def get_var(self, node: GetVarIR, set_to: T = None) -> T:
         return self._get_data(node, 'get_var', set_to)
+
+    @abstractmethod
+    def set_var(self, node: SetVarIR, set_to: T = None) -> T:
+        return self._get_data(node, 'set_var', set_to)
 
     @abstractmethod
     def type(self, node: TypeIR, set_to: T = None) -> T:
@@ -314,6 +327,12 @@ class IfStmtIR(StmtIR):
         self.else_do = else_do
 
 
+class ExprStmtIR(StmtIR):
+    def __init__(self, expr: ExprIR, pos: Position):
+        super().__init__(pos)
+        self.expr = expr
+
+
 class ReturnIR(StmtIR):
     def __init__(self, expr: ExprIR, pos: Position):
         super().__init__(pos)
@@ -353,6 +372,13 @@ class GetVarIR(ExprIR):
     def __init__(self, var_name: str, pos: Position):
         super().__init__(pos)
         self.var_name = var_name
+
+
+class SetVarIR(ExprIR):
+    def __init__(self, var_name: str, value: ExprIR, pos: Position):
+        super().__init__(pos)
+        self.var_name = var_name
+        self.value = value
 
 
 class IntIR(ExprIR):

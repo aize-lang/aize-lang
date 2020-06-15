@@ -1,7 +1,7 @@
 
 
 def main() -> int32 {
-    var ret: int32 = 5;
-    var ret: int32 = 17;
+    var ret: int32 = 2;
+    ret = 17 * ret;
     return ret;
 }
