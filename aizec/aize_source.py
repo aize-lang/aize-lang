@@ -187,11 +187,12 @@ class TextPosition(Position):
             if self._source is other._source:
                 if self._line_no == other._line_no:
                     columns = min(self._columns[0], other._columns[0]), max(self._columns[1], other._columns[1])
-                    return TextPosition(self._source, self._line_no, columns, False)
+                    continued = self._continued or other._continued
+                    return TextPosition(self._source, self._line_no, columns, continued)
                 else:
                     before, after = (self, other) if self._line_no < other._line_no else (other, self)
-                    before_len = len(self._source.get_line(before._line_no-1))
-                    columns = (before._columns[0], before_len)
+                    before_len = len(before._source.get_line(before._line_no-1))
+                    columns = (before._columns[0], before_len+1)
                     return TextPosition(before._source, before._line_no, columns, True)
             else:
                 raise ValueError("Not in same source")
@@ -199,4 +200,4 @@ class TextPosition(Position):
             return other
 
     def __repr__(self):
-        return f"TextPosition(line={self._line_no}, columns={self._columns})"
+        return f"TextPosition(line={self._line_no}, columns={self._columns}, continued={self._continued})"
