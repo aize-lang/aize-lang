@@ -344,6 +344,22 @@ class DefineFunctions(IRLLVMPass):
         llvm_type = self.resolve_type(resolved)
         self.llvm.type(type, set_to=LLVMData.TypeData(llvm_type))
 
+    def visit_intrinsic(self, intrinsic: IntrinsicIR):
+        if intrinsic.name in ('int8', 'int32', 'int64'):
+            num = intrinsic.args[0]
+            from_type = cast(IntTypeSymbol, self.symbols.expr(num).return_type)
+            to_type = cast(IntTypeSymbol, self.symbols.expr(intrinsic).return_type)
+            self.visit_expr(num)
+            num_val = self.llvm.expr(num).r_val
+            if from_type.bit_size > to_type.bit_size:
+                llvm_val = self.builder.trunc(num_val, self.resolve_type(to_type))
+            else:
+                llvm_val = self.builder.zext(num_val, self.resolve_type(to_type))
+
+            self.llvm.expr(intrinsic, set_to=LLVMData.ExprData(None, llvm_val))
+        else:
+            raise Exception()
+
 
 class LLVMBackend(Backend):
     llvm.initialize()

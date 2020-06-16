@@ -17,7 +17,7 @@ __all__ = [
     'FieldIR', 'MethodDeclIR', 'MethodDefIR',
     'ParamIR',
     'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR',
-    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',
+    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',  'IntrinsicIR',
     'AnnotationIR',
     'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
 ]
@@ -145,6 +145,9 @@ class IR:
         def visit_set_attr(self, set_attr: SetAttrExprAST):
             return SetAttrIR(self.visit_expr(set_attr.obj), set_attr.attr, self.visit_expr(set_attr.value), set_attr.pos)
 
+        def visit_intrinsic(self, intrinsic: IntrinsicExprAST):
+            return IntrinsicIR(intrinsic.name, [self.visit_expr(arg) for arg in intrinsic.args], intrinsic.pos)
+
         def visit_int(self, literal: IntLiteralAST):
             return IntIR(literal.num, literal.pos)
 
@@ -230,6 +233,10 @@ class Extension:
     @abstractmethod
     def set_attr(self, node: SetAttrIR, set_to: T = None) -> T:
         return self._get_data(node, 'set_attr', set_to)
+
+    @abstractmethod
+    def intrinsic(self, node: IntrinsicIR, set_to: T = None) -> T:
+        return self._get_data(node, 'intrinsic', set_to)
 
     @abstractmethod
     def type(self, node: TypeIR, set_to: T = None) -> T:
@@ -435,6 +442,14 @@ class SetAttrIR(ExprIR):
         self.obj = obj
         self.attr = attr
         self.value = value
+
+
+class IntrinsicIR(ExprIR):
+    def __init__(self, name: str, args: List[ExprIR], pos: Position):
+        super().__init__(pos)
+
+        self.name = name
+        self.args = args
 
 
 class IntIR(ExprIR):

@@ -17,7 +17,7 @@ __all__ = [
     'ExprAST', 'NEExprAST', 'BinaryExprAST', 'SubExprAST', 'AddExprAST', 'MulExprAST', 'GetVarExprAST', 'EQExprAST',
     'ModExprAST', 'LEExprAST', 'UnaryExprAST', 'LTExprAST', 'InvExprAST', 'NotExprAST', 'DivExprAST', 'GetAttrExprAST',
     'GEExprAST', 'SetAttrExprAST', 'NegExprAST', 'GTExprAST', 'SetVarExprAST', 'CallExprAST', 'StrLiteralAST', 'NewExprAST',
-    'IntLiteralAST'
+    'IntLiteralAST', 'IntrinsicExprAST',
 ]
 
 
@@ -120,6 +120,8 @@ class ASTVisitor(ABC):
     def visit_expr(self, expr: ExprAST):
         if isinstance(expr, IntLiteralAST):
             return self.visit_int(expr)
+        elif isinstance(expr, IntrinsicExprAST):
+            return self.visit_intrinsic(expr)
         elif isinstance(expr, NewExprAST):
             return self.visit_new(expr)
         elif isinstance(expr, CallExprAST):
@@ -181,6 +183,10 @@ class ASTVisitor(ABC):
 
     @abstractmethod
     def visit_set_attr(self, set_attr: SetAttrExprAST):
+        pass
+
+    @abstractmethod
+    def visit_intrinsic(self, intrinsic: IntrinsicExprAST):
         pass
 
     @abstractmethod
@@ -483,6 +489,14 @@ class CallExprAST(ExprAST):
         super().__init__(pos)
 
         self.left = left
+        self.args = args
+
+
+class IntrinsicExprAST(ExprAST):
+    def __init__(self, name: str, args: List[ExprAST], pos: Position):
+        super().__init__(pos)
+
+        self.name = name
         self.args = args
 
 

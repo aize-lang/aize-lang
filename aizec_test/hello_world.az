@@ -1,22 +1,6 @@
 
 
-struct InsideThing {
-    attr num: int32;
-}
-
-
-struct Thing {
-    attr inside_1: InsideThing;
-    attr inside_2: InsideThing;
-}
-
-def fibo() -> Thing {
-    var inside_thing: InsideThing = new InsideThing {8};
-    return new Thing { inside_thing, inside_thing };
-}
-
 def main() -> int32 {
-    var thing: Thing = fibo();
-    thing.inside_2.num = 3;
-    return thing.inside_2.num;
+    var thing: int8 = @int8(16);
+    return @int32(thing);
 }

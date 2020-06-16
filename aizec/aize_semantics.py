@@ -50,6 +50,11 @@ class DefinitionError(AizeMessage):
         return error
 
     @classmethod
+    def no_such_intrinsic(cls, intrinsic: Position, name: str):
+        error = cls.from_pos(intrinsic, f"No intrinsic with name '{name}'")
+        return error
+
+    @classmethod
     def from_pos(cls, pos: Position, msg: str, note: AizeMessage = None):
         return cls(msg, pos, note)
 
@@ -227,6 +232,9 @@ class LiteralData(Extension):
     def set_attr(self, node: SetAttrIR, set_to=None):
         raise NotImplementedError()
 
+    def intrinsic(self, node: IntrinsicIR, set_to=None):
+        raise NotImplementedError()
+
     def type(self, node: TypeIR, set_to=None):
         raise NotImplementedError()
 
@@ -323,6 +331,21 @@ class SymbolData(Extension):
 
     def set_attr(self, node: SetAttrIR, set_to: SetAttrData = None) -> SetAttrData:
         return super().set_attr(node, set_to)
+
+    class IntrinsicData:
+        class IntrinsicType:
+            pass
+
+        class IntConversionIntrinsic(IntrinsicType):
+            def __init__(self, from_bits: int, to_bits: int):
+                self.from_bits = from_bits
+                self.to_bits = to_bits
+
+        def __init__(self, type: IntrinsicType):
+            self.type = type
+
+    def intrinsic(self, node: IntrinsicIR, set_to: IntrinsicData = None) -> IntrinsicData:
+        return super().intrinsic(node, set_to)
 
     class TypeData:
         def __init__(self, resolved_type: TypeSymbol):
@@ -897,6 +920,42 @@ class ResolveTypes(IRSymbolsPass):
 
         self.symbols.expr(set_attr, set_to=SymbolData.ExprData(return_type, is_lval=True))
         self.symbols.set_attr(set_attr, set_to=SymbolData.SetAttrData(struct_type, index))
+
+    def visit_intrinsic(self, intrinsic: IntrinsicIR):
+        if intrinsic.name in ('int8', 'int32', 'int64'):
+            return_type: TypeSymbol
+
+            for arg in intrinsic.args:
+                self.visit_expr(arg)
+
+            expected_count = 1
+            got_count = len(intrinsic.args)
+            if expected_count > got_count:
+                msg = TypeCheckingError.too_few_arguments(expected_count, got_count, intrinsic.pos)
+                MessageHandler.handle_message(msg)
+                return_type = ErroredTypeSymbol(intrinsic.pos)
+            elif expected_count < got_count:
+                msg = TypeCheckingError.too_many_arguments(expected_count, got_count, intrinsic.args[got_count-expected_count].pos)
+                MessageHandler.handle_message(msg)
+                return_type = ErroredTypeSymbol(intrinsic.pos)
+            else:
+                num = intrinsic.args[0]
+                from_type = self.symbols.expr(num).return_type
+                to_type = self.builtins.general().sint[int(intrinsic.name[3:])]
+                if errored_type := self.check_error_type(from_type):
+                    return_type = errored_type
+                else:
+                    if isinstance(from_type, IntTypeSymbol):
+                        return_type = to_type
+                    else:
+                        msg = TypeCheckingError.expected_type_cls(f"intrinsic {intrinsic.name}", num, "an integer", from_type)
+                        MessageHandler.handle_message(msg)
+                        return_type = ErroredTypeSymbol(intrinsic.pos)
+            self.symbols.expr(intrinsic, set_to=SymbolData.ExprData(return_type, False))
+        else:
+            msg = DefinitionError.no_such_intrinsic(intrinsic.pos, intrinsic.name)
+            MessageHandler.handle_message(msg)
+            self.symbols.expr(intrinsic, set_to=SymbolData.ExprData(ErroredTypeSymbol(intrinsic.pos), False))
 
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal

@@ -90,6 +90,8 @@ class IRVisitor(ABC):
     def visit_expr(self, expr: ExprIR):
         if isinstance(expr, IntIR):
             return self.visit_int(expr)
+        elif isinstance(expr, IntrinsicIR):
+            return self.visit_intrinsic(expr)
         elif isinstance(expr, NewIR):
             return self.visit_new(expr)
         elif isinstance(expr, CallIR):
@@ -139,6 +141,10 @@ class IRVisitor(ABC):
 
     @abstractmethod
     def visit_set_attr(self, set_attr: SetAttrIR):
+        pass
+
+    @abstractmethod
+    def visit_intrinsic(self, intrinsic: IntrinsicIR):
         pass
 
     @abstractmethod
@@ -312,6 +318,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_set_attr(self, set_attr: SetAttrIR):
+        pass
+
+    def visit_intrinsic(self, intrinsic: IntrinsicIR):
         pass
 
     def visit_int(self, num: IntIR):

@@ -717,7 +717,7 @@ class AizeParser:
         return self.parse_call()
 
     def parse_call(self):
-        expr = self.parse_primary()
+        expr = self.parse_intrinsic()
         while True:
             if start := self.match("("):
                 args = []
@@ -743,6 +743,22 @@ class AizeParser:
             else:
                 break
         return expr
+
+    def parse_intrinsic(self):
+        if self.curr.type == '@':
+            start = self.curr
+            self.match_exc("@")
+            intrinsic = self.match_exc(Token.IDENTIFIER_TYPE)
+            self.match_exc("(")
+            args = []
+            while not (end := self.match(")")):
+                arg = self.parse_expr()
+                args.append(arg)
+                if not self.match(","):
+                    end = self.match_exc(")")
+                    break
+            return IntrinsicExprAST(intrinsic.text, args, Position.combine(start.pos(), end.pos()))
+        return self.parse_primary()
 
     def parse_primary(self):
         if self.match("("):
