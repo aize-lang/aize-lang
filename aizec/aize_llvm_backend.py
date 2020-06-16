@@ -11,7 +11,7 @@ from aizec.aize_symbols import *
 from aizec.aize_semantics import LiteralData, SymbolData, DefaultPasses
 from aizec.aize_ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias, PassScheduler
 
-from aizec.aize_backend import Backend, Linker
+from aizec.aize_backend import CBackend, CLinker
 
 
 class LLVMData(Extension):
@@ -29,8 +29,9 @@ class LLVMData(Extension):
         raise NotImplementedError()
 
     class FunctionData:
-        def __init__(self, llvm_func: ir.Function):
+        def __init__(self, llvm_func: ir.Function, code_entry: ir.Block):
             self.llvm_func = llvm_func
+            self.code_entry = code_entry
 
     def function(self, node: FunctionIR, set_to: FunctionData = None) -> FunctionData:
         return super().function(node, set_to)
@@ -163,11 +164,20 @@ class DeclareFunctions(IRLLVMPass):
         llvm_func_type = ir.FunctionType(ret_type, param_types)
 
         llvm_func = ir.Function(self.mod, llvm_func_type, func.name)
-        self.llvm.function(func, LLVMData.FunctionData(llvm_func))
         self.llvm.decl(func, LLVMData.DeclData(llvm_func))
 
+        prep = llvm_func.append_basic_block("prep")
+        self.builder.position_at_start(prep)
+
         for param, llvm_arg in zip(func.params, llvm_func.args):
-            self.llvm.decl(param, LLVMData.DeclData(llvm_arg))
+            param_ptr = self.builder.alloca(llvm_arg.type)
+            self.builder.store(llvm_arg, param_ptr)
+            self.llvm.decl(param, LLVMData.DeclData(param_ptr))
+
+        entry = self.builder.append_basic_block("entry")
+        self.builder.branch(entry)
+
+        self.llvm.function(func, LLVMData.FunctionData(llvm_func, entry))
 
     def visit_get_type(self, type: GetTypeIR):
         resolved: TypeSymbol = self.symbols.type(type).resolved_type
@@ -187,7 +197,8 @@ class DefineFunctions(IRLLVMPass):
 
     def visit_function(self, func: FunctionIR):
         llvm_func = self.llvm.function(func).llvm_func
-        self.builder.position_at_start(llvm_func.append_basic_block("entry"))
+        code_entry = self.llvm.function(func).code_entry
+        self.builder.position_at_end(code_entry)
         for stmt in func.body:
             self.visit_stmt(stmt)
         if not self.builder.block.is_terminated:
@@ -361,7 +372,7 @@ class DefineFunctions(IRLLVMPass):
             raise Exception()
 
 
-class LLVMBackend(Backend):
+class LLVMBackend(CBackend):
     llvm.initialize()
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
@@ -382,7 +393,7 @@ class LLVMBackend(Backend):
             self.emit_llvm = True
             return True
         else:
-            return False
+            return super().handle_option(option)
 
     @staticmethod
     def create_function_passes(llvm_mod: llvm.ModuleRef, machine: llvm.TargetMachine):
@@ -426,8 +437,8 @@ class LLVMBackend(Backend):
 
         target = llvm.Target.from_default_triple()
         machine = target.create_target_machine(codemodel='small')
-
         self.llvm_ir.triple = target.triple
+
         llvm_mod = llvm.parse_assembly(str(self.llvm_ir))
 
         if self.opt_level >= 1:
@@ -456,11 +467,13 @@ class LLVMBackend(Backend):
             out.write(object_data)
 
         try:
-            linker = Linker.get_linker("")([temp_path], output_path)
+            linker = self.linker_cls([temp_path], output_path)
             linker.link_files()
         finally:
             temp_path.unlink()
+            MessageHandler.flush_messages()
 
     def run_output(self):
-        return_code = Linker.process_call([self.output_path])
-        print("Returned with code:", return_code)
+        return_code = CLinker.process_call([self.output_path])
+        print("Returned with code:", return_code.returncode)
+        return return_code
