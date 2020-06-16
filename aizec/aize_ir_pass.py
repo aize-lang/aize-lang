@@ -24,8 +24,14 @@ class IRVisitor(ABC):
             return self.visit_class(top_level)
         elif isinstance(top_level, FunctionIR):
             return self.visit_function(top_level)
+        elif isinstance(top_level, StructIR):
+            return self.visit_struct(top_level)
         else:
             raise TypeError(f"Expected a top-level node, got {top_level}")
+
+    @abstractmethod
+    def visit_struct(self, struct: StructIR):
+        pass
 
     @abstractmethod
     def visit_class(self, cls: ClassIR):
@@ -84,12 +90,16 @@ class IRVisitor(ABC):
     def visit_expr(self, expr: ExprIR):
         if isinstance(expr, IntIR):
             return self.visit_int(expr)
+        elif isinstance(expr, NewIR):
+            return self.visit_new(expr)
         elif isinstance(expr, CallIR):
             return self.visit_call(expr)
         elif isinstance(expr, GetVarIR):
             return self.visit_get_var(expr)
         elif isinstance(expr, SetVarIR):
             return self.visit_set_var(expr)
+        elif isinstance(expr, GetAttrIR):
+            return self.visit_get_attr(expr)
         elif isinstance(expr, CompareIR):
             return self.visit_compare(expr)
         elif isinstance(expr, ArithmeticIR):
@@ -110,11 +120,19 @@ class IRVisitor(ABC):
         pass
 
     @abstractmethod
+    def visit_new(self, new: NewIR):
+        pass
+
+    @abstractmethod
     def visit_get_var(self, get_var: GetVarIR):
         pass
 
     @abstractmethod
     def visit_set_var(self, set_var: SetVarIR):
+        pass
+
+    @abstractmethod
+    def visit_get_attr(self, get_attr: GetAttrIR):
         pass
 
     @abstractmethod
@@ -236,6 +254,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     def visit_function(self, func: FunctionIR):
         pass
 
+    def visit_struct(self, struct: StructIR):
+        pass
+
     def visit_class(self, cls: ClassIR):
         pass
 
@@ -263,6 +284,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     def visit_expr_stmt(self, stmt: ExprStmtIR):
         pass
 
+    def visit_new(self, new: NewIR):
+        pass
+
     def visit_call(self, call: CallIR):
         pass
 
@@ -276,6 +300,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_set_var(self, set_var: SetVarIR):
+        pass
+
+    def visit_get_attr(self, get_attr: GetAttrIR):
         pass
 
     def visit_int(self, num: IntIR):

@@ -11,7 +11,7 @@ __all__ = [
     'Symbol',
     'VariableSymbol', 'ErroredVariableSymbol',
     'NamespaceSymbol', 'NoNamespaceSymbol',
-    'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'ErroredTypeSymbol',
+    'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'ErroredTypeSymbol', 'StructTypeSymbol',
     'SymbolTable',
     'FailedLookupError', 'DuplicateSymbolError'
 ]
@@ -85,6 +85,19 @@ class ErroredTypeSymbol(TypeSymbol):
         return False
 
 
+class StructTypeSymbol(TypeSymbol):
+    def __init__(self, name: str, fields: Dict[str, TypeSymbol], pos: Position, field_pos: Dict[str, Position]):
+        super().__init__(name, pos)
+
+        self.fields = fields
+        self.field_pos = field_pos
+
+    def __str__(self):
+        # field_str = ", ".join(f"{field_name}: {field_type}" for field_name, field_type in self.fields.items())
+        # return f"struct {self.name}({field_str})"
+        return f"struct {self.name}"
+
+
 class IntTypeSymbol(TypeSymbol):
     def __init__(self, name: str, signed: bool, bit_size: int, pos: Position):
         super().__init__(name, pos)
@@ -152,6 +165,20 @@ class NamespaceSymbol(Symbol):
         return curr
 
     def lookup_type(self, name: str, *, here: bool = False, nearest: bool = True) -> TypeSymbol:
+        """
+        Lookup a TypeSymbol with the given name in the current namespace, if it was marked with visible when it was defined.
+
+        Args:
+            name: The name of the TypeSymbol to lookup.
+            here: If True, only lookup in this namespace, otherwise, recurse NamespaceSymbols.
+            nearest: Whether to start looking from the top (earlier namespace) if False or this if True.
+
+        Returns:
+            The TypeSymbol which was found first with the specified parameters.
+
+        Raises:
+            FailedLookupError: If the name was not found.
+        """
         if here:
             lookup_chain = [self]
         else:

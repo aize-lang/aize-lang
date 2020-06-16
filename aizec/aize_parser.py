@@ -25,7 +25,7 @@ BASIC_TOKENS = Trie.from_list([
 
 BASIC_START = list(BASIC_TOKENS.children.keys())
 
-KEYWORDS = ['class', 'trait', 'def', 'method', 'attr', 'var', 'while', 'if', 'return', 'else', 'import']
+KEYWORDS = ['class', 'struct', 'def', 'method', 'attr', 'var', 'while', 'if', 'return', 'else', 'import', 'new']
 
 BIN = '01'
 OCT = BIN + '234567'
@@ -338,17 +338,17 @@ class AizeParser:
         top_levels: List[TopLevelAST] = []
         try:
             while not self.is_done():
-                with self.sync_point("class", "trait", "def", "import"):
+                with self.sync_point("class", "struct", "def", "import"):
                     if self.curr_is("class"):
                         top_levels += [self.parse_class()]
-                    # elif self.curr_is("trait"):
-                    #     top_levels += [self.parse_trait()]
+                    elif self.curr_is("struct"):
+                        top_levels += [self.parse_struct()]
                     elif self.curr_is("def"):
                         top_levels += [self.parse_function()]
                     elif self.curr_is("import"):
                         top_levels += [self.parse_import()]
                     else:
-                        if self.report_error(f"Expected one of 'class', 'trait', 'def', or 'import' (got {self.curr.text!r})", self.curr):
+                        if self.report_error(f"Expected one of 'class', 'struct', 'def', or 'import' (got {self.curr.text!r})", self.curr):
                             self.synchronize()
                         else:
                             assert False
@@ -405,31 +405,23 @@ class AizeParser:
 
         return ClassAST(name, traits, body, start.pos())
 
-    # def parse_trait(self):
-    #     start = self.match_exc("trait")
-    #
-    #     name = self.match_exc(Token.IDENTIFIER_TYPE).text
-    #
-    #     self.match_exc("{")
-    #     body = []
-    #     while not self.match("}"):
-    #         with self.sync_point("method", "attr"):
-    #             if self.curr_is("method"):
-    #                 body.append(self.parse_method())
-    #             elif self.curr_is("attr"):
-    #                 if self.report_error("Traits cannot have attributes", self.curr):
-    #                     self.synchronize()
-    #                     assert False
-    #                 else:
-    #                     assert False
-    #             else:
-    #                 if self.report_error("Trait body statements must start with 'method'", self.curr):
-    #                     self.synchronize()
-    #                     assert False
-    #                 else:
-    #                     assert False
-    #
-    #     return TraitAST(name, [], body).add_data(start.pos())
+    def parse_struct(self) -> StructAST:
+        start = self.match("struct")
+        name = self.match_exc(Token.IDENTIFIER_TYPE)
+
+        self.match_exc("{")
+        attrs = []
+        while not (end := self.match("}")):
+            with self.sync_point("attr"):
+                if self.curr_is("attr"):
+                    attr = self.parse_attr()
+                    attrs += [attr]
+                else:
+                    self.report_error("Struct body must consist entirely of attributes", self.curr)
+                    self.synchronize()
+                    assert False
+
+        return StructAST(name.text, attrs, start.pos())
 
     def parse_attr(self) -> AttrAST:
         start = self.match("attr")
@@ -437,7 +429,7 @@ class AizeParser:
         self.match_exc(":")
         ann = self.parse_ann()
         self.match_exc(";")
-        return AttrAST(name, ann, start.pos())
+        return AttrAST(name, ann, start.pos().to(ann.pos))
 
     def parse_method_sig(self) -> MethodSigAST:
         start = self.match("method")
@@ -705,6 +697,23 @@ class AizeParser:
             elif self.match("~"):
                 right = self.parse_unary()
                 return InvExprAST(right, start.pos().to(right.pos))
+        return self.parse_new()
+
+    def parse_new(self):
+        if self.curr.type == 'new':
+            start = self.curr
+            if self.match("new"):
+                type = self.match_exc(Token.IDENTIFIER_TYPE)
+
+                self.match_exc("{")
+                args = []
+                while not (end := self.match("}")):
+                    arg = self.parse_expr()
+                    args.append(arg)
+                    if not self.match(","):
+                        end = self.match_exc("}")
+                        break
+                return NewExprAST(GetVarExprAST(type.text, type.pos()), args, start.pos().to(end.pos()))
         return self.parse_call()
 
     def parse_call(self):
@@ -752,6 +761,7 @@ class AizeParser:
             return GetVarExprAST(var.text, var.pos())
         else:
             if self.report_error(f"Cannot parse '{self.curr.type}' token", self.curr):
+                self.synchronize()
                 assert False
             else:
                 assert False

@@ -1,7 +1,14 @@
 
 
+struct Thing {
+    attr num: int32;
+}
+
+def fibo() -> Thing {
+    return new Thing { 7 };
+}
+
 def main() -> int32 {
-    var ret: int32 = 2;
-    ret = 17 * ret;
-    return ret;
+    var thing: Thing = fibo();
+    return (new Thing { 7 }).num;
 }

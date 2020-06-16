@@ -13,11 +13,11 @@ __all__ = [
 
     'NodeIR', 'TextIR',
     'ProgramIR', 'SourceIR',
-    'TopLevelIR', 'FunctionIR', 'ClassIR',
+    'TopLevelIR', 'FunctionIR', 'ClassIR', 'StructIR',
     'FieldIR', 'MethodDeclIR', 'MethodDefIR',
     'ParamIR',
     'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR',
-    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR',
+    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR',
     'AnnotationIR',
     'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
 ]
@@ -53,6 +53,12 @@ class IR:
                 body=[self.visit_stmt(stmt) for stmt in func.body],
                 pos=func.pos
             )
+
+        def visit_struct(self, struct: StructAST):
+            fields = []
+            for attr in struct.attrs:
+                fields.append(self.visit_attr(attr))
+            return StructIR(struct.name, fields, struct.pos)
 
         def visit_class(self, cls: ClassAST):
             fields = {}
@@ -121,6 +127,9 @@ class IR:
         def visit_mul(self, mul: MulExprAST):
             return ArithmeticIR("*", self.visit_expr(mul.left), self.visit_expr(mul.right), mul.pos)
 
+        def visit_new(self, new: NewExprAST):
+            return NewIR(self.visit_get_type(new.type), [self.visit_expr(arg) for arg in new.args], new.pos)
+
         def visit_call(self, call: CallExprAST):
             return CallIR(self.visit_expr(call.left), [self.visit_expr(arg) for arg in call.args], call.pos)
 
@@ -129,6 +138,9 @@ class IR:
 
         def visit_get_var(self, get_var: GetVarExprAST):
             return GetVarIR(get_var.var, get_var.pos)
+
+        def visit_get_attr(self, get_attr: GetAttrExprAST):
+            return GetAttrIR(self.visit_expr(get_attr.obj), get_attr.attr, get_attr.pos)
 
         def visit_int(self, literal: IntLiteralAST):
             return IntIR(literal.num, literal.pos)
@@ -166,7 +178,7 @@ class Extension:
         try:
             return self._node_data[node][type]
         except KeyError:
-            raise ValueError(f"The node of type {node.__class__.__qualname__} has not extensions of type {self.__class__.__qualname__} for class {type!r}")
+            raise ValueError(f"The node of type {node.__class__.__qualname__} has no extensions of type {self.__class__.__qualname__} for class {type!r}") from None
 
     @abstractmethod
     def program(self, node: ProgramIR, set_to: T = None) -> T:
@@ -207,6 +219,10 @@ class Extension:
     @abstractmethod
     def set_var(self, node: SetVarIR, set_to: T = None) -> T:
         return self._get_data(node, 'set_var', set_to)
+
+    @abstractmethod
+    def get_attr(self, node: GetAttrIR, set_to: T = None) -> T:
+        return self._get_data(node, 'get_attr', set_to)
 
     @abstractmethod
     def type(self, node: TypeIR, set_to: T = None) -> T:
@@ -256,6 +272,14 @@ class FunctionIR(TopLevelIR):
         self.params = params
         self.ret = ret
         self.body = body
+
+
+class StructIR(TopLevelIR):
+    def __init__(self, name: str, fields: List[FieldIR], pos: Position):
+        super().__init__(pos)
+
+        self.name = name
+        self.fields = fields
 
 
 class ClassIR(TopLevelIR):
@@ -361,6 +385,14 @@ class ArithmeticIR(ExprIR):
         self.right = right
 
 
+class NewIR(ExprIR):
+    def __init__(self, type: GetTypeIR, arguments: List[ExprIR], pos: Position):
+        super().__init__(pos)
+
+        self.type = type
+        self.arguments = arguments
+
+
 class CallIR(ExprIR):
     def __init__(self, callee: ExprIR, arguments: List[ExprIR], pos: Position):
         super().__init__(pos)
@@ -379,6 +411,14 @@ class SetVarIR(ExprIR):
         super().__init__(pos)
         self.var_name = var_name
         self.value = value
+
+
+class GetAttrIR(ExprIR):
+    def __init__(self, obj: ExprIR, attr: str, pos: Position):
+        super().__init__(pos)
+
+        self.obj = obj
+        self.attr = attr
 
 
 class IntIR(ExprIR):

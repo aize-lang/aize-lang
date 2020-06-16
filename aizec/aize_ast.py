@@ -10,13 +10,13 @@ __all__ = [
     'NodeAST', 'TextAST',
     'ProgramAST', 'SourceAST',
     'ParamAST',
-    'TopLevelAST', 'ClassAST', 'FunctionAST', 'ImportAST',
+    'TopLevelAST', 'ClassAST', 'FunctionAST', 'ImportAST', 'StructAST',
     'AttrAST', 'MethodSigAST', 'MethodImplAST', 'MethodAST',
     'StmtAST', 'IfStmtAST', 'WhileStmtAST', 'BlockStmtAST', 'VarDeclStmtAST', 'ReturnStmtAST', 'ExprStmtAST',
 
     'ExprAST', 'NEExprAST', 'BinaryExprAST', 'SubExprAST', 'AddExprAST', 'MulExprAST', 'GetVarExprAST', 'EQExprAST',
     'ModExprAST', 'LEExprAST', 'UnaryExprAST', 'LTExprAST', 'InvExprAST', 'NotExprAST', 'DivExprAST', 'GetAttrExprAST',
-    'GEExprAST', 'SetAttrExprAST', 'NegExprAST', 'GTExprAST', 'SetVarExprAST', 'CallExprAST', 'StrLiteralAST',
+    'GEExprAST', 'SetAttrExprAST', 'NegExprAST', 'GTExprAST', 'SetVarExprAST', 'CallExprAST', 'StrLiteralAST', 'NewExprAST',
     'IntLiteralAST'
 ]
 
@@ -42,8 +42,14 @@ class ASTVisitor(ABC):
             return self.visit_class(top_level)
         elif isinstance(top_level, FunctionAST):
             return self.visit_function(top_level)
+        elif isinstance(top_level, StructAST):
+            return self.visit_struct(top_level)
         else:
             raise TypeError(f"Expected a top-level node, got {top_level}")
+
+    @abstractmethod
+    def visit_struct(self, struct: StructAST):
+        pass
 
     @abstractmethod
     def visit_class(self, cls: ClassAST):
@@ -114,12 +120,16 @@ class ASTVisitor(ABC):
     def visit_expr(self, expr: ExprAST):
         if isinstance(expr, IntLiteralAST):
             return self.visit_int(expr)
+        elif isinstance(expr, NewExprAST):
+            return self.visit_new(expr)
         elif isinstance(expr, CallExprAST):
             return self.visit_call(expr)
         elif isinstance(expr, GetVarExprAST):
             return self.visit_get_var(expr)
         elif isinstance(expr, SetVarExprAST):
             return self.visit_set_var(expr)
+        elif isinstance(expr, GetAttrExprAST):
+            return self.visit_get_attr(expr)
         elif isinstance(expr, LTExprAST):
             return self.visit_lt(expr)
         elif isinstance(expr, AddExprAST):
@@ -152,11 +162,19 @@ class ASTVisitor(ABC):
         pass
 
     @abstractmethod
+    def visit_new(self, new: NewExprAST):
+        pass
+
+    @abstractmethod
     def visit_get_var(self, get_var: GetVarExprAST):
         pass
 
     @abstractmethod
     def visit_set_var(self, set_var: SetVarExprAST):
+        pass
+
+    @abstractmethod
+    def visit_get_attr(self, get_attr: GetAttrExprAST):
         pass
 
     @abstractmethod
@@ -220,6 +238,14 @@ class ClassAST(TopLevelAST):
         self.name: str = name
         self.parents: List[ExprAST] = parents
         self.body: List[ClassStmtAST] = body
+
+
+class StructAST(TopLevelAST):
+    def __init__(self, name: str, attrs: List[AttrAST], pos: Position):
+        super().__init__(pos)
+
+        self.name = name
+        self.attrs = attrs
 
 
 class ImportAST(TopLevelAST):
@@ -363,7 +389,6 @@ class SetAttrExprAST(ExprAST):
 
 
 # region Binary
-
 class BinaryExprAST(ExprAST):
     def __init__(self, left: ExprAST, right: ExprAST, pos: Position):
         super().__init__(pos)
@@ -437,6 +462,14 @@ class NotExprAST(UnaryExprAST):
     pass
 
 # endregion
+
+
+class NewExprAST(ExprAST):
+    def __init__(self, type: GetVarExprAST, args: List[ExprAST], pos: Position):
+        super().__init__(pos)
+
+        self.type = type
+        self.args = args
 
 
 class CallExprAST(ExprAST):
