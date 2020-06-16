@@ -324,6 +324,21 @@ class DefineFunctions(IRLLVMPass):
 
         self.llvm.expr(get_attr, set_to=LLVMData.ExprData(field_ptr, llvm_val))
 
+    def visit_set_attr(self, set_attr: SetAttrIR):
+        struct_type = self.symbols.set_attr(set_attr).struct_type
+        index = self.symbols.set_attr(set_attr).index
+
+        self.visit_expr(set_attr.obj)
+        struct_ptr = self.llvm.expr(set_attr.obj).l_val
+        field_ptr = self.builder.gep(struct_ptr, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), index)])
+
+        self.visit_expr(set_attr.value)
+        value = self.llvm.expr(set_attr.value).r_val
+        value_lval = self.llvm.expr(set_attr.value).l_val
+        self.builder.store(value, field_ptr)
+
+        self.llvm.expr(set_attr, set_to=LLVMData.ExprData(value_lval, value))
+
     def visit_get_type(self, type: GetTypeIR):
         resolved: TypeSymbol = self.symbols.type(type).resolved_type
         llvm_type = self.resolve_type(resolved)

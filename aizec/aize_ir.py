@@ -17,7 +17,7 @@ __all__ = [
     'FieldIR', 'MethodDeclIR', 'MethodDefIR',
     'ParamIR',
     'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR',
-    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR',
+    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',
     'AnnotationIR',
     'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
 ]
@@ -142,6 +142,9 @@ class IR:
         def visit_get_attr(self, get_attr: GetAttrExprAST):
             return GetAttrIR(self.visit_expr(get_attr.obj), get_attr.attr, get_attr.pos)
 
+        def visit_set_attr(self, set_attr: SetAttrExprAST):
+            return SetAttrIR(self.visit_expr(set_attr.obj), set_attr.attr, self.visit_expr(set_attr.value), set_attr.pos)
+
         def visit_int(self, literal: IntLiteralAST):
             return IntIR(literal.num, literal.pos)
 
@@ -223,6 +226,10 @@ class Extension:
     @abstractmethod
     def get_attr(self, node: GetAttrIR, set_to: T = None) -> T:
         return self._get_data(node, 'get_attr', set_to)
+
+    @abstractmethod
+    def set_attr(self, node: SetAttrIR, set_to: T = None) -> T:
+        return self._get_data(node, 'set_attr', set_to)
 
     @abstractmethod
     def type(self, node: TypeIR, set_to: T = None) -> T:
@@ -419,6 +426,15 @@ class GetAttrIR(ExprIR):
 
         self.obj = obj
         self.attr = attr
+
+
+class SetAttrIR(ExprIR):
+    def __init__(self, obj: ExprIR, attr: str, value: ExprIR, pos: Position):
+        super().__init__(pos)
+
+        self.obj = obj
+        self.attr = attr
+        self.value = value
 
 
 class IntIR(ExprIR):

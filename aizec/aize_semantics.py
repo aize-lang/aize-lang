@@ -140,6 +140,11 @@ class TypeCheckingError(AizeMessage):
         error = cls(f"{expecting_name} expected {cls_name}, got {got}", offending_node.pos)
         return error
 
+    @classmethod
+    def expected_lval(cls, pos: Position):
+        error = cls(f"Expected a place to store to, such as a variable or a field", pos)
+        return error
+
     def display(self, reporter: Reporter):
         reporter.positioned_error("Type Checking Error", self.msg, self.pos)
         for note in self.notes:
@@ -217,6 +222,9 @@ class LiteralData(Extension):
         raise NotImplementedError()
 
     def get_attr(self, node: GetAttrIR, set_to=None):
+        raise NotImplementedError()
+
+    def set_attr(self, node: SetAttrIR, set_to=None):
         raise NotImplementedError()
 
     def type(self, node: TypeIR, set_to=None):
@@ -307,6 +315,14 @@ class SymbolData(Extension):
 
     def get_attr(self, node: GetAttrIR, set_to: GetAttrData = None) -> GetAttrData:
         return super().get_attr(node, set_to)
+
+    class SetAttrData:
+        def __init__(self, struct_type: Optional[StructTypeSymbol], index: Optional[int]):
+            self.struct_type = struct_type
+            self.index = index
+
+    def set_attr(self, node: SetAttrIR, set_to: SetAttrData = None) -> SetAttrData:
+        return super().set_attr(node, set_to)
 
     class TypeData:
         def __init__(self, resolved_type: TypeSymbol):
@@ -766,7 +782,7 @@ class ResolveTypes(IRSymbolsPass):
             MessageHandler.handle_message(msg)
             value = ErroredVariableSymbol(get_var, get_var.pos)
         is_function = isinstance(value.type, FunctionTypeSymbol)
-        self.symbols.expr(get_var, SymbolData.ExprData(value.type, is_lval=is_function))
+        self.symbols.expr(get_var, SymbolData.ExprData(value.type, is_lval=not is_function))
         self.symbols.get_var(get_var, set_to=SymbolData.GetVarData(value, is_function))
 
     def visit_set_var(self, set_var: SetVarIR):
@@ -828,6 +844,59 @@ class ResolveTypes(IRSymbolsPass):
 
         self.symbols.expr(get_attr, set_to=SymbolData.ExprData(return_type, is_lval=obj_is_lval))
         self.symbols.get_attr(get_attr, set_to=SymbolData.GetAttrData(struct_type, index))
+
+    def visit_set_attr(self, set_attr: SetAttrIR):
+        self.visit_expr(set_attr.obj)
+        obj_type = self.symbols.expr(set_attr.obj).return_type
+        obj_is_lval = self.symbols.expr(set_attr.obj).is_lval
+
+        return_type: TypeSymbol
+        is_struct = False
+        if return_type := self.check_error_type(obj_type):
+            pass
+        else:
+            if isinstance(obj_type, StructTypeSymbol):
+                is_struct = True
+            else:
+                msg = TypeCheckingError.expected_type_cls("set attribute", set_attr.obj, "a struct", obj_type)
+                MessageHandler.handle_message(msg)
+                return_type = ErroredTypeSymbol(set_attr.pos)
+
+        self.visit_expr(set_attr.value)
+        value_type = self.symbols.expr(set_attr.value).return_type
+        value_is_lval = self.symbols.expr(set_attr.value).is_lval
+
+        if is_struct:
+            struct_type = cast(StructTypeSymbol, obj_type)
+            if set_attr.attr in struct_type.fields:
+                field_type = struct_type.fields[set_attr.attr]
+                field_pos = struct_type.field_pos[set_attr.attr]
+                index = list(struct_type.fields.keys()).index(set_attr.attr)
+
+                if return_type := self.check_error_type(value_type, field_type):
+                    pass
+                else:
+                    if field_type.is_super_of(value_type):
+                        return_type = value_type
+                    else:
+                        msg = TypeCheckingError.expected_type(field_type, value_type, set_attr.pos, field_pos)
+                        MessageHandler.handle_message(msg)
+                        return_type = value_type
+            else:
+                msg = DefinitionError.field_not_found(set_attr.attr, set_attr.pos, struct_type)
+                MessageHandler.handle_message(msg)
+                return_type = ErroredTypeSymbol(set_attr.pos)
+                index = None
+        else:
+            struct_type = None
+            index = None
+
+        if not obj_is_lval:
+            msg = TypeCheckingError.expected_lval(set_attr.obj.pos)
+            MessageHandler.handle_message(msg)
+
+        self.symbols.expr(set_attr, set_to=SymbolData.ExprData(return_type, is_lval=True))
+        self.symbols.set_attr(set_attr, set_to=SymbolData.SetAttrData(struct_type, index))
 
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal

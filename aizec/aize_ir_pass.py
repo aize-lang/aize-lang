@@ -100,6 +100,8 @@ class IRVisitor(ABC):
             return self.visit_set_var(expr)
         elif isinstance(expr, GetAttrIR):
             return self.visit_get_attr(expr)
+        elif isinstance(expr, SetAttrIR):
+            return self.visit_set_attr(expr)
         elif isinstance(expr, CompareIR):
             return self.visit_compare(expr)
         elif isinstance(expr, ArithmeticIR):
@@ -133,6 +135,10 @@ class IRVisitor(ABC):
 
     @abstractmethod
     def visit_get_attr(self, get_attr: GetAttrIR):
+        pass
+
+    @abstractmethod
+    def visit_set_attr(self, set_attr: SetAttrIR):
         pass
 
     @abstractmethod
@@ -303,6 +309,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_get_attr(self, get_attr: GetAttrIR):
+        pass
+
+    def visit_set_attr(self, set_attr: SetAttrIR):
         pass
 
     def visit_int(self, num: IntIR):

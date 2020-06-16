@@ -130,6 +130,8 @@ class ASTVisitor(ABC):
             return self.visit_set_var(expr)
         elif isinstance(expr, GetAttrExprAST):
             return self.visit_get_attr(expr)
+        elif isinstance(expr, SetAttrExprAST):
+            return self.visit_set_attr(expr)
         elif isinstance(expr, LTExprAST):
             return self.visit_lt(expr)
         elif isinstance(expr, AddExprAST):
@@ -175,6 +177,10 @@ class ASTVisitor(ABC):
 
     @abstractmethod
     def visit_get_attr(self, get_attr: GetAttrExprAST):
+        pass
+
+    @abstractmethod
+    def visit_set_attr(self, set_attr: SetAttrExprAST):
         pass
 
     @abstractmethod

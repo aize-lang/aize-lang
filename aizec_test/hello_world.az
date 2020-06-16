@@ -1,14 +1,22 @@
 
 
-struct Thing {
+struct InsideThing {
     attr num: int32;
 }
 
+
+struct Thing {
+    attr inside_1: InsideThing;
+    attr inside_2: InsideThing;
+}
+
 def fibo() -> Thing {
-    return new Thing { 7 };
+    var inside_thing: InsideThing = new InsideThing {8};
+    return new Thing { inside_thing, inside_thing };
 }
 
 def main() -> int32 {
     var thing: Thing = fibo();
-    return (new Thing { 7 }).num;
+    thing.inside_2.num = 3;
+    return thing.inside_2.num;
 }
