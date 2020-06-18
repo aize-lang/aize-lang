@@ -1,12 +1,7 @@
 
 
-def int8(num: int32) -> int8 {
-    var result: int8 = @int8(num);
-    return result;
-}
-
 
 def main() -> int32 {
-    var thing: int8 = int8(16);
+    var thing: int8 = @int8(16);
     return @int32(thing);
 }

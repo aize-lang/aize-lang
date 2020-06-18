@@ -62,6 +62,9 @@ class LLVMData(Extension):
     def set_var(self, node: SetVarIR, set_to=None):
         raise NotImplementedError()
 
+    def intrinsic(self, node: IntrinsicIR, set_to=None):
+        raise NotImplementedError()
+
     class TypeData:
         def __init__(self, llvm_type: ir.Type):
             self.llvm_type = llvm_type
@@ -432,7 +435,7 @@ class LLVMBackend(CBackend):
             output_path = output_form.with_suffix(".exe")
             self.output_path = output_path
         else:
-            output_form = self.output_path.absolute().parent
+            output_form = self.output_path.absolute().with_suffix("")
             output_path = self.output_path
 
         target = llvm.Target.from_default_triple()
@@ -460,7 +463,7 @@ class LLVMBackend(CBackend):
 
         if (temp_path := output_form.with_suffix(".o")).exists():
             i = 0
-            while (temp_path := (output_form + f"_{i}").with_suffix(".o")).exists():
+            while (temp_path := Path(str(output_form) + f"_{i}").with_suffix(".o")).exists():
                 i += 1
 
         with temp_path.open("wb") as out:
