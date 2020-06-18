@@ -280,6 +280,12 @@ class DefineFunctions(IRLLVMPass):
             raise NotImplementedError()
         self.llvm.expr(arith, set_to=LLVMData.ExprData(None, llvm_val))
 
+    def visit_negate(self, negate: NegateIR):
+        self.visit_expr(negate.right)
+        right = self.llvm.expr(negate.right).r_val
+        llvm_val = self.builder.neg(right)
+        self.llvm.expr(negate, set_to=LLVMData.ExprData(None, llvm_val))
+
     def visit_int(self, num: IntIR):
         # TODO add bit-size symbol data for int so resolve type is not needed
         llvm_type = self.resolve_type(self.symbols.expr(num).return_type)

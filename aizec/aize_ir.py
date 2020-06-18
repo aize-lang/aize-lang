@@ -17,7 +17,8 @@ __all__ = [
     'FieldIR', 'MethodDeclIR', 'MethodDefIR',
     'ParamIR',
     'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR',
-    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',  'IntrinsicIR', 'GetStaticAttrExprIR',
+    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',
+    'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR',
     'AnnotationIR',
     'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
     'NamespaceIR', 'GetNamespaceIR'
@@ -142,6 +143,9 @@ class IR:
 
         def visit_mul(self, mul: MulExprAST):
             return ArithmeticIR("*", self.visit_expr(mul.left), self.visit_expr(mul.right), mul.pos)
+
+        def visit_neg(self, neg: NegateIR):
+            return NegateIR(self.visit_expr(neg.right), neg.pos)
 
         def visit_new(self, new: NewExprAST):
             return NewIR(self.visit_get_type(new.type), [self.visit_expr(arg) for arg in new.args], new.pos)
@@ -435,6 +439,12 @@ class ArithmeticIR(ExprIR):
         super().__init__(pos)
         self.op = op
         self.left = left
+        self.right = right
+
+
+class NegateIR(ExprIR):
+    def __init__(self, right: ExprIR, pos: Position):
+        super().__init__(pos)
         self.right = right
 
 

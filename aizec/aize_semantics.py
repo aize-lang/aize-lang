@@ -811,6 +811,28 @@ class ResolveTypes(IRSymbolsPass):
         self.symbols.expr(arith, SymbolData.ExprData(return_type, False))
         self.symbols.arithmetic(arith, SymbolData.ArithmeticData(is_signed))
 
+    def visit_negate(self, negate: NegateIR):
+        self.visit_expr(negate.right)
+        right = self.symbols.expr(negate.right).return_type
+
+        return_type: TypeSymbol
+        if errored_type := self.check_error_type(right):
+            return_type = errored_type
+        else:
+            if isinstance(right, IntTypeSymbol):
+                if right.is_signed:
+                    return_type = right
+                else:
+                    msg = TypeCheckingError(f"Negate expected a signed integer, got {right}", negate.right.pos)
+                    MessageHandler.handle_message(msg)
+                    return_type = ErroredTypeSymbol(negate.pos)
+            else:
+                msg = TypeCheckingError.expected_type_cls("Negate", negate.right, "a signed integer", right)
+                MessageHandler.handle_message(msg)
+                return_type = ErroredTypeSymbol(negate.pos)
+
+        self.symbols.expr(negate, set_to=SymbolData.ExprData(return_type, False))
+
     def visit_new(self, new: NewIR):
         self.visit_type(new.type)
         type = self.symbols.type(new.type).resolved_type

@@ -150,6 +150,8 @@ class ASTVisitor(ABC):
             return self.visit_sub(expr)
         elif isinstance(expr, MulExprAST):
             return self.visit_mul(expr)
+        elif isinstance(expr, NegExprAST):
+            return self.visit_neg(expr)
         elif isinstance(expr, GetStaticAttrExprAST):
             return self.visit_static_attr_expr(expr)
         else:
@@ -169,6 +171,10 @@ class ASTVisitor(ABC):
 
     @abstractmethod
     def visit_mul(self, mul: MulExprAST):
+        pass
+
+    @abstractmethod
+    def visit_neg(self, neg: NegExprAST):
         pass
 
     @abstractmethod

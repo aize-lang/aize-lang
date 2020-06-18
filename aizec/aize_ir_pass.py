@@ -114,6 +114,8 @@ class IRVisitor(ABC):
             return self.visit_compare(expr)
         elif isinstance(expr, ArithmeticIR):
             return self.visit_arithmetic(expr)
+        elif isinstance(expr, NegateIR):
+            return self.visit_negate(expr)
         elif isinstance(expr, GetStaticAttrExprIR):
             return self.visit_get_static_attr_expr(expr)
         else:
@@ -125,6 +127,10 @@ class IRVisitor(ABC):
 
     @abstractmethod
     def visit_arithmetic(self, arith: ArithmeticIR):
+        pass
+
+    @abstractmethod
+    def visit_negate(self, negate: NegateIR):
         pass
 
     @abstractmethod
@@ -331,6 +337,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_arithmetic(self, arith: ArithmeticIR):
+        pass
+
+    def visit_negate(self, negate: NegateIR):
         pass
 
     def visit_get_var(self, get_var: GetVarIR):
