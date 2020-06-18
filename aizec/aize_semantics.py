@@ -129,9 +129,12 @@ class TypeCheckingError(AizeMessage):
         return error
 
     @classmethod
-    def expected_type(cls, expected: TypeSymbol, got: TypeSymbol, where: Position, declaration: Position):
-        note = DefinitionNote(f"Expected type declared here", declaration)
-        error = cls(f"Expected type {expected}, got type {got}", where, [note])
+    def expected_type(cls, expected: TypeSymbol, got: TypeSymbol, where: Position, declaration: Position = None):
+        if declaration:
+            notes = [DefinitionNote(f"Expected type declared here", declaration)]
+        else:
+            notes = []
+        error = cls(f"Expected type {expected}, got type {got}", where, notes)
         return error
 
     @classmethod
@@ -188,10 +191,10 @@ class LiteralData(Extension):
         def __init__(self,
                      uint: Dict[int, TypeSymbol],
                      sint: Dict[int, TypeSymbol],
-                     puts: VariableSymbol):
+                     putchar: VariableSymbol):
             self.uint = uint
             self.sint = sint
-            self.puts = puts
+            self.putchar = putchar
 
     def general(self, set_to: BuiltinData = None) -> BuiltinData:
         return super().general(set_to)
@@ -233,6 +236,12 @@ class LiteralData(Extension):
         raise NotImplementedError()
 
     def intrinsic(self, node: IntrinsicIR, set_to=None):
+        raise NotImplementedError()
+
+    def get_static_attr_expr(self, node: GetStaticAttrExprIR, set_to=None):
+        raise NotImplementedError()
+
+    def namespace(self, node: NamespaceIR, set_to=None):
         raise NotImplementedError()
 
     def type(self, node: TypeIR, set_to=None):
@@ -434,13 +443,13 @@ class InitSymbols(IRSymbolsPass):
         int32 = def_int("int32", True, 32)
         int64 = def_int("int64", True, 64)
 
-        puts_type = FunctionTypeSymbol([int32], int32, Position.new_none())
-        puts = VariableSymbol("puts", program, puts_type, Position.new_none())
-        builtin_namespace.define_value(puts)
+        putchar_type = FunctionTypeSymbol([int32], int32, Position.new_none())
+        putchar = VariableSymbol("putchar", program, putchar_type, Position.new_none())
+        builtin_namespace.define_value(putchar)
 
         self.builtins.general(set_to=LiteralData.BuiltinData({1: uint1, 8: uint8, 32: uint32, 64: uint64},
                                                              {8: int8, 32: int32, 64: int64},
-                                                             puts))
+                                                             putchar))
 
         with self.enter_namespace(builtin_namespace):
             for source in program.sources:
@@ -880,13 +889,27 @@ class ResolveTypes(IRSymbolsPass):
         for arg in call.arguments:
             self.visit_expr(arg)
         callee_type = self.symbols.expr(call.callee).return_type
-        arg_types = [self.symbols.expr(arg).return_type for arg in call.arguments]
-
-        # TODO argument checking, maybe when zip-strict is a thing
 
         # TODO create a single function for this
         if isinstance(callee_type, FunctionTypeSymbol):
             return_type = callee_type.ret
+
+            func_type = cast(FunctionTypeSymbol, callee_type)
+
+            expected_count = len(callee_type.params)
+            got_count = len(call.arguments)
+            if got_count > expected_count:
+                excess = call.arguments[got_count - expected_count]
+                msg = TypeCheckingError.too_many_arguments(expected_count, got_count, excess.pos)
+                MessageHandler.handle_message(msg)
+            elif got_count < expected_count:
+                msg = TypeCheckingError.too_few_arguments(expected_count, got_count, call.pos)
+                MessageHandler.handle_message(msg)
+            for arg, param_type in zip(call.arguments, func_type.params):
+                arg_type = self.symbols.expr(arg).return_type
+                if not param_type.is_super_of(arg_type):
+                    msg = TypeCheckingError.expected_type(param_type, arg_type, arg.pos)
+                    MessageHandler.handle_message(msg)
         elif isinstance(callee_type, ErroredTypeSymbol):
             return_type = callee_type
         else:

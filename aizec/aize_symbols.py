@@ -105,7 +105,7 @@ class IntTypeSymbol(TypeSymbol):
         self.bit_size = bit_size
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
-        return isinstance(sub, IntTypeSymbol) and sub.is_signed == self.is_signed and sub.bit_size <= self.bit_size
+        return isinstance(sub, IntTypeSymbol) and sub.is_signed == self.is_signed and sub.bit_size == self.bit_size
 
     def __str__(self):
         return self.name
@@ -284,7 +284,7 @@ class ErroredNamespaceSymbol(NamespaceSymbol):
     def define_type(self, type: TypeSymbol, as_name: str = None, visible: bool = True):
         raise NotImplementedError()
 
-    def define_namespace(self, namespace: NamespaceSymbol, as_name: str = None, visible: bool = True):
+    def define_namespace(self, namespace: NamespaceSymbol, as_name: str = None, visible: bool = True, as_parent: bool = True):
         raise NotImplementedError()
 
     def __repr__(self):

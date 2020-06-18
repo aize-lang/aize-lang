@@ -318,9 +318,9 @@ class DefineFunctions(IRLLVMPass):
     def visit_get_var(self, get_var: GetVarIR):
         symbol = self.symbols.get_var(get_var).symbol
         is_function = self.symbols.get_var(get_var).is_function
-        if symbol == self.literals.general().puts:
+        if symbol == self.literals.general().putchar:
             var_ptr = None
-            llvm_val = ir.Function(self.mod, self.resolve_type(symbol.type), "puts")
+            llvm_val = ir.Function(self.mod, self.resolve_type(symbol.type), "putchar")
         else:
             decl_data = self.llvm.decl(symbol.declarer)
             if decl_data.is_ptr:
