@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from aizec.common import *
+from aizec.aize_common.common import *
 
-from aizec.aize_source import Position
+from aizec.aize_common.aize_source import Position
 
-from aizec.aize_ir import NodeIR
+from aizec.aize_ir.aize_ir import NodeIR
 
 
 __all__ = [

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import contextlib
 
-from aizec.aize_ast import *
-from aizec.common import *
-from aizec.aize_source import Source, Position
-from aizec.aize_error import AizeMessage, MessageHandler, ErrorLevel
+from aizec.aize_frontend.aize_ast import *
+from aizec.aize_common.common import *
+from aizec.aize_common.aize_source import Source, Position
+from aizec.aize_common.aize_error import AizeMessage, MessageHandler, ErrorLevel
 
 BASIC_TOKENS = Trie.from_list([
     "+", "+=",

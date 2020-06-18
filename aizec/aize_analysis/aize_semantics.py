@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from aizec.common import *
+from aizec.aize_common.common import *
 
-from aizec.aize_ir import *
-from aizec.aize_ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias
+from aizec.aize_ir.aize_ir import *
+from aizec.aize_ir.aize_ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias
 
-from aizec.aize_error import AizeMessage, Reporter, MessageHandler, ErrorLevel
-from aizec.aize_source import *
-from aizec.aize_symbols import *
+from aizec.aize_common.aize_error import AizeMessage, Reporter, MessageHandler, ErrorLevel
+from aizec.aize_common.aize_source import *
+from aizec.aize_analysis.aize_symbols import *
 
 
 # region Errors

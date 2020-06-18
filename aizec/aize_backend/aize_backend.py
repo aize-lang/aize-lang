@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 import subprocess
 
-from aizec.common import *
-from aizec.aize_error import AizeMessage, MessageHandler, Reporter, ErrorLevel
+from aizec.aize_common.common import *
+from aizec.aize_common.aize_error import AizeMessage, MessageHandler, Reporter, ErrorLevel
 
-from aizec.aize_ir import *
+from aizec.aize_ir.aize_ir import *
 
 
 class LinkingError(AizeMessage):
@@ -139,7 +139,7 @@ class SystemInfo:
 
     @property
     def aizec_dir(self):
-        return Path(__file__).parent
+        return Path(__file__).absolute().parent.parent
 
     def is_windows(self):
         return self._os_name == 'windows'

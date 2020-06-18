@@ -1,8 +1,8 @@
 import pytest
 
-from aizec.aize_error import MessageHandler, AizeMessage, Reporter, ErrorLevel, FailFlag
+from aizec.aize_common.aize_error import MessageHandler, AizeMessage, Reporter, ErrorLevel, FailFlag
 
-from aizec.aize_source import Position, Source, StreamSource
+from aizec.aize_common.aize_source import Position, Source, StreamSource
 
 from io import StringIO
 

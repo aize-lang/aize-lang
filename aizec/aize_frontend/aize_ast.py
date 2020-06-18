@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from aizec.common import *
+from aizec.aize_common.common import *
 
-from aizec.aize_source import *
+from aizec.aize_common.aize_source import *
 
 
 __all__ = [
