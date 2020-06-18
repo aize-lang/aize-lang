@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from abc import ABCMeta
 
-from aizec.aize_common.common import *
+from aizec.common import *
 
-from aizec.aize_ir.aize_ir import *
+from aizec.ir import *
 
 
 E = TypeVar('E', bound=Extension)

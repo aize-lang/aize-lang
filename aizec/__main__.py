@@ -1,8 +1,9 @@
 import argparse
 
-from aizec.aize_common.common import *
+from aizec.common import *
+
 from aizec.aize_run import FrontendManager, IRManager, BackendManager, fail_callback
-from aizec.aize_analysis.aize_semantics import DefaultPasses
+from aizec.analysis import DefaultPasses
 
 
 def make_arg_parser():

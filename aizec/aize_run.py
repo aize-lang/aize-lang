@@ -2,20 +2,18 @@ from __future__ import annotations
 
 import io
 
-from aizec.aize_common.common import *
+from aizec.common import *
 
-from aizec.aize_common.aize_error import AizeMessage, MessageHandler, FailFlag, ErrorLevel, Reporter
-from aizec.aize_common.aize_source import Source, FileSource, Position, StreamSource
+from aizec.aize_common import AizeMessage, MessageHandler, FailFlag, ErrorLevel, Reporter, Source, FileSource, Position, StreamSource
 
-from aizec.aize_frontend.aize_ast import ProgramAST, SourceAST
-from aizec.aize_frontend.aize_parser import AizeParser
+from aizec.aize_frontend import ProgramAST, SourceAST, AizeParser
 
-from aizec.aize_ir.aize_ir import IR
-from aizec.aize_ir.aize_ir_pass import PassScheduler, PassAlias
-from aizec.aize_analysis.aize_semantics import DefaultPasses
+from aizec.ir import IR
+from aizec.ir_pass import PassScheduler, PassAlias
 
-from aizec.aize_backend.aize_backend import Backend
-from aizec.aize_backend.aize_llvm_backend import LLVMBackend
+from aizec.analysis import DefaultPasses
+
+from aizec.aize_backend import Backend, LLVMBackend
 
 
 __all__ = ['FrontendManager', 'IRManager', 'BackendManager',

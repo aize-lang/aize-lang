@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 import subprocess
 
-from aizec.aize_common.common import *
-from aizec.aize_common.aize_error import AizeMessage, MessageHandler, Reporter, ErrorLevel
+from aizec.common import *
+from aizec.aize_common import AizeMessage, MessageHandler, Reporter, ErrorLevel
 
-from aizec.aize_ir.aize_ir import *
+from aizec.ir import IR
 
 
 class LinkingError(AizeMessage):

@@ -4,7 +4,7 @@ from aizec.aize_frontend.aize_parser import AizeParser, ParseError
 from aizec.aize_common.aize_error import MessageHandler, ThrownMessage, ErrorLevel
 from aizec.aize_common.aize_source import Source
 from aizec.aize_run import FrontendManager
-from aizec.aize_common.common import Path
+from aizec.common import Path
 
 
 @pytest.fixture(autouse=True)

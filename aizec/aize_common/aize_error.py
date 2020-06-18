@@ -4,8 +4,9 @@ import sys
 from dataclasses import dataclass
 from enum import IntEnum
 
-from aizec.aize_common.common import *
-from aizec.aize_common.aize_source import Source, Position, TextPosition
+from aizec.common import *
+
+from .aize_source import Source, Position, TextPosition
 
 
 __all__ = ['Reporter', 'AizeMessage',

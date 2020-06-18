@@ -3,15 +3,15 @@ from __future__ import annotations
 import llvmlite.ir as ir
 import llvmlite.binding as llvm
 
-from aizec.aize_common.common import *
-from aizec.aize_common.aize_error import MessageHandler
+from aizec.common import *
+from aizec.aize_common import MessageHandler
 
-from aizec.aize_ir.aize_ir import *
-from aizec.aize_analysis.aize_symbols import *
-from aizec.aize_analysis.aize_semantics import LiteralData, SymbolData, DefaultPasses
-from aizec.aize_ir.aize_ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias, PassScheduler
+from aizec.ir import *
 
-from aizec.aize_backend.aize_backend import CBackend, CLinker
+from aizec.analysis import LiteralData, SymbolData, TypeSymbol, IntTypeSymbol, FunctionTypeSymbol, StructTypeSymbol, DefaultPasses
+from aizec.ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias, PassScheduler
+
+from .aize_backend import CBackend, CLinker
 
 
 class LLVMData(Extension):

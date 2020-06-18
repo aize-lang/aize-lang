@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import contextlib
+from aizec.common import *
+from aizec.aize_common import AizeMessage, MessageHandler, ErrorLevel, Source, Position
 
-from aizec.aize_frontend.aize_ast import *
-from aizec.aize_common.common import *
-from aizec.aize_common.aize_source import Source, Position
-from aizec.aize_common.aize_error import AizeMessage, MessageHandler, ErrorLevel
+from .aize_ast import *
+
 
 BASIC_TOKENS = Trie.from_list([
     "+", "+=",
@@ -158,7 +157,7 @@ class Scanner:
         else:
             return None
 
-    @contextlib.contextmanager
+    @contextmanager
     def start_token(self, type: Union[str, None] = None):
         self._building_tokens.append("")
         start_line_no = self.line_no
@@ -319,7 +318,7 @@ class AizeParser:
                 self.advance()
         raise SyncFlag(-1)
 
-    @contextlib.contextmanager
+    @contextmanager
     def sync_point(self, *targets: str) -> SyncPosition:
         flag_num = len(self.sync_targets)
         self.sync_targets.append(targets)
