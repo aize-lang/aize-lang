@@ -347,12 +347,26 @@ class SymbolData(Extension):
     def intrinsic(self, node: IntrinsicIR, set_to: IntrinsicData = None) -> IntrinsicData:
         return super().intrinsic(node, set_to)
 
+    class GetStaticAttrExprData:
+        def __init__(self, resolved_value: VariableSymbol):
+            self.resolved_value = resolved_value
+
+    def get_static_attr_expr(self, node: GetStaticAttrExprIR, set_to: GetStaticAttrExprData = None) -> GetStaticAttrExprData:
+        return super().get_static_attr_expr(node, set_to)
+
     class TypeData:
         def __init__(self, resolved_type: TypeSymbol):
             self.resolved_type: TypeSymbol = resolved_type
 
     def type(self, node: TypeIR, set_to: TypeData = None) -> TypeData:
         return super().type(node, set_to)
+
+    class NamespaceData:
+        def __init__(self, resolved_namespace: NamespaceSymbol):
+            self.resolved_namespace = resolved_namespace
+
+    def namespace(self, node: NamespaceIR, set_to: NamespaceData = None) -> NamespaceData:
+        return super().namespace(node, set_to)
 
     # region Extension Extensions
     class DeclData:
@@ -460,9 +474,26 @@ class DeclareTypes(IRSymbolsPass):
                 self.visit_source(source)
 
     def visit_source(self, source: SourceIR):
+        global_namespace = self.symbols.source(source).globals
         with self.enter_namespace(self.symbols.source(source).globals):
             for top_level in source.top_levels:
                 self.visit_top_level(top_level)
+
+    def visit_import(self, imp: ImportIR):
+        source = imp.source_ir
+        namespace = self.symbols.source(source).globals
+
+        raw_name = imp.path.with_suffix("").name
+        fixed_name = raw_name.replace(" ", "_")
+        if not fixed_name.isidentifier():
+            # TODO
+            raise Exception(raw_name)
+
+        try:
+            self.current_namespace.define_namespace(namespace, as_name=fixed_name, is_parent=False)
+        except DuplicateSymbolError as err:
+            msg = DefinitionError.name_existing(imp, err.old_symbol)
+            MessageHandler.handle_message(msg)
 
     def visit_struct(self, struct: StructIR):
         fields: Dict[str, TypeSymbol] = {}
@@ -489,6 +520,67 @@ class DeclareTypes(IRSymbolsPass):
 
 
 @PassesRegister.register(to_sequences=[DefaultPasses])
+class DeclareFunctions(IRSymbolsPass):
+    def __init__(self, ir: IR):
+        super().__init__(ir)
+
+        self.builtins: LiteralData = self.get_ext(LiteralData)
+        self.symbols: SymbolData = self.get_ext(SymbolData)
+
+    @classmethod
+    def get_required_passes(cls) -> Set[PassAlias]:
+        return {InitSymbols, DeclareTypes}
+
+    @classmethod
+    def get_required_extensions(cls) -> Set[Type[Extension]]:
+        return {LiteralData, SymbolData}
+
+    def visit_program(self, program: ProgramIR):
+        with self.enter_namespace(self.symbols.program(program).builtins):
+            for source in program.sources:
+                self.visit_source(source)
+
+    def visit_source(self, source: SourceIR):
+        with self.enter_namespace(self.symbols.source(source).globals):
+            for top_level in source.top_levels:
+                self.visit_top_level(top_level)
+
+    def visit_function(self, func: FunctionIR):
+        for param in func.params:
+            self.visit_param(param)
+        self.visit_type(func.ret)
+        params = [self.symbols.type(param.type).resolved_type for param in func.params]
+        ret = self.symbols.type(func.ret).resolved_type
+        func_type = FunctionTypeSymbol(params, ret, func.pos)
+
+        func_value = VariableSymbol(func.name, func, func_type, func.pos)
+        try:
+            self.current_namespace.define_value(func_value)
+        except DuplicateSymbolError as err:
+            msg = DefinitionError.name_existing(func, err.old_symbol)
+            MessageHandler.handle_message(msg)
+
+        func_namespace = NamespaceSymbol(f"<{func.name} body>", func.pos)
+        self.current_namespace.define_namespace(func_namespace, visible=False)
+        self.symbols.function(func, set_to=SymbolData.FunctionData(func_value, func_namespace))
+        self.symbols.decl(func, set_to=SymbolData.DeclData(func, func_value, func_type))
+
+    def visit_param(self, param: ParamIR):
+        self.visit_type(param.type)
+        symbol = VariableSymbol(param.name, param, self.symbols.type(param.type).resolved_type, param.pos)
+        self.symbols.param(param, set_to=SymbolData.ParamData(symbol))
+
+    def visit_get_type(self, type: GetTypeIR):
+        try:
+            resolved_type = self.current_namespace.lookup_type(type.name)
+        except FailedLookupError as err:
+            msg = DefinitionError.name_undefined(type, err.failed_name)
+            MessageHandler.handle_message(msg)
+            resolved_type = ErroredTypeSymbol(type.pos)
+        self.symbols.type(type, set_to=SymbolData.TypeData(resolved_type))
+
+
+@PassesRegister.register(to_sequences=[DefaultPasses])
 class ResolveTypes(IRSymbolsPass):
     def __init__(self, ir: IR):
         super().__init__(ir)
@@ -500,7 +592,7 @@ class ResolveTypes(IRSymbolsPass):
 
     @classmethod
     def get_required_passes(cls) -> Set[PassAlias]:
-        return {InitSymbols, DeclareTypes}
+        return {InitSymbols, DeclareTypes, DeclareFunctions}
 
     @classmethod
     def get_required_extensions(cls) -> Set[Type[Extension]]:
@@ -540,24 +632,9 @@ class ResolveTypes(IRSymbolsPass):
                 self.visit_top_level(top_level)
 
     def visit_function(self, func: FunctionIR):
-        for param in func.params:
-            self.visit_param(param)
-        self.visit_type(func.ret)
-        params = [self.symbols.type(param.type).resolved_type for param in func.params]
-        ret = self.symbols.type(func.ret).resolved_type
-        func_type = FunctionTypeSymbol(params, ret, func.pos)
-
-        func_value = VariableSymbol(func.name, func, func_type, func.pos)
-        try:
-            self.current_namespace.define_value(func_value)
-        except DuplicateSymbolError as err:
-            msg = DefinitionError.name_existing(func, err.old_symbol)
-            MessageHandler.handle_message(msg)
-
-        func_namespace = NamespaceSymbol(f"<{func.name} body>", func.pos)
-        self.current_namespace.define_namespace(func_namespace, visible=False)
-        self.symbols.function(func, set_to=SymbolData.FunctionData(func_value, func_namespace))
-        self.symbols.decl(func, set_to=SymbolData.DeclData(func, func_value, func_type))
+        data = self.symbols.function(func)
+        func_type = cast(FunctionTypeSymbol, data.symbol.type)
+        func_namespace = data.namespace
 
         with self.in_function(func, func_type):
             for param in func.params:
@@ -957,6 +1034,22 @@ class ResolveTypes(IRSymbolsPass):
             MessageHandler.handle_message(msg)
             self.symbols.expr(intrinsic, set_to=SymbolData.ExprData(ErroredTypeSymbol(intrinsic.pos), False))
 
+    def visit_get_static_attr_expr(self, get_static: GetStaticAttrExprIR):
+        self.visit_namespace(get_static.namespace)
+        namespace = self.symbols.namespace(get_static.namespace).resolved_namespace
+        if isinstance(namespace, ErroredNamespaceSymbol):
+            resolved_value = ErroredVariableSymbol(get_static, get_static.pos)
+        else:
+            try:
+                resolved_value = namespace.lookup_value(get_static.attr)
+            except FailedLookupError as err:
+                msg = DefinitionError.name_undefined(get_static, get_static.attr)
+                MessageHandler.handle_message(msg)
+                resolved_value = ErroredVariableSymbol(get_static, get_static.pos)
+        type = resolved_value.type
+        self.symbols.expr(get_static, set_to=SymbolData.ExprData(type, False))
+        self.symbols.get_static_attr_expr(get_static, set_to=SymbolData.GetStaticAttrExprData(resolved_value))
+
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal
         self.symbols.expr(num, SymbolData.ExprData(self.builtins.general().sint[32], False))
@@ -972,3 +1065,12 @@ class ResolveTypes(IRSymbolsPass):
             MessageHandler.handle_message(msg)
             resolved_type = ErroredTypeSymbol(type.pos)
         self.symbols.type(type, SymbolData.TypeData(resolved_type))
+
+    def visit_get_namespace(self, namespace: GetNamespaceIR):
+        try:
+            resolved_namespace = self.current_namespace.lookup_namespace(namespace.name)
+        except FailedLookupError as err:
+            msg = DefinitionError.name_undefined(namespace, err.failed_name)
+            MessageHandler.handle_message(msg)
+            resolved_namespace = ErroredNamespaceSymbol(namespace.pos)
+        self.symbols.namespace(namespace, set_to=SymbolData.NamespaceData(resolved_namespace))

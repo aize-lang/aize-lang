@@ -4,7 +4,7 @@ import io
 
 from aizec.common import *
 
-from aizec.aize_error import AizeMessage, MessageHandler, FailFlag
+from aizec.aize_error import AizeMessage, MessageHandler, FailFlag, ErrorLevel, Reporter
 from aizec.aize_source import Source, FileSource, Position, StreamSource
 
 from aizec.aize_ast import ProgramAST, SourceAST
@@ -19,25 +19,24 @@ from aizec.aize_llvm_backend import LLVMBackend
 
 
 __all__ = ['FrontendManager', 'IRManager', 'BackendManager',
-           'AizeFrontendError', 'AizeImportError', 'AizeFileError', 'fail_callback']
+           'AizeFrontendError', 'AizeImportError', 'fail_callback']
 
 
-class AizeFrontendError(Exception):
+class AizeFrontendError(AizeMessage, ABC):
     pass
 
 
 class AizeImportError(AizeFrontendError):
-    def __init__(self, msg: str, pos: Position):
-        super().__init__(msg)
-        self.msg = msg
-        self.pos = pos
-
-
-class AizeFileError(AizeFrontendError):
     def __init__(self, msg: str, pos: Position = None):
-        super().__init__(msg)
+        super().__init__(ErrorLevel.ERROR)
         self.msg = msg
         self.pos: Optional[Position] = pos
+
+    def display(self, reporter: Reporter):
+        if self.pos:
+            reporter.positioned_error("Import Error", self.msg, self.pos)
+        else:
+            reporter.general_error("File Error", self.msg)
 
 
 @contextmanager
@@ -70,7 +69,10 @@ class FrontendManager:
             path = path.resolve()
             file_stream = path.open("r")
         except FileNotFoundError:
-            raise AizeFileError(f"Cannot open '{str(path)}'", pos) from None
+            msg = AizeImportError(f"Cannot open '{str(path)}'", pos)
+            MessageHandler.handle_message(msg)
+            MessageHandler.flush_messages()
+            assert False
 
         return FileSource(path, file_stream)
 
@@ -96,21 +98,24 @@ class FrontendManager:
 
     def trace_imports(self):
         to_visit: List[Source] = [source for source in self._sources]
-        visited: Set[Source] = set()
+        traced: Set[Source] = set()
 
-        sources: Dict[Source, SourceAST] = self._sources.copy()
+        parsed_sources: Dict[Source, SourceAST] = self._sources.copy()
+        created_sources: Dict[Path, Source] = {source.get_path().absolute(): source
+                                               for source in self._sources
+                                               if source.get_path() is not None}
 
         while to_visit:
             source = to_visit.pop()
-            if source in visited:
+            if source in traced:
                 continue
 
-            if source not in sources:
-                source_ast = sources[source] = self._parse_source(source)
+            if source in parsed_sources:
+                source_ast = parsed_sources[source]
             else:
-                source_ast = sources[source]
+                source_ast = parsed_sources[source] = self._parse_source(source)
 
-            visited.add(source)
+            traced.add(source)
 
             for import_node in source_ast.imports:
                 if import_node.anchor == 'std':
@@ -120,7 +125,9 @@ class FrontendManager:
                 elif import_node.anchor == 'local':
                     parsed_file = source.get_path()
                     if parsed_file is None:
-                        raise AizeImportError("Cannot use a local import from a non-file source", import_node.pos)
+                        msg = AizeImportError("Cannot use a local import from a non-file source", import_node.pos)
+                        MessageHandler.handle_message(msg)
+                        continue
                     else:
                         abs_path = parsed_file.parent / import_node.path
                 else:
@@ -129,15 +136,23 @@ class FrontendManager:
                 try:
                     abs_path = abs_path.resolve()
                 except FileNotFoundError:
-                    raise AizeFileError(f"Cannot open file {abs_path!s}", pos=import_node.pos)
+                    msg = AizeImportError(f"Cannot open file {abs_path!s}", pos=import_node.pos)
+                    MessageHandler.handle_message(msg)
+                    continue
 
-                if source.get_path() and abs_path != source.get_path().resolve():
-                    raise AizeImportError(f"A file cannot import itself", pos=import_node.pos)
+                if source.get_path() and abs_path == source.get_path().resolve():
+                    msg = AizeImportError(f"A file cannot import itself", pos=import_node.pos)
+                    MessageHandler.handle_message(msg)
+                    continue
 
-                imported_source = self._make_file_source(abs_path, pos=import_node.pos)
+                if abs_path in created_sources:
+                    imported_source = created_sources[abs_path]
+                else:
+                    imported_source = created_sources[abs_path] = self._make_file_source(abs_path, pos=import_node.pos)
+                import_node.source = imported_source
                 to_visit.append(imported_source)
 
-        self._sources = sources
+        self._sources = parsed_sources
 
 
 class IRManager:

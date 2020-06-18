@@ -26,8 +26,14 @@ class IRVisitor(ABC):
             return self.visit_function(top_level)
         elif isinstance(top_level, StructIR):
             return self.visit_struct(top_level)
+        elif isinstance(top_level, ImportIR):
+            return self.visit_import(top_level)
         else:
             raise TypeError(f"Expected a top-level node, got {top_level}")
+
+    @abstractmethod
+    def visit_import(self, imp: ImportIR):
+        pass
 
     @abstractmethod
     def visit_struct(self, struct: StructIR):
@@ -108,6 +114,8 @@ class IRVisitor(ABC):
             return self.visit_compare(expr)
         elif isinstance(expr, ArithmeticIR):
             return self.visit_arithmetic(expr)
+        elif isinstance(expr, GetStaticAttrExprIR):
+            return self.visit_get_static_attr_expr(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
 
@@ -152,6 +160,10 @@ class IRVisitor(ABC):
         pass
 
     @abstractmethod
+    def visit_get_static_attr_expr(self, get_static: GetStaticAttrExprIR):
+        pass
+
+    @abstractmethod
     def visit_ann(self, ann: AnnotationIR):
         pass
 
@@ -163,6 +175,16 @@ class IRVisitor(ABC):
 
     @abstractmethod
     def visit_get_type(self, type: GetTypeIR):
+        pass
+
+    def visit_namespace(self, namespace: NamespaceIR):
+        if isinstance(namespace, GetNamespaceIR):
+            return self.visit_get_namespace(namespace)
+        else:
+            raise TypeError(f"Expected a namespace node, got {namespace}")
+
+    @abstractmethod
+    def visit_get_namespace(self, namespace: GetNamespaceIR):
         pass
 
 
@@ -263,6 +285,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     def visit_source(self, source: SourceIR):
         pass
 
+    def visit_import(self, imp: ImportIR):
+        pass
+
     def visit_function(self, func: FunctionIR):
         pass
 
@@ -323,6 +348,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     def visit_intrinsic(self, intrinsic: IntrinsicIR):
         pass
 
+    def visit_get_static_attr_expr(self, get_static: GetStaticAttrExprIR):
+        pass
+
     def visit_int(self, num: IntIR):
         pass
 
@@ -330,6 +358,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_get_type(self, type: GetTypeIR):
+        pass
+
+    def visit_get_namespace(self, namespace: GetNamespaceIR):
         pass
 
 

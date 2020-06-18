@@ -13,13 +13,14 @@ __all__ = [
 
     'NodeIR', 'TextIR',
     'ProgramIR', 'SourceIR',
-    'TopLevelIR', 'FunctionIR', 'ClassIR', 'StructIR',
+    'TopLevelIR', 'FunctionIR', 'ClassIR', 'StructIR', 'ImportIR',
     'FieldIR', 'MethodDeclIR', 'MethodDefIR',
     'ParamIR',
     'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR',
-    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',  'IntrinsicIR',
+    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',  'IntrinsicIR', 'GetStaticAttrExprIR',
     'AnnotationIR',
     'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
+    'NamespaceIR', 'GetNamespaceIR'
 ]
 
 
@@ -38,11 +39,26 @@ class IR:
 
     # region IR Creator
     class CreateIR(ASTVisitor):
+        def __init__(self, program: ProgramAST):
+            super().__init__(program)
+
+            self.sources: Dict[Source, SourceIR] = {}
+
         def visit_program(self, program: ProgramAST) -> ProgramIR:
-            return ProgramIR([self.visit_source(source) for source in program.sources])
+            program = ProgramIR([self.visit_source(source) for source in program.sources])
+            for source in program.sources:
+                for top_level in source.top_levels:
+                    if isinstance(top_level, ImportIR):
+                        top_level.source_ir = self.sources[top_level.source]
+            return program
 
         def visit_source(self, source: SourceAST):
-            return SourceIR([self.visit_top_level(top_level) for top_level in source.top_levels], source.source.get_name())
+            source_ir = SourceIR([self.visit_top_level(top_level) for top_level in source.top_levels], source.source.get_name())
+            self.sources[source.source] = source_ir
+            return source_ir
+
+        def visit_import(self, imp: ImportAST):
+            return ImportIR(imp.source, imp.path, imp.pos)
 
         def visit_function(self, func: FunctionAST):
             ann = self.visit_ann(func.ret)
@@ -145,11 +161,17 @@ class IR:
         def visit_set_attr(self, set_attr: SetAttrExprAST):
             return SetAttrIR(self.visit_expr(set_attr.obj), set_attr.attr, self.visit_expr(set_attr.value), set_attr.pos)
 
+        def visit_static_attr_expr(self, static_attr: GetStaticAttrExprAST):
+            return GetStaticAttrExprIR(self.visit_namespace(static_attr.namespace), static_attr.attr, static_attr.pos)
+
         def visit_intrinsic(self, intrinsic: IntrinsicExprAST):
             return IntrinsicIR(intrinsic.name, [self.visit_expr(arg) for arg in intrinsic.args], intrinsic.pos)
 
         def visit_int(self, literal: IntLiteralAST):
             return IntIR(literal.num, literal.pos)
+
+        def visit_get_namespace(self, namespace: GetVarExprAST):
+            return GetNamespaceIR(namespace.var, namespace.pos)
 
         def visit_ann(self, ann: ExprAST):
             return AnnotationIR(self.visit_type(ann), ann.pos)
@@ -239,8 +261,16 @@ class Extension:
         return self._get_data(node, 'intrinsic', set_to)
 
     @abstractmethod
+    def get_static_attr_expr(self, node: GetStaticAttrExprIR, set_to: T = None) -> T:
+        return self._get_data(node, 'get_static_attr_expr', set_to)
+
+    @abstractmethod
     def type(self, node: TypeIR, set_to: T = None) -> T:
         return self._get_data(node, 'type', set_to)
+
+    @abstractmethod
+    def namespace(self, node: NamespaceIR, set_to: T = None) -> T:
+        return self._get_data(node, 'namespace', set_to)
 
     def ext(self, node: NodeIR, type: str, set_to: T = None) -> T:
         return self._get_data(node, type, set_to)
@@ -277,6 +307,15 @@ class SourceIR(NodeIR):
 # region Top Level Nodes
 class TopLevelIR(TextIR):
     pass
+
+
+class ImportIR(TopLevelIR):
+    def __init__(self, source: Source, path: Path, pos: Position):
+        super().__init__(pos)
+        self.source = source
+        self.path = path
+
+        self.source_ir: Optional[SourceIR] = None
 
 
 class FunctionIR(TopLevelIR):
@@ -435,6 +474,14 @@ class GetAttrIR(ExprIR):
         self.attr = attr
 
 
+class GetStaticAttrExprIR(ExprIR):
+    def __init__(self, namespace: NamespaceIR, attr: str, pos: Position):
+        super().__init__(pos)
+
+        self.namespace = namespace
+        self.attr = attr
+
+
 class SetAttrIR(ExprIR):
     def __init__(self, obj: ExprIR, attr: str, value: ExprIR, pos: Position):
         super().__init__(pos)
@@ -456,6 +503,19 @@ class IntIR(ExprIR):
     def __init__(self, num: int, pos: Position):
         super().__init__(pos)
         self.num = num
+# endregion
+
+
+# region Namespace Nodes
+class NamespaceIR(TextIR):
+    pass
+
+
+class GetNamespaceIR(NamespaceIR):
+    def __init__(self, name: str, pos: Position):
+        super().__init__(pos)
+
+        self.name = name
 # endregion
 
 

@@ -732,14 +732,9 @@ class AizeParser:
                 # TODO maybe also match number for tuples?
                 attr = self.match_exc(Token.IDENTIFIER_TYPE)
                 expr = GetAttrExprAST(expr, attr.text, expr.pos.to(attr.pos()))
-            # TODO Namespaces
-            # elif self.match("::"):
-            #     start = self.prev
-            #     attr = self.match_exc(Token.IDENTIFIER_TYPE)
-            #     if isinstance(expr, GetVarExpr):
-            #         expr = GetNamespaceExpr(GetNamespace(expr.name).place(expr.pos), attr.text).place(start.pos)
-            #     else:
-            #         raise ParseError("Cannot get an attribute from the left", start)
+            elif start := self.match("::"):
+                attr = self.match_exc(Token.IDENTIFIER_TYPE)
+                expr = GetStaticAttrExprAST(expr, attr.text, expr.pos.to(attr.pos()))
             else:
                 break
         return expr

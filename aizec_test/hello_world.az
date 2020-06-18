@@ -1,7 +1,7 @@
-
+import "<local>/thing.az";
 
 
 def main() -> int32 {
-    var thing: int8 = @int8(16);
-    return @int32(thing);
+    var thing: int32 = thing::fibo(13);
+    return thing;
 }

@@ -62,7 +62,16 @@ class LLVMData(Extension):
     def set_var(self, node: SetVarIR, set_to=None):
         raise NotImplementedError()
 
+    def get_attr(self, node: GetAttrIR, set_to=None):
+        raise NotImplementedError()
+
+    def set_attr(self, node: SetAttrIR, set_to=None):
+        raise NotImplementedError()
+
     def intrinsic(self, node: IntrinsicIR, set_to=None):
+        raise NotImplementedError()
+
+    def get_static_attr_expr(self, node: GetStaticAttrExprIR, set_to=None):
         raise NotImplementedError()
 
     class TypeData:
@@ -72,10 +81,14 @@ class LLVMData(Extension):
     def type(self, node: TypeIR, set_to: TypeData = None) -> TypeData:
         return super().type(node, set_to)
 
+    def namespace(self, node: NamespaceIR, set_to=None):
+        raise NotImplementedError()
+
     # region Extension Extensions
     class DeclData:
-        def __init__(self, var: ir.Value):
-            self.var_ptr = var
+        def __init__(self, var: ir.Value, is_ptr: bool):
+            self.var_value = var
+            self.is_ptr = is_ptr
 
     def decl(self, node: NodeIR, set_to: DeclData = None) -> DeclData:
         return super().ext(node, 'decl', set_to)
@@ -167,7 +180,7 @@ class DeclareFunctions(IRLLVMPass):
         llvm_func_type = ir.FunctionType(ret_type, param_types)
 
         llvm_func = ir.Function(self.mod, llvm_func_type, func.name)
-        self.llvm.decl(func, LLVMData.DeclData(llvm_func))
+        self.llvm.decl(func, LLVMData.DeclData(llvm_func, is_ptr=False))
 
         prep = llvm_func.append_basic_block("prep")
         self.builder.position_at_start(prep)
@@ -175,7 +188,7 @@ class DeclareFunctions(IRLLVMPass):
         for param, llvm_arg in zip(func.params, llvm_func.args):
             param_ptr = self.builder.alloca(llvm_arg.type)
             self.builder.store(llvm_arg, param_ptr)
-            self.llvm.decl(param, LLVMData.DeclData(param_ptr))
+            self.llvm.decl(param, LLVMData.DeclData(param_ptr, is_ptr=True))
 
         entry = self.builder.append_basic_block("entry")
         self.builder.branch(entry)
@@ -227,7 +240,7 @@ class DefineFunctions(IRLLVMPass):
         expr_val = self.llvm.expr(decl.value).r_val
         self.builder.store(expr_val, llvm_val)
 
-        self.llvm.decl(decl, set_to=LLVMData.DeclData(var=llvm_val))
+        self.llvm.decl(decl, set_to=LLVMData.DeclData(llvm_val, is_ptr=True))
 
     def visit_block(self, block: BlockIR):
         for stmt in block.stmts:
@@ -302,18 +315,19 @@ class DefineFunctions(IRLLVMPass):
         if symbol == self.literals.general().puts:
             var_ptr = None
             llvm_val = ir.Function(self.mod, self.resolve_type(symbol.type), "puts")
-        elif is_function:
-            var_ptr = None
-            llvm_val = self.llvm.decl(symbol.declarer).var_ptr
         else:
-            declarer = symbol.declarer
-            var_ptr = self.llvm.decl(declarer).var_ptr
-            llvm_val = self.builder.load(var_ptr)
+            decl_data = self.llvm.decl(symbol.declarer)
+            if decl_data.is_ptr:
+                var_ptr = decl_data.var_value
+                llvm_val = self.builder.load(var_ptr)
+            else:
+                var_ptr = None
+                llvm_val = decl_data.var_value
         self.llvm.expr(get_var, LLVMData.ExprData(var_ptr, llvm_val))
 
     def visit_set_var(self, set_var: SetVarIR):
         symbol = self.symbols.set_var(set_var).symbol
-        var_ptr = self.llvm.decl(symbol.declarer).var_ptr
+        var_ptr = self.llvm.decl(symbol.declarer).var_value
 
         self.visit_expr(set_var.value)
         expr_val = self.llvm.expr(set_var.value).r_val
@@ -352,6 +366,18 @@ class DefineFunctions(IRLLVMPass):
         self.builder.store(value, field_ptr)
 
         self.llvm.expr(set_attr, set_to=LLVMData.ExprData(value_lval, value))
+
+    def visit_get_static_attr_expr(self, get_static: GetStaticAttrExprIR):
+        value = self.symbols.get_static_attr_expr(get_static).resolved_value
+        decl_data = self.llvm.decl(value.declarer)
+        if decl_data.is_ptr:
+            var_ptr = decl_data.var_value
+            llvm_val = self.builder.load(var_ptr)
+        else:
+            var_ptr = None
+            llvm_val = decl_data.var_value
+
+        self.llvm.expr(get_static, set_to=LLVMData.ExprData(var_ptr, llvm_val))
 
     def visit_get_type(self, type: GetTypeIR):
         resolved: TypeSymbol = self.symbols.type(type).resolved_type

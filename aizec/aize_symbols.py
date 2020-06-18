@@ -10,7 +10,7 @@ from aizec.aize_ir import NodeIR
 __all__ = [
     'Symbol',
     'VariableSymbol', 'ErroredVariableSymbol',
-    'NamespaceSymbol', 'NoNamespaceSymbol',
+    'NamespaceSymbol', 'ErroredNamespaceSymbol',
     'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'ErroredTypeSymbol', 'StructTypeSymbol',
     'SymbolTable',
     'FailedLookupError', 'DuplicateSymbolError'
@@ -195,11 +195,34 @@ class NamespaceSymbol(Symbol):
         else:
             lookup_chain = self.parents(nearest_first=nearest)
 
-        # print(lookup_chain, [ns.value_symbols for ns in lookup_chain])
-
         for namespace in lookup_chain:
             if name in namespace.value_symbols:
                 return namespace.value_symbols[name]
+        raise FailedLookupError(name)
+
+    def lookup_namespace(self, name: str, *, here: bool = False, nearest: bool = True) -> NamespaceSymbol:
+        """
+        Lookup a NamespaceSymbol with the given name in the current namespace, if it was marked with visible when it was defined.
+
+        Args:
+            name: The name of the NamespaceSymbol to lookup.
+            here: If True, only lookup in this namespace, otherwise, recurse NamespaceSymbols.
+            nearest: Whether to start looking from the top (earlier namespace) if False or this if True.
+
+        Returns:
+            The NamespaceSymbol which was found first with the specified parameters.
+
+        Raises:
+            FailedLookupError: If the name was not found.
+        """
+        if here:
+            lookup_chain = [self]
+        else:
+            lookup_chain = self.parents(nearest_first=nearest)
+
+        for namespace in lookup_chain:
+            if name in namespace.namespace_symbols:
+                return namespace.namespace_symbols[name]
         raise FailedLookupError(name)
 
     def define_value(self, value: VariableSymbol, as_name: str = None, visible: bool = True):
@@ -235,7 +258,7 @@ class NamespaceSymbol(Symbol):
                 self.type_symbols[as_name] = type
         type.namespace = self
 
-    def define_namespace(self, namespace: NamespaceSymbol, as_name: str = None, visible: bool = True):
+    def define_namespace(self, namespace: NamespaceSymbol, as_name: str = None, visible: bool = True, is_parent: bool = True):
         if as_name is None:
             as_name = namespace.name
 
@@ -244,15 +267,16 @@ class NamespaceSymbol(Symbol):
                 raise DuplicateSymbolError(namespace, self.namespace_symbols[as_name])
             else:
                 self.namespace_symbols[as_name] = namespace
-        namespace.namespace = self
+        if is_parent:
+            namespace.namespace = self
 
     def __repr__(self):
         return f"{self.__class__.__name__}('{self.name}', {self.position})"
 
 
-class NoNamespaceSymbol(NamespaceSymbol):
-    def __init__(self):
-        super().__init__("<none>", Position.new_none())
+class ErroredNamespaceSymbol(NamespaceSymbol):
+    def __init__(self, pos: Position):
+        super().__init__("<errored>", pos)
 
     def define_value(self, value: VariableSymbol, as_name: str = None, visible: bool = True):
         raise NotImplementedError()

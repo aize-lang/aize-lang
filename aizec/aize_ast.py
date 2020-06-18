@@ -18,6 +18,8 @@ __all__ = [
     'ModExprAST', 'LEExprAST', 'UnaryExprAST', 'LTExprAST', 'InvExprAST', 'NotExprAST', 'DivExprAST', 'GetAttrExprAST',
     'GEExprAST', 'SetAttrExprAST', 'NegExprAST', 'GTExprAST', 'SetVarExprAST', 'CallExprAST', 'StrLiteralAST', 'NewExprAST',
     'IntLiteralAST', 'IntrinsicExprAST',
+
+    'GetStaticAttrExprAST'
 ]
 
 
@@ -44,8 +46,14 @@ class ASTVisitor(ABC):
             return self.visit_function(top_level)
         elif isinstance(top_level, StructAST):
             return self.visit_struct(top_level)
+        elif isinstance(top_level, ImportAST):
+            return self.visit_import(top_level)
         else:
             raise TypeError(f"Expected a top-level node, got {top_level}")
+
+    @abstractmethod
+    def visit_import(self, imp: ImportAST):
+        pass
 
     @abstractmethod
     def visit_struct(self, struct: StructAST):
@@ -142,6 +150,8 @@ class ASTVisitor(ABC):
             return self.visit_sub(expr)
         elif isinstance(expr, MulExprAST):
             return self.visit_mul(expr)
+        elif isinstance(expr, GetStaticAttrExprAST):
+            return self.visit_static_attr_expr(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
 
@@ -186,11 +196,25 @@ class ASTVisitor(ABC):
         pass
 
     @abstractmethod
+    def visit_static_attr_expr(self, static_attr: GetStaticAttrExprAST):
+        pass
+
+    @abstractmethod
     def visit_intrinsic(self, intrinsic: IntrinsicExprAST):
         pass
 
     @abstractmethod
     def visit_int(self, num: IntLiteralAST):
+        pass
+
+    def visit_namespace(self, namespace: ExprAST):
+        if isinstance(namespace, GetVarExprAST):
+            return self.visit_get_namespace(namespace)
+        else:
+            raise TypeError(f"Expected a namespace node, got {namespace}")
+
+    @abstractmethod
+    def visit_get_namespace(self, namespace: GetVarExprAST):
         pass
 
     @abstractmethod
@@ -266,6 +290,7 @@ class ImportAST(TopLevelAST):
 
         self.anchor: str = anchor
         self.path: Path = path
+        self.source: Optional[Source] = None
 
 
 class FunctionAST(TopLevelAST):
@@ -472,8 +497,15 @@ class NegExprAST(UnaryExprAST):
 
 class NotExprAST(UnaryExprAST):
     pass
-
 # endregion
+
+
+class GetStaticAttrExprAST(ExprAST):
+    def __init__(self, namespace: ExprAST, attr: str, pos: Position):
+        super().__init__(pos)
+
+        self.namespace = namespace
+        self.attr = attr
 
 
 class NewExprAST(ExprAST):
