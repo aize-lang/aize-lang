@@ -28,10 +28,6 @@ class ASTVisitor(ABC):
         self.program = program
 
     @abstractmethod
-    def handle_malformed_type(self, type: ExprAST):
-        pass
-
-    @abstractmethod
     def visit_program(self, program: ProgramAST):
         pass
 
@@ -217,10 +213,14 @@ class ASTVisitor(ABC):
         if isinstance(namespace, GetVarExprAST):
             return self.visit_get_namespace(namespace)
         else:
-            raise TypeError(f"Expected a namespace node, got {namespace}")
+            return self.handle_malformed_namespace(namespace)
 
     @abstractmethod
     def visit_get_namespace(self, namespace: GetVarExprAST):
+        pass
+
+    @abstractmethod
+    def handle_malformed_namespace(self, namespace: ExprAST):
         pass
 
     @abstractmethod
@@ -235,6 +235,10 @@ class ASTVisitor(ABC):
 
     @abstractmethod
     def visit_get_type(self, type: GetVarExprAST):
+        pass
+
+    @abstractmethod
+    def handle_malformed_type(self, type: ExprAST):
         pass
 
 

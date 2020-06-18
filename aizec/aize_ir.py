@@ -21,7 +21,7 @@ __all__ = [
     'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR',
     'AnnotationIR',
     'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
-    'NamespaceIR', 'GetNamespaceIR'
+    'NamespaceIR', 'GetNamespaceIR', 'MalformedNamespaceIR',
 ]
 
 
@@ -144,7 +144,7 @@ class IR:
         def visit_mul(self, mul: MulExprAST):
             return ArithmeticIR("*", self.visit_expr(mul.left), self.visit_expr(mul.right), mul.pos)
 
-        def visit_neg(self, neg: NegateIR):
+        def visit_neg(self, neg: NegExprAST):
             return NegateIR(self.visit_expr(neg.right), neg.pos)
 
         def visit_new(self, new: NewExprAST):
@@ -176,6 +176,9 @@ class IR:
 
         def visit_get_namespace(self, namespace: GetVarExprAST):
             return GetNamespaceIR(namespace.var, namespace.pos)
+
+        def handle_malformed_namespace(self, namespace: ExprAST):
+            return MalformedNamespaceIR(namespace.pos)
 
         def visit_ann(self, ann: ExprAST):
             return AnnotationIR(self.visit_type(ann), ann.pos)
@@ -526,6 +529,11 @@ class GetNamespaceIR(NamespaceIR):
         super().__init__(pos)
 
         self.name = name
+
+
+class MalformedNamespaceIR(NamespaceIR):
+    def __init__(self, pos: Position):
+        super().__init__(pos)
 # endregion
 
 

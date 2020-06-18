@@ -2,6 +2,6 @@ import "<local>/thing.az";
 
 
 def main() -> int32 {
-    var thing: int32 = thing::fibo(13);
+    var thing: int32 = (thing+1)::fibo(13);
     return thing;
 }

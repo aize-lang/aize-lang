@@ -158,16 +158,6 @@ class TypeCheckingError(AizeMessage):
                 note.display(reporter)
 
 
-class MismatchedTypesError(AizeMessage):
-    def __init__(self, msg: str, pos: Position):
-        super().__init__(ErrorLevel.ERROR)
-        self.msg = msg
-        self.pos = pos
-
-    def display(self, reporter: Reporter):
-        reporter.positioned_error("Control Flow Error", self.msg, self.pos)
-
-
 class FlowError(AizeMessage):
     def __init__(self, msg: str, pos: Position):
         super().__init__(ErrorLevel.ERROR)
@@ -176,6 +166,16 @@ class FlowError(AizeMessage):
 
     def display(self, reporter: Reporter):
         reporter.positioned_error("Control Flow Error", self.msg, self.pos)
+
+
+class MalformedASTError(AizeMessage):
+    def __init__(self, msg: str, pos: Position):
+        super().__init__(ErrorLevel.ERROR)
+        self.msg = msg
+        self.pos = pos
+
+    def display(self, reporter: Reporter):
+        reporter.positioned_error("AST Conversion Error", self.msg, self.pos)
 # endregion
 
 
@@ -1096,3 +1096,8 @@ class ResolveTypes(IRSymbolsPass):
             MessageHandler.handle_message(msg)
             resolved_namespace = ErroredNamespaceSymbol(namespace.pos)
         self.symbols.namespace(namespace, set_to=SymbolData.NamespaceData(resolved_namespace))
+
+    def visit_malformed_namespace(self, malformed: MalformedNamespaceIR):
+        msg = MalformedASTError(f"Could resolve expression to a namespace", malformed.pos)
+        MessageHandler.handle_message(msg)
+        self.symbols.namespace(malformed, set_to=SymbolData.NamespaceData(ErroredNamespaceSymbol(malformed.pos)))

@@ -186,11 +186,17 @@ class IRVisitor(ABC):
     def visit_namespace(self, namespace: NamespaceIR):
         if isinstance(namespace, GetNamespaceIR):
             return self.visit_get_namespace(namespace)
+        elif isinstance(namespace, MalformedNamespaceIR):
+            return self.visit_malformed_namespace(namespace)
         else:
             raise TypeError(f"Expected a namespace node, got {namespace}")
 
     @abstractmethod
     def visit_get_namespace(self, namespace: GetNamespaceIR):
+        pass
+
+    @abstractmethod
+    def visit_malformed_namespace(self, malformed: MalformedNamespaceIR):
         pass
 
 
@@ -370,6 +376,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_get_namespace(self, namespace: GetNamespaceIR):
+        pass
+
+    def visit_malformed_namespace(self, malformed: MalformedNamespaceIR):
         pass
 
 
