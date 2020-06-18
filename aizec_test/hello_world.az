@@ -1,8 +1,15 @@
 import "<local>/thing.az";
 
 
+# def putc(char: int32) -> int32 {
+#     putchar(char);
+#     return 0;
+# }
+
+
 def main() -> int32 {
-    var thing: int32 = (thing)::fibo(13);
+    var small_int: int8 = @int8(12);
+    var thing: int32 = (thing)::fibo(12);
     putchar(97);
     return thing;
 }
