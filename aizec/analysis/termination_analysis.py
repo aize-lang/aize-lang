@@ -65,5 +65,8 @@ class MangleNames(IRTreePass):
 
     def visit_function(self, func: FunctionIR):
         symbol = self.symbols.function(func).symbol
-        mangled = self.mangle_symbol(symbol)
-        func.name = mangled
+        if 'link_in' in self.symbols.function(func).attrs:
+            pass
+        else:
+            mangled = self.mangle_symbol(symbol)
+            func.name = mangled

@@ -161,11 +161,9 @@ class LiteralData(Extension):
     class BuiltinData:
         def __init__(self,
                      uint: Dict[int, TypeSymbol],
-                     sint: Dict[int, TypeSymbol],
-                     putchar: VariableSymbol):
+                     sint: Dict[int, TypeSymbol]):
             self.uint = uint
             self.sint = sint
-            self.putchar = putchar
 
     def general(self, set_to: BuiltinData = None) -> BuiltinData:
         return super().general(set_to)
@@ -273,13 +271,8 @@ class InitSymbols(IRSymbolsPass):
         int32 = def_int("int32", True, 32)
         int64 = def_int("int64", True, 64)
 
-        putchar_type = FunctionTypeSymbol([int32], int32, Position.new_none())
-        putchar = VariableSymbol("putchar", program, putchar_type, Position.new_none())
-        builtin_namespace.define_value(putchar)
-
         self.builtins.general(set_to=LiteralData.BuiltinData({1: uint1, 8: uint8, 32: uint32, 64: uint64},
-                                                             {8: int8, 32: int32, 64: int64},
-                                                             putchar))
+                                                             {8: int8, 32: int32, 64: int64}))
 
         with self.enter_namespace(builtin_namespace):
             for source in program.sources:

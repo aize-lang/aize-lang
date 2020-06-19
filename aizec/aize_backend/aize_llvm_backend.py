@@ -9,7 +9,7 @@ from aizec.aize_common import MessageHandler
 from aizec.ir import IR, Extension
 from aizec.ir.nodes import *
 
-from aizec.analysis import LiteralData, SymbolData, \
+from aizec.analysis import SymbolData, \
     TypeSymbol, IntTypeSymbol, FunctionTypeSymbol, StructTypeSymbol, \
     DefaultPasses, MangleNames
 from aizec.ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias, PassScheduler
@@ -129,7 +129,6 @@ class IRLLVMPass(IRTreePass, ABC):
         super().__init__(aize_ir)
 
         self.symbols: SymbolData = self.get_ext(SymbolData)
-        self.literals: LiteralData = self.get_ext(LiteralData)
         self.llvm: LLVMData = self.get_ext(LLVMData)
 
         self.builder = ir.IRBuilder()
@@ -172,7 +171,7 @@ class DeclareFunctions(IRLLVMPass):
 
     @classmethod
     def get_required_extensions(cls) -> Set[Type[Extension]]:
-        return {LiteralData, SymbolData, LLVMData}
+        return {SymbolData, LLVMData}
 
     @classmethod
     def get_required_passes(cls) -> Set[PassAlias]:
@@ -205,18 +204,24 @@ class DeclareFunctions(IRLLVMPass):
         llvm_func = ir.Function(self.mod, llvm_func_type, func.name)
         self.llvm.decl(func, LLVMData.DeclData(llvm_func, is_ptr=False))
 
-        prep = llvm_func.append_basic_block("prep")
-        self.builder.position_at_start(prep)
+        if 'link_in' in self.symbols.function(func).attrs:
+            entry = None
+        else:
+            prep = llvm_func.append_basic_block("prep")
+            self.builder.position_at_start(prep)
 
-        for param, llvm_arg in zip(func.params, llvm_func.args):
-            param_ptr = self.builder.alloca(llvm_arg.type)
-            self.builder.store(llvm_arg, param_ptr)
-            self.llvm.decl(param, LLVMData.DeclData(param_ptr, is_ptr=True))
+            for param, llvm_arg in zip(func.params, llvm_func.args):
+                param_ptr = self.builder.alloca(llvm_arg.type)
+                self.builder.store(llvm_arg, param_ptr)
+                self.llvm.decl(param, LLVMData.DeclData(param_ptr, is_ptr=True))
 
-        entry = self.builder.append_basic_block("entry")
-        self.builder.branch(entry)
+            entry = self.builder.append_basic_block("entry")
+            self.builder.branch(entry)
 
-        if 'entry' in self.symbols.function(func).attrs:
+        func_attrs = self.symbols.function(func).attrs
+        if 'entry' in func_attrs:
+            # TODO Make an analysis pass for all of these and just put it in the function extension
+            # TODO Do the above so I can check if I recognized all attributes
             self.call_func_in_main(llvm_func)
 
         self.llvm.function(func, LLVMData.FunctionData(llvm_func, entry))
@@ -231,7 +236,7 @@ class DeclareFunctions(IRLLVMPass):
 class DefineFunctions(IRLLVMPass):
     @classmethod
     def get_required_extensions(cls) -> Set[Type[Extension]]:
-        return {LiteralData, SymbolData, LLVMData}
+        return {SymbolData, LLVMData}
 
     @classmethod
     def get_required_passes(cls) -> Set[PassAlias]:
@@ -240,11 +245,14 @@ class DefineFunctions(IRLLVMPass):
     def visit_function(self, func: FunctionIR):
         llvm_func = self.llvm.function(func).llvm_func
         code_entry = self.llvm.function(func).code_entry
-        self.builder.position_at_end(code_entry)
-        for stmt in func.body:
-            self.visit_stmt(stmt)
-        if not self.builder.block.is_terminated:
-            self.builder.unreachable()
+        if 'link_in' in self.symbols.function(func).attrs:
+            pass
+        else:
+            self.builder.position_at_end(code_entry)
+            for stmt in func.body:
+                self.visit_stmt(stmt)
+            if not self.builder.block.is_terminated:
+                self.builder.unreachable()
 
     def visit_if(self, if_: IfStmtIR):
         self.visit_expr(if_.cond)
@@ -344,17 +352,13 @@ class DefineFunctions(IRLLVMPass):
     def visit_get_var(self, get_var: GetVarIR):
         symbol = self.symbols.get_var(get_var).symbol
         is_function = self.symbols.get_var(get_var).is_function
-        if symbol == self.literals.general().putchar:
-            var_ptr = None
-            llvm_val = ir.Function(self.mod, self.resolve_type(symbol.type), "putchar")
+        decl_data = self.llvm.decl(symbol.declarer)
+        if decl_data.is_ptr:
+            var_ptr = decl_data.var_value
+            llvm_val = self.builder.load(var_ptr)
         else:
-            decl_data = self.llvm.decl(symbol.declarer)
-            if decl_data.is_ptr:
-                var_ptr = decl_data.var_value
-                llvm_val = self.builder.load(var_ptr)
-            else:
-                var_ptr = None
-                llvm_val = decl_data.var_value
+            var_ptr = None
+            llvm_val = decl_data.var_value
         self.llvm.expr(get_var, LLVMData.ExprData(var_ptr, llvm_val))
 
     def visit_set_var(self, set_var: SetVarIR):

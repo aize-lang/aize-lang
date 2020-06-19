@@ -6,10 +6,17 @@ def putc(char: int32) -> int32 {
 }
 
 
+@link_in
+def putchar(char: int32) -> int32 {
+    return 0;
+}
+
+
 @entry
 def main() -> int32 {
     var small_int: int8 = @int8(12);
     var thing: int32 = (thing)::fibo(12);
     putchar(97);
+    putchar(10);
     return thing;
 }
