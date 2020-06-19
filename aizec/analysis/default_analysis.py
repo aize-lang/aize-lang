@@ -581,6 +581,8 @@ class ResolveSymbols(IRSymbolsPass):
 
     def cast_implicit(self, expr: ExprIR, to_type: TypeSymbol) -> ExprIR:
         expr_type = self.symbols.expr(expr).return_type
+        if isinstance(expr_type, ErroredTypeSymbol) or isinstance(to_type, ErroredTypeSymbol):
+            return expr
         if isinstance(expr_type, IntTypeSymbol) and isinstance(to_type, IntTypeSymbol):
             if expr_type.is_signed == to_type.is_signed:
                 from_bits = expr_type.bit_size
@@ -884,6 +886,23 @@ class ResolveSymbols(IRSymbolsPass):
                     return_type = errored_type
                 else:
                     return_type = self.builtins.general().sint[to_bits]
+            else:
+                return_type = return_type = ErroredTypeSymbol(intrinsic.pos)
+
+            self.symbols.expr(intrinsic, set_to=SymbolData.ExprData(return_type, False))
+        elif intrinsic.name in ('uint8', 'uint32', 'uint64'):
+            to_bits = int(intrinsic.name[4:])
+            return_type: TypeSymbol
+
+            for arg in intrinsic.args:
+                self.visit_expr(arg)
+
+            if self.check_argument_count(intrinsic.args, 1, intrinsic.pos):
+                num = intrinsic.args[0]
+                if errored_type := self.check_ints([num], intrinsic, same_signs=False):
+                    return_type = errored_type
+                else:
+                    return_type = self.builtins.general().uint[to_bits]
             else:
                 return_type = return_type = ErroredTypeSymbol(intrinsic.pos)
 

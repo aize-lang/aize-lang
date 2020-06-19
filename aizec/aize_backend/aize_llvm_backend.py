@@ -461,7 +461,7 @@ class DefineFunctions(IRLLVMPass):
         self.llvm.expr(cast_int, set_to=LLVMData.ExprData(None, llvm_val))
 
     def visit_intrinsic(self, intrinsic: IntrinsicIR):
-        if intrinsic.name in ('int8', 'int32', 'int64'):
+        if intrinsic.name in ('int8', 'int32', 'int64', 'uint8', 'uint32', 'uint64'):
             num = intrinsic.args[0]
             from_type = cast(IntTypeSymbol, self.symbols.expr(num).return_type)
             to_type = cast(IntTypeSymbol, self.symbols.expr(intrinsic).return_type)
