@@ -9,7 +9,7 @@ __all__ = [
     'ProgramIR', 'SourceIR',
     'TopLevelIR', 'FunctionIR', 'ClassIR', 'StructIR', 'ImportIR',
     'FieldIR', 'MethodDeclIR', 'MethodDefIR',
-    'ParamIR',
+    'ParamIR', 'FuncAttrIR',
     'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR',
     'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',
     'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR',
@@ -58,12 +58,13 @@ class ImportIR(TopLevelIR):
 
 
 class FunctionIR(TopLevelIR):
-    def __init__(self, name: str, params: List[ParamIR], ret: TypeIR, body: List[StmtIR], pos: Position):
+    def __init__(self, name: str, params: List[ParamIR], ret: TypeIR, body: List[StmtIR], attrs: List[FuncAttrIR], pos: Position):
         super().__init__(pos)
         self.name = name
         self.params = params
         self.ret = ret
         self.body = body
+        self.attrs = attrs
 
 
 class StructIR(TopLevelIR):
@@ -113,6 +114,12 @@ class ParamIR(TextIR):
         super().__init__(pos)
         self.name = name
         self.type = type
+
+
+class FuncAttrIR(TextIR):
+    def __init__(self, name: str, pos: Position):
+        super().__init__(pos)
+        self.name = name
 # endregion
 
 

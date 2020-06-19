@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aizec.common import *
 
-from .ir_nodes import *
+from .nodes import *
 
 
 T = TypeVar('T')

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aizec.common import *
 
-from .ir_nodes import *
+from .nodes import *
 from .extensions import Extension
 
 from aizec.aize_common.aize_source import Source
@@ -10,21 +10,7 @@ from aizec.aize_frontend.aize_ast import *
 
 
 __all__ = [
-    'IR',
-
-    'Extension',
-
-    'NodeIR', 'TextIR',
-    'ProgramIR', 'SourceIR',
-    'TopLevelIR', 'FunctionIR', 'ClassIR', 'StructIR', 'ImportIR',
-    'FieldIR', 'MethodDeclIR', 'MethodDefIR',
-    'ParamIR',
-    'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR',
-    'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',
-    'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR',
-    'AnnotationIR',
-    'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
-    'NamespaceIR', 'GetNamespaceIR', 'MalformedNamespaceIR',
+    'IR', 'Extension',
 ]
 
 
@@ -69,6 +55,7 @@ class CreateIR(ASTVisitor):
             params=[self.visit_param(param) for param in func.params],
             ret=ann.type,
             body=[self.visit_stmt(stmt) for stmt in func.body],
+            attrs=[self.visit_func_attr(attr) for attr in func.attributes],
             pos=func.pos
         )
 
@@ -117,6 +104,9 @@ class CreateIR(ASTVisitor):
             type=ann.type,
             pos=param.pos
         )
+
+    def visit_func_attr(self, attr: FunctionAttributeAST):
+        return FuncAttrIR(attr.name, attr.pos)
 
     def visit_var_decl(self, decl: VarDeclStmtAST):
         return VarDeclIR(decl.name, self.visit_ann(decl.annotation), self.visit_expr(decl.value), decl.pos)

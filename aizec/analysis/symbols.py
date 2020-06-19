@@ -3,7 +3,7 @@ from __future__ import annotations
 from aizec.common import *
 from aizec.aize_common import Position
 
-from aizec.ir import NodeIR
+from aizec.ir.nodes import NodeIR
 
 
 __all__ = [

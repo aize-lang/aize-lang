@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from aizec.common import *
 
-from aizec.ir import *
+from aizec.ir import Extension
+from aizec.ir.nodes import *
 
 from .symbols import NamespaceSymbol, VariableSymbol, TypeSymbol, StructTypeSymbol
 
@@ -26,10 +27,10 @@ class SymbolData(Extension):
         return super().source(node, set_to)
 
     class FunctionData:
-        def __init__(self, symbol: VariableSymbol, namespace: NamespaceSymbol, is_program_entry: bool):
+        def __init__(self, symbol: VariableSymbol, namespace: NamespaceSymbol, attrs: List[str]):
             self.symbol = symbol
             self.namespace = namespace
-            self.is_program_entry = is_program_entry
+            self.attrs = attrs
 
     def function(self, node: FunctionIR, set_to: FunctionData = None) -> FunctionData:
         return super().function(node, set_to)

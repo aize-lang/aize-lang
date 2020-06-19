@@ -337,12 +337,12 @@ class AizeParser:
         top_levels: List[TopLevelAST] = []
         try:
             while not self.is_done():
-                with self.sync_point("class", "struct", "def", "import"):
+                with self.sync_point("class", "struct", "def", "import", "@"):
                     if self.curr_is("class"):
                         top_levels += [self.parse_class()]
                     elif self.curr_is("struct"):
                         top_levels += [self.parse_struct()]
-                    elif self.curr_is("def"):
+                    elif self.curr_is("def") or self.curr_is("@"):
                         top_levels += [self.parse_function()]
                     elif self.curr_is("import"):
                         top_levels += [self.parse_import()]
@@ -495,6 +495,11 @@ class AizeParser:
         return ImportAST(anchor, path, start.pos().to(end.pos()))
 
     def parse_function(self):
+        attrs = []
+        while attr_start := self.match("@"):
+            attr_name = self.match_exc(Token.IDENTIFIER_TYPE)
+            attr = FunctionAttributeAST(attr_name.text, Position.combine(attr_start.pos(), attr_name.pos()))
+            attrs.append(attr)
         start = self.match("def")
         name = self.match_exc(Token.IDENTIFIER_TYPE)
         self.match_exc("(")
@@ -519,7 +524,7 @@ class AizeParser:
                 body.append(self.parse_stmt())
         self.match_exc("}")
 
-        return FunctionAST(name.text, params, ret, body, start.pos())
+        return FunctionAST(name.text, params, ret, body, attrs, start.pos())
 
     def parse_ann(self) -> ExprAST:
         return self.parse_expr()

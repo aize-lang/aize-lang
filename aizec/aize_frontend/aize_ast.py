@@ -8,8 +8,8 @@ __all__ = [
     'ASTVisitor',
     'NodeAST', 'TextAST',
     'ProgramAST', 'SourceAST',
-    'ParamAST',
     'TopLevelAST', 'ClassAST', 'FunctionAST', 'ImportAST', 'StructAST',
+    'ParamAST', 'FunctionAttributeAST',
     'AttrAST', 'MethodSigAST', 'MethodImplAST', 'MethodAST',
     'StmtAST', 'IfStmtAST', 'WhileStmtAST', 'BlockStmtAST', 'VarDeclStmtAST', 'ReturnStmtAST', 'ExprStmtAST',
 
@@ -84,6 +84,10 @@ class ASTVisitor(ABC):
 
     @abstractmethod
     def visit_param(self, param: ParamAST):
+        pass
+
+    @abstractmethod
+    def visit_func_attr(self, attr: FunctionAttributeAST):
         pass
 
     def visit_stmt(self, stmt: StmtAST):
@@ -303,13 +307,14 @@ class ImportAST(TopLevelAST):
 
 
 class FunctionAST(TopLevelAST):
-    def __init__(self, name: str, params: List[ParamAST], ret: ExprAST, body: List[StmtAST], pos: Position):
+    def __init__(self, name: str, params: List[ParamAST], ret: ExprAST, body: List[StmtAST], attributes: List[FunctionAttributeAST], pos: Position):
         super().__init__(pos)
 
         self.name = name
         self.params = params
         self.ret = ret
         self.body = body
+        self.attributes = attributes
 
 
 class ClassStmtAST(TextAST):
@@ -345,6 +350,20 @@ class MethodImplAST(MethodSigAST):
 
 
 MethodAST = MethodSigAST
+
+
+class ParamAST(TextAST):
+    def __init__(self, name: str, annotation: ExprAST, pos: Position):
+        super().__init__(pos)
+
+        self.name = name
+        self.annotation = annotation
+
+
+class FunctionAttributeAST(TextAST):
+    def __init__(self, name: str, pos: Position):
+        super().__init__(pos)
+        self.name = name
 
 
 class StmtAST(TextAST):
@@ -553,11 +572,3 @@ class StrLiteralAST(ExprAST):
         super().__init__(pos)
 
         self.s = s
-
-
-class ParamAST(TextAST):
-    def __init__(self, name: str, annotation: ExprAST, pos: Position):
-        super().__init__(pos)
-
-        self.name = name
-        self.annotation = annotation

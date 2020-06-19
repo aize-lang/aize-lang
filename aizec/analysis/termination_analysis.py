@@ -4,6 +4,7 @@ from aizec.common import *
 from aizec.aize_common import AizeMessage, Reporter, MessageHandler, ErrorLevel, Position
 
 from aizec.ir import *
+from aizec.ir.nodes import *
 from aizec.ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias
 
 from .symbol_data import SymbolData

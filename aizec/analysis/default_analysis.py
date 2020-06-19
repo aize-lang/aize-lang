@@ -3,7 +3,8 @@ from __future__ import annotations
 from aizec.common import *
 from aizec.aize_common import AizeMessage, Reporter, MessageHandler, ErrorLevel, Position
 
-from aizec.ir import *
+from aizec.ir import IR, Extension
+from aizec.ir.nodes import *
 from aizec.ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias
 
 from .symbol_data import SymbolData
@@ -399,7 +400,10 @@ class DeclareFunctions(IRSymbolsPass):
 
         func_namespace = NamespaceSymbol(f"function {func.name}", func.pos)
         self.current_namespace.define_namespace(func_namespace, visible=False)
-        self.symbols.function(func, set_to=SymbolData.FunctionData(func_value, func_namespace, is_program_entry=func.name == 'main'))
+
+        attrs = [attr.name for attr in func.attrs]
+
+        self.symbols.function(func, set_to=SymbolData.FunctionData(func_value, func_namespace, attrs))
         self.symbols.decl(func, set_to=SymbolData.DeclData(func, func_value, func_type))
 
     def visit_param(self, param: ParamIR):

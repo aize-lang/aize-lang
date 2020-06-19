@@ -6,6 +6,7 @@ def putc(char: int32) -> int32 {
 }
 
 
+@entry
 def main() -> int32 {
     var small_int: int8 = @int8(12);
     var thing: int32 = (thing)::fibo(12);

@@ -6,7 +6,8 @@ import llvmlite.binding as llvm
 from aizec.common import *
 from aizec.aize_common import MessageHandler
 
-from aizec.ir import *
+from aizec.ir import IR, Extension
+from aizec.ir.nodes import *
 
 from aizec.analysis import LiteralData, SymbolData, \
     TypeSymbol, IntTypeSymbol, FunctionTypeSymbol, StructTypeSymbol, \
@@ -163,6 +164,12 @@ class IRLLVMPass(IRTreePass, ABC):
 
 @PassesRegister.register(to_sequences=[GenerateLLVM])
 class DeclareFunctions(IRLLVMPass):
+    def __init__(self, aize_ir: IR):
+        super().__init__(aize_ir)
+
+        self._main_builder = ir.IRBuilder()
+        self._last_ret = ir.Constant(ir.IntType(32), 0)
+
     @classmethod
     def get_required_extensions(cls) -> Set[Type[Extension]]:
         return {LiteralData, SymbolData, LLVMData}
@@ -170,6 +177,20 @@ class DeclareFunctions(IRLLVMPass):
     @classmethod
     def get_required_passes(cls) -> Set[PassAlias]:
         return {DefaultPasses, InitLLVM, MangleNames}
+
+    def call_func_in_main(self, func: ir.Function):
+        ret = self._main_builder.call(func, [])
+        self._last_ret = ret
+
+    def visit_program(self, program: ProgramIR):
+        main_func = ir.Function(self.mod, ir.FunctionType(ir.IntType(32), []), "main")
+        main_entry = main_func.append_basic_block("entry")
+        self._main_builder.position_at_start(main_entry)
+
+        for source in program.sources:
+            self.visit_source(source)
+
+        self._main_builder.ret(self._last_ret)
 
     def visit_function(self, func: FunctionIR):
         param_types = []
@@ -195,10 +216,8 @@ class DeclareFunctions(IRLLVMPass):
         entry = self.builder.append_basic_block("entry")
         self.builder.branch(entry)
 
-        if self.symbols.function(func).is_program_entry:
-            main_func = ir.Function(self.mod, ir.FunctionType(ir.IntType(32), []), "main")
-            main_builder = ir.IRBuilder(main_func.append_basic_block("entry"))
-            main_builder.ret(main_builder.call(llvm_func, []))
+        if 'entry' in self.symbols.function(func).attrs:
+            self.call_func_in_main(llvm_func)
 
         self.llvm.function(func, LLVMData.FunctionData(llvm_func, entry))
 

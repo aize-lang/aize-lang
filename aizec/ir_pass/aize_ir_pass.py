@@ -4,7 +4,8 @@ from abc import ABCMeta
 
 from aizec.common import *
 
-from aizec.ir import *
+from aizec.ir import IR, Extension
+from aizec.ir.nodes import *
 
 
 E = TypeVar('E', bound=Extension)
