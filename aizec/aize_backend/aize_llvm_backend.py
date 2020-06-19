@@ -8,7 +8,9 @@ from aizec.aize_common import MessageHandler
 
 from aizec.ir import *
 
-from aizec.analysis import LiteralData, SymbolData, TypeSymbol, IntTypeSymbol, FunctionTypeSymbol, StructTypeSymbol, DefaultPasses
+from aizec.analysis import LiteralData, SymbolData, \
+    TypeSymbol, IntTypeSymbol, FunctionTypeSymbol, StructTypeSymbol, \
+    DefaultPasses, MangleNames
 from aizec.ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias, PassScheduler
 
 from .aize_backend import CBackend, CLinker
@@ -167,7 +169,7 @@ class DeclareFunctions(IRLLVMPass):
 
     @classmethod
     def get_required_passes(cls) -> Set[PassAlias]:
-        return {DefaultPasses, InitLLVM}
+        return {DefaultPasses, InitLLVM, MangleNames}
 
     def visit_function(self, func: FunctionIR):
         param_types = []
@@ -193,6 +195,11 @@ class DeclareFunctions(IRLLVMPass):
         entry = self.builder.append_basic_block("entry")
         self.builder.branch(entry)
 
+        if self.symbols.function(func).is_program_entry:
+            main_func = ir.Function(self.mod, ir.FunctionType(ir.IntType(32), []), "main")
+            main_builder = ir.IRBuilder(main_func.append_basic_block("entry"))
+            main_builder.ret(main_builder.call(llvm_func, []))
+
         self.llvm.function(func, LLVMData.FunctionData(llvm_func, entry))
 
     def visit_get_type(self, type: GetTypeIR):
@@ -209,7 +216,7 @@ class DefineFunctions(IRLLVMPass):
 
     @classmethod
     def get_required_passes(cls) -> Set[PassAlias]:
-        return {DefaultPasses, InitLLVM, DeclareFunctions}
+        return {DefaultPasses, InitLLVM, DeclareFunctions, MangleNames}
 
     def visit_function(self, func: FunctionIR):
         llvm_func = self.llvm.function(func).llvm_func

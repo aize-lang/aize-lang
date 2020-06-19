@@ -255,7 +255,7 @@ class InitSymbols(IRSymbolsPass):
         return set()
 
     def visit_program(self, program: ProgramIR):
-        builtin_namespace = NamespaceSymbol("<builtins>", Position.new_none())
+        builtin_namespace = NamespaceSymbol("program", Position.new_none())
         self.symbols.program(program, set_to=SymbolData.ProgramData(builtin_namespace))
 
         def def_int(name, signed, bits):
@@ -285,7 +285,7 @@ class InitSymbols(IRSymbolsPass):
                 self.visit_source(source)
 
     def visit_source(self, source: SourceIR):
-        global_namespace = NamespaceSymbol(f"<{source.source_name} globals>", Position.new_source(source.source_name))
+        global_namespace = NamespaceSymbol(f"source {source.source_name}", Position.new_source(source.source_name))
         self.current_namespace.define_namespace(global_namespace, visible=False)
         self.symbols.source(source, set_to=SymbolData.SourceData(global_namespace))
 
@@ -312,7 +312,6 @@ class DeclareTypes(IRSymbolsPass):
                 self.visit_source(source)
 
     def visit_source(self, source: SourceIR):
-        global_namespace = self.symbols.source(source).globals
         with self.enter_namespace(self.symbols.source(source).globals):
             for top_level in source.top_levels:
                 self.visit_top_level(top_level)
@@ -398,9 +397,9 @@ class DeclareFunctions(IRSymbolsPass):
             msg = DefinitionError.name_existing(func.pos, err.old_symbol)
             MessageHandler.handle_message(msg)
 
-        func_namespace = NamespaceSymbol(f"<{func.name} body>", func.pos)
+        func_namespace = NamespaceSymbol(f"function {func.name}", func.pos)
         self.current_namespace.define_namespace(func_namespace, visible=False)
-        self.symbols.function(func, set_to=SymbolData.FunctionData(func_value, func_namespace))
+        self.symbols.function(func, set_to=SymbolData.FunctionData(func_value, func_namespace, is_program_entry=func.name == 'main'))
         self.symbols.decl(func, set_to=SymbolData.DeclData(func, func_value, func_type))
 
     def visit_param(self, param: ParamIR):

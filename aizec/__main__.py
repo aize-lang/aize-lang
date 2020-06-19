@@ -3,7 +3,6 @@ import argparse
 from aizec.common import *
 
 from aizec.aize_run import FrontendManager, IRManager, BackendManager, fail_callback
-from aizec.analysis import DefaultPasses
 
 
 def make_arg_parser():
@@ -35,7 +34,8 @@ def main():
         frontend.trace_imports()
 
         ir_manager = IRManager(frontend.get_ir())
-        ir_manager.schedule_pass(DefaultPasses)
+        ir_manager.schedule_default_passes()
+        ir_manager.schedule_mangling()
         ir_manager.run_scheduled()
 
         backend = BackendManager.create_llvm(ir_manager.ir)

@@ -11,7 +11,7 @@ from aizec.aize_frontend import ProgramAST, SourceAST, AizeParser
 from aizec.ir import IR
 from aizec.ir_pass import PassScheduler, PassAlias
 
-from aizec.analysis import DefaultPasses
+from aizec.analysis import DefaultPasses, MangleNames
 
 from aizec.aize_backend import Backend, LLVMBackend
 
@@ -161,6 +161,9 @@ class IRManager:
 
     def schedule_default_passes(self):
         self.scheduler.schedule(DefaultPasses)
+
+    def schedule_mangling(self):
+        self.scheduler.schedule(MangleNames)
 
     def schedule_pass(self, ir_pass: PassAlias) -> bool:
         return self.scheduler.schedule(ir_pass)
