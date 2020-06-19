@@ -640,7 +640,7 @@ class AizeParser:
 
     def parse_cmp(self) -> ExprAST:
         expr = self.parse_add()
-        while self.curr.type in ("<", ">"):
+        while self.curr.type in ("<", ">", "<=", ">=", "==", "!="):
             op = self.match_any_exc("<", ">", "<=", ">=", "==", "!=")
             right = self.parse_add()
             expr = CompareExprAST(op.text, expr, right, Position.combine(expr.pos, right.pos))

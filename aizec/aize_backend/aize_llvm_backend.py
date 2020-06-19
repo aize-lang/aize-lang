@@ -329,6 +329,16 @@ class DefineFunctions(IRLLVMPass):
             llvm_val = self.builder.sub(left, right)
         elif arith.op == '*':
             llvm_val = self.builder.mul(left, right)
+        elif arith.op == '/':
+            if is_signed:
+                llvm_val = self.builder.sdiv(left, right)
+            else:
+                llvm_val = self.builder.udiv(left, right)
+        elif arith.op == '%':
+            if is_signed:
+                llvm_val = self.builder.srem(left, right)
+            else:
+                llvm_val = self.builder.urem(left, right)
         else:
             raise NotImplementedError()
         self.llvm.expr(arith, set_to=LLVMData.ExprData(None, llvm_val))
