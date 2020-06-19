@@ -180,6 +180,9 @@ class LiteralData(Extension):
     def struct(self, node: StructIR, set_to=None):
         raise NotImplementedError()
 
+    def agg_func(self, node: AggFuncIR, set_to=None):
+        raise NotImplementedError()
+
     def param(self, node: ParamIR, set_to=None):
         raise NotImplementedError()
 
@@ -193,6 +196,9 @@ class LiteralData(Extension):
         raise NotImplementedError()
 
     def arithmetic(self, node: ArithmeticIR, set_to=None):
+        raise NotImplementedError()
+
+    def method_call(self, node: MethodCallIR, set_to=None):
         raise NotImplementedError()
 
     def get_var(self, node: GetVarIR, set_to=None):
@@ -600,6 +606,7 @@ class ResolveSymbols(IRSymbolsPass):
                 return type
         else:
             if expected.is_super_of(got_type):
+
                 return None
             else:
                 msg = TypeCheckingError.expected_type(expected, got_type, expr.pos, decl)
@@ -749,8 +756,10 @@ class ResolveSymbols(IRSymbolsPass):
         self.visit_stmt(if_.then_do)
 
         boolean = self.builtins.general().uint[1]
-        self.check_type(if_.cond, boolean, if_)
-        if_.cond = self.cast_implicit(if_.cond, boolean)
+        if errored_type := self.check_type(if_.cond, boolean, if_):
+            pass
+        else:
+            if_.cond = self.cast_implicit(if_.cond, boolean)
 
         is_terminal = self.symbols.stmt(if_.else_do).is_terminal and self.symbols.stmt(if_.then_do).is_terminal
         self.symbols.stmt(if_, set_to=SymbolData.StmtData(is_terminal))
@@ -760,8 +769,10 @@ class ResolveSymbols(IRSymbolsPass):
         self.visit_stmt(while_.while_do)
 
         boolean = self.builtins.general().uint[1]
-        self.check_type(while_.cond, boolean, while_)
-        while_.cond = self.cast_implicit(while_.cond, boolean)
+        if errored_type := self.check_type(while_.cond, boolean, while_):
+            pass
+        else:
+            while_.cond = self.cast_implicit(while_.cond, boolean)
 
         is_terminal = self.symbols.stmt(while_.while_do).is_terminal
         self.symbols.stmt(while_, set_to=SymbolData.StmtData(is_terminal))
@@ -777,8 +788,10 @@ class ResolveSymbols(IRSymbolsPass):
         decl.value = decl.value = self.visit_expr(decl.value)
         value_type = self.symbols.expr(decl.value).return_type
 
-        self.check_type(decl.value, var_type, decl, decl.ann.pos)
-        decl.value = self.cast_implicit(decl.value, var_type)
+        if errored_type := self.check_type(decl.value, var_type, decl, decl.ann.pos):
+            pass
+        else:
+            decl.value = self.cast_implicit(decl.value, var_type)
 
         symbol = VariableSymbol(decl.name, decl, var_type, decl.pos)
         self.define_value(symbol)
@@ -801,11 +814,13 @@ class ResolveSymbols(IRSymbolsPass):
         self.symbols.stmt(block, set_to=SymbolData.StmtData(block_is_terminal))
 
     def visit_return(self, ret: ReturnIR):
-        ret.expr = ret.expr = self.visit_expr(ret.expr)
+        ret.expr = self.visit_expr(ret.expr)
         expected = self.current_func_type.ret
 
-        self.check_type(ret.expr, expected, ret, self.current_func.ret.pos)
-        ret.expr = self.cast_implicit(ret.expr, expected)
+        if errored_type := self.check_type(ret.expr, expected, ret, self.current_func.ret.pos):
+            pass
+        else:
+            ret.expr = self.cast_implicit(ret.expr, expected)
 
         self.symbols.stmt(ret, set_to=SymbolData.StmtData(True))
 
@@ -1043,7 +1058,6 @@ class ResolveSymbols(IRSymbolsPass):
             MessageHandler.handle_message(msg)
             self.symbols.expr(intrinsic, set_to=SymbolData.ExprData(ErroredTypeSymbol(intrinsic.pos), False))
             return intrinsic
-
 
     def visit_get_static_attr_expr(self, get_static: GetStaticAttrExprIR):
         get_static.namespace = self.visit_namespace(get_static.namespace)

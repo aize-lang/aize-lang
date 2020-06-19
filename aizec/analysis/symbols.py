@@ -91,6 +91,9 @@ class StructTypeSymbol(TypeSymbol):
         self.fields = fields
         self.funcs = funcs
 
+    def is_super_of(self, sub: TypeSymbol) -> bool:
+        return isinstance(sub, StructTypeSymbol) and sub is self
+
     def __str__(self):
         return f"struct {self.name}"
 

@@ -2,19 +2,27 @@ import "<local>/thing.az";
 import "<std>/io.az";
 
 
+@entry
+def main() -> int32 {
+    var container: Container = new Container{30};
+    container.print_num();
+    return 0;
+}
+
+
 struct Container {
     attr num: int32;
+
+    def get_self(self) -> Container {
+        return self;
+    }
+
+    def print_num(self) -> int32 {
+        io::print_int(self.get_num());
+        return 0;
+    }
 
     def get_num(self) -> int32 {
         return self.num;
     }
-}
-
-
-@entry
-def main() -> int32 {
-    var container: Container = new Container{30};
-    var num: int32 = container.get_num();
-    io::print_int(num);
-    return 0;
 }
