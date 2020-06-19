@@ -10,7 +10,7 @@ __all__ = [
     'TopLevelIR', 'FunctionIR', 'ClassIR', 'StructIR', 'ImportIR',
     'FieldIR', 'MethodDeclIR', 'MethodDefIR',
     'ParamIR', 'FuncAttrIR',
-    'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR',
+    'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR', 'WhileStmtIR',
     'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',
     'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR',
     'AnnotationIR',
@@ -148,6 +148,14 @@ class IfStmtIR(StmtIR):
         self.cond = cond
         self.then_do = then_do
         self.else_do = else_do
+
+
+class WhileStmtIR(StmtIR):
+    def __init__(self, cond: ExprIR, while_do: StmtIR, pos: Position):
+        super().__init__(pos)
+
+        self.cond = cond
+        self.while_do = while_do
 
 
 class ExprStmtIR(StmtIR):

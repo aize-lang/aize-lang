@@ -263,6 +263,25 @@ class DefineFunctions(IRLLVMPass):
             with else_do:
                 self.visit_stmt(if_.else_do)
 
+    def visit_while(self, while_: WhileStmtIR):
+        cond = self.builder.append_basic_block()
+        body = self.builder.append_basic_block()
+        after = self.builder.append_basic_block()
+
+        self.builder.branch(cond)
+
+        with self.builder.goto_block(cond):
+            self.visit_expr(while_.cond)
+            cond_val = self.llvm.expr(while_.cond).r_val
+            self.builder.cbranch(cond_val, body, after)
+
+        with self.builder.goto_block(body):
+            self.visit_stmt(while_.while_do)
+            if not self.builder.block.is_terminated:
+                self.builder.branch(cond)
+
+        self.builder.position_at_start(after)
+
     def visit_expr_stmt(self, stmt: ExprStmtIR):
         self.visit_expr(stmt.expr)
 

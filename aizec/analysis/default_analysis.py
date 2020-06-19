@@ -54,7 +54,7 @@ class DefinitionError(AizeMessage):
 
     @classmethod
     def from_pos(cls, pos: Position, msg: str, note: AizeMessage = None):
-        return cls(msg, pos, [note])
+        return cls(msg, pos, [note] if note else [])
 
     @classmethod
     def from_node(cls, node: TextIR, msg: str, note: AizeMessage = None):
@@ -629,6 +629,15 @@ class ResolveSymbols(IRSymbolsPass):
         self.check_type(if_.cond, boolean, None, if_)
         is_terminal = self.symbols.stmt(if_.else_do).is_terminal and self.symbols.stmt(if_.then_do).is_terminal
         self.symbols.stmt(if_, set_to=SymbolData.StmtData(is_terminal))
+
+    def visit_while(self, while_: WhileStmtIR):
+        self.visit_expr(while_.cond)
+        self.visit_stmt(while_.while_do)
+
+        boolean = self.builtins.general().uint[1]
+        self.check_type(while_.cond, boolean, None, while_)
+        is_terminal = self.symbols.stmt(while_.while_do).is_terminal
+        self.symbols.stmt(while_, set_to=SymbolData.StmtData(is_terminal))
 
     def visit_expr_stmt(self, stmt: ExprStmtIR):
         self.visit_expr(stmt.expr)

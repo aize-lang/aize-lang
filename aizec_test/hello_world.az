@@ -1,22 +1,18 @@
 import "<local>/thing.az";
+import "<local>/io.az";
 
 
-def putc(char: int32) -> int32 {
-    return 0;
-}
-
-
-@link_in
-def putchar(char: int32) -> int32 {
+def print(num: int32) -> int32 {
+    while (num > 0) {
+        io::putchar(97); io::putchar(10);
+        num = num - 1;
+    }
     return 0;
 }
 
 
 @entry
 def main() -> int32 {
-    var small_int: int8 = @int8(12);
-    var thing: int32 = (thing)::fibo(12);
-    putchar(97);
-    putchar(10);
-    return thing;
+    print(10);
+    return 0;
 }

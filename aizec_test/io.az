@@ -1,1 +1,5 @@
 
+@link_in
+def putchar(char: int32) -> int32 {
+    return 0;
+}

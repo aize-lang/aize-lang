@@ -13,9 +13,9 @@ __all__ = [
     'AttrAST', 'MethodSigAST', 'MethodImplAST', 'MethodAST',
     'StmtAST', 'IfStmtAST', 'WhileStmtAST', 'BlockStmtAST', 'VarDeclStmtAST', 'ReturnStmtAST', 'ExprStmtAST',
 
-    'ExprAST', 'NEExprAST', 'BinaryExprAST', 'SubExprAST', 'AddExprAST', 'MulExprAST', 'GetVarExprAST', 'EQExprAST',
-    'ModExprAST', 'LEExprAST', 'UnaryExprAST', 'LTExprAST', 'InvExprAST', 'NotExprAST', 'DivExprAST', 'GetAttrExprAST',
-    'GEExprAST', 'SetAttrExprAST', 'NegExprAST', 'GTExprAST', 'SetVarExprAST', 'CallExprAST', 'StrLiteralAST', 'NewExprAST',
+    'ExprAST', 'CompareExprAST', 'BinaryExprAST', 'GetVarExprAST',
+    'ArithmeticExprAST', 'UnaryExprAST', 'InvExprAST', 'NotExprAST', 'GetAttrExprAST',
+    'SetAttrExprAST', 'NegExprAST', 'SetVarExprAST', 'CallExprAST', 'StrLiteralAST', 'NewExprAST',
     'IntLiteralAST', 'IntrinsicExprAST',
 
     'GetStaticAttrExprAST'
@@ -101,6 +101,8 @@ class ASTVisitor(ABC):
             return self.visit_var_decl(stmt)
         elif isinstance(stmt, ExprStmtAST):
             return self.visit_expr_stmt(stmt)
+        elif isinstance(stmt, WhileStmtAST):
+            return self.visit_while(stmt)
         else:
             raise TypeError(f"Expected a stmt node, got {stmt}")
 
@@ -118,6 +120,10 @@ class ASTVisitor(ABC):
 
     @abstractmethod
     def visit_if(self, if_: IfStmtAST):
+        pass
+
+    @abstractmethod
+    def visit_while(self, while_: WhileStmtAST):
         pass
 
     @abstractmethod
@@ -141,14 +147,10 @@ class ASTVisitor(ABC):
             return self.visit_get_attr(expr)
         elif isinstance(expr, SetAttrExprAST):
             return self.visit_set_attr(expr)
-        elif isinstance(expr, LTExprAST):
-            return self.visit_lt(expr)
-        elif isinstance(expr, AddExprAST):
-            return self.visit_add(expr)
-        elif isinstance(expr, SubExprAST):
-            return self.visit_sub(expr)
-        elif isinstance(expr, MulExprAST):
-            return self.visit_mul(expr)
+        elif isinstance(expr, CompareExprAST):
+            return self.visit_cmp(expr)
+        elif isinstance(expr, ArithmeticExprAST):
+            return self.visit_arith(expr)
         elif isinstance(expr, NegExprAST):
             return self.visit_neg(expr)
         elif isinstance(expr, GetStaticAttrExprAST):
@@ -157,19 +159,11 @@ class ASTVisitor(ABC):
             raise TypeError(f"Expected a expr node, got {expr}")
 
     @abstractmethod
-    def visit_lt(self, lt: LTExprAST):
+    def visit_cmp(self, cmp: CompareExprAST):
         pass
 
     @abstractmethod
-    def visit_add(self, add: AddExprAST):
-        pass
-
-    @abstractmethod
-    def visit_sub(self, sub: SubExprAST):
-        pass
-
-    @abstractmethod
-    def visit_mul(self, mul: MulExprAST):
+    def visit_arith(self, arith: ArithmeticExprAST):
         pass
 
     @abstractmethod
@@ -455,54 +449,19 @@ class SetAttrExprAST(ExprAST):
 
 # region Binary
 class BinaryExprAST(ExprAST):
-    def __init__(self, left: ExprAST, right: ExprAST, pos: Position):
+    def __init__(self, op: str, left: ExprAST, right: ExprAST, pos: Position):
         super().__init__(pos)
 
+        self.op = op
         self.left = left
         self.right = right
 
 
-class GTExprAST(BinaryExprAST):
+class CompareExprAST(BinaryExprAST):
     pass
 
 
-class LTExprAST(BinaryExprAST):
-    pass
-
-
-class GEExprAST(BinaryExprAST):
-    pass
-
-
-class LEExprAST(BinaryExprAST):
-    pass
-
-
-class EQExprAST(BinaryExprAST):
-    pass
-
-
-class NEExprAST(BinaryExprAST):
-    pass
-
-
-class AddExprAST(BinaryExprAST):
-    pass
-
-
-class SubExprAST(BinaryExprAST):
-    pass
-
-
-class MulExprAST(BinaryExprAST):
-    pass
-
-
-class DivExprAST(BinaryExprAST):
-    pass
-
-
-class ModExprAST(BinaryExprAST):
+class ArithmeticExprAST(BinaryExprAST):
     pass
 # endregion
 

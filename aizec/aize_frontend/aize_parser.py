@@ -281,6 +281,21 @@ class AizeParser:
         else:
             return None
 
+    def match_any(self, *types: str) -> Union[Token, None]:
+        if self.curr.type in types:
+            return self.advance()
+        else:
+            return None
+
+    def match_any_exc(self, *types: str) -> Token:
+        match = self.match_any(*types)
+        if not match:
+            if self.report_error(f"Expected any of {', '.join(types)}, got {self.curr.type}", self.curr):
+                self.synchronize()
+            else:
+                assert False
+        return match
+
     def advance(self) -> Token:
         old, self.curr = self.curr, next(self._token_stream)
         if self.curr.type == '<eof>':
@@ -626,67 +641,25 @@ class AizeParser:
     def parse_cmp(self) -> ExprAST:
         expr = self.parse_add()
         while self.curr.type in ("<", ">"):
-            start = self.curr
-            if self.curr.type == "<":
-                self.match("<")
-                right = self.parse_add()
-                expr = LTExprAST(expr, right, expr.pos.to(right.pos))
-            elif self.curr.type == ">":
-                self.match(">")
-                right = self.parse_add()
-                expr = GTExprAST(expr, right, expr.pos.to(right.pos))
-            elif self.curr.type == "<=":
-                self.match("<=")
-                right = self.parse_add()
-                expr = LEExprAST(expr, right, expr.pos.to(right.pos))
-            elif self.curr.type == ">=":
-                self.match(">=")
-                right = self.parse_add()
-                expr = GEExprAST(expr, right, expr.pos.to(right.pos))
-            elif self.curr.type == "==":
-                self.match("==")
-                right = self.parse_add()
-                expr = EQExprAST(expr, right, expr.pos.to(right.pos))
-            elif self.curr.type == "!=":
-                self.match("!=")
-                right = self.parse_add()
-                expr = NEExprAST(expr, right, expr.pos.to(right.pos))
+            op = self.match_any_exc("<", ">", "<=", ">=", "==", "!=")
+            right = self.parse_add()
+            expr = CompareExprAST(op.text, expr, right, Position.combine(expr.pos, right.pos))
         return expr
 
     def parse_add(self):
         expr = self.parse_mul()
         while self.curr.type in ("+", "-"):
-            start = self.curr
-            if self.curr.type == "+":
-                self.match("+")
-                right = self.parse_mul()
-                expr = AddExprAST(expr, right, expr.pos.to(right.pos))
-            elif self.curr.type == "-":
-                self.match("-")
-                right = self.parse_mul()
-                expr = SubExprAST(expr, right, expr.pos.to(right.pos))
+            op = self.match_any_exc("+", "-")
+            right = self.parse_mul()
+            expr = ArithmeticExprAST(op.text, expr, right, Position.combine(expr.pos, right.pos))
         return expr
 
     def parse_mul(self):
         expr = self.parse_unary()  # TODO power between this and unary
         while self.curr.type in ("*", "/", "%"):
-            start = self.curr
-            if self.curr.type == "*":
-                self.match("*")
-                right = self.parse_unary()
-                expr = MulExprAST(expr, right, expr.pos.to(right.pos))
-            elif self.curr.type == "/":
-                self.match("/")
-                right = self.parse_unary()
-                expr = DivExprAST(expr, right, expr.pos.to(right.pos))
-            # elif self.curr.type == "//":
-            #     self.match("//")
-            #     right = self.parse_unary()
-            #     expr = FloorDiv(expr, right)
-            elif self.curr.type == "%":
-                self.match("%")
-                right = self.parse_unary()
-                expr = ModExprAST(expr, right, expr.pos.to(right.pos))
+            op = self.match_any_exc("*", "/", "%")
+            right = self.parse_mul()
+            expr = ArithmeticExprAST(op.text, expr, right, Position.combine(expr.pos, right.pos))
         return expr
 
     def parse_unary(self):

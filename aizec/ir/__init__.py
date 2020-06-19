@@ -117,23 +117,20 @@ class CreateIR(ASTVisitor):
     def visit_if(self, if_: IfStmtAST):
         return IfStmtIR(self.visit_expr(if_.cond), self.visit_stmt(if_.then_do), self.visit_stmt(if_.else_do), if_.pos)
 
+    def visit_while(self, while_: WhileStmtAST):
+        return WhileStmtIR(self.visit_expr(while_.cond), self.visit_stmt(while_.do), while_.pos)
+
     def visit_expr_stmt(self, stmt: ExprStmtAST):
         return ExprStmtIR(self.visit_expr(stmt.value), stmt.pos)
 
     def visit_return(self, ret: ReturnStmtAST):
         return ReturnIR(self.visit_expr(ret.value), ret.pos)
 
-    def visit_lt(self, lt: LTExprAST):
-        return CompareIR("<", self.visit_expr(lt.left), self.visit_expr(lt.right), lt.pos)
+    def visit_cmp(self, cmp: CompareExprAST):
+        return CompareIR(cmp.op, self.visit_expr(cmp.left), self.visit_expr(cmp.right), cmp.pos)
 
-    def visit_add(self, add: AddExprAST):
-        return ArithmeticIR("+", self.visit_expr(add.left), self.visit_expr(add.right), add.pos)
-
-    def visit_sub(self, sub: SubExprAST):
-        return ArithmeticIR("-", self.visit_expr(sub.left), self.visit_expr(sub.right), sub.pos)
-
-    def visit_mul(self, mul: MulExprAST):
-        return ArithmeticIR("*", self.visit_expr(mul.left), self.visit_expr(mul.right), mul.pos)
+    def visit_arith(self, arith: ArithmeticExprAST):
+        return ArithmeticIR(arith.op, self.visit_expr(arith.left), self.visit_expr(arith.right), arith.pos)
 
     def visit_neg(self, neg: NegExprAST):
         return NegateIR(self.visit_expr(neg.right), neg.pos)
