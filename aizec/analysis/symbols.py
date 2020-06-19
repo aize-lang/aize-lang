@@ -85,15 +85,13 @@ class ErroredTypeSymbol(TypeSymbol):
 
 
 class StructTypeSymbol(TypeSymbol):
-    def __init__(self, name: str, fields: Dict[str, TypeSymbol], pos: Position, field_pos: Dict[str, Position]):
+    def __init__(self, name: str, fields: Dict[str, Tuple[TypeSymbol, Position]], funcs: Dict[str, VariableSymbol], pos: Position):
         super().__init__(name, pos)
 
         self.fields = fields
-        self.field_pos = field_pos
+        self.funcs = funcs
 
     def __str__(self):
-        # field_str = ", ".join(f"{field_name}: {field_type}" for field_name, field_type in self.fields.items())
-        # return f"struct {self.name}({field_str})"
         return f"struct {self.name}"
 
 

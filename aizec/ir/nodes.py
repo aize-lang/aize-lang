@@ -7,14 +7,14 @@ from aizec.aize_common import Position, Source
 __all__ = [
     'NodeIR', 'TextIR',
     'ProgramIR', 'SourceIR',
-    'TopLevelIR', 'FunctionIR', 'ClassIR', 'StructIR', 'ImportIR',
-    'FieldIR', 'MethodDeclIR', 'MethodDefIR',
+    'TopLevelIR', 'FunctionIR', 'StructIR', 'ImportIR',
+    'AggFieldIR', 'AggFuncIR',
     'ParamIR', 'FuncAttrIR',
     'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR', 'WhileStmtIR',
     'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',
-    'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR', 'CastIntIR',
+    'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR', 'CastIntIR', 'MethodCallIR',
     'AnnotationIR',
-    'TypeIR', 'GetTypeIR', 'MalformedTypeIR', 'GeneratedTypeIR',
+    'TypeIR', 'GetTypeIR', 'MalformedTypeIR', 'GeneratedTypeIR', 'NoTypeIR',
     'NamespaceIR', 'GetNamespaceIR', 'MalformedNamespaceIR',
 ]
 
@@ -68,39 +68,27 @@ class FunctionIR(TopLevelIR):
 
 
 class StructIR(TopLevelIR):
-    def __init__(self, name: str, fields: List[FieldIR], pos: Position):
+    def __init__(self, name: str, fields: List[AggFieldIR], funcs: List[AggFuncIR], pos: Position):
         super().__init__(pos)
 
         self.name = name
         self.fields = fields
+        self.funcs = funcs
 
 
-class ClassIR(TopLevelIR):
-    def __init__(self, name: str, fields: Dict[str, FieldIR], methods: Dict[str, MethodDefIR], pos: Position):
-        super().__init__(pos)
-        self.name = name
-        self.fields = fields
-        self.methods = methods
-
-
-# region Class Statement Nodes
-class FieldIR(TextIR):
+# region Aggregate Statement Nodes
+class AggFieldIR(TextIR):
     def __init__(self, name: str, type: TypeIR, pos: Position):
         super().__init__(pos)
         self.name = name
         self.type = type
 
 
-class MethodDeclIR(TextIR):
-    def __init__(self, name: str, params: List[ParamIR], ret: TypeIR, pos: Position):
-        super().__init__(pos)
-        self.params = params
-        self.ret = ret
-
-
-class MethodDefIR(TextIR):
+class AggFuncIR(TextIR):
     def __init__(self, name: str, params: List[ParamIR], ret: TypeIR, body: List[StmtIR], pos: Position):
         super().__init__(pos)
+
+        self.name = name
         self.params = params
         self.ret = ret
         self.body = body
@@ -108,7 +96,7 @@ class MethodDefIR(TextIR):
 # endregion
 
 
-# region Parameter Node
+# region Function Other Node
 class ParamIR(TextIR):
     def __init__(self, name: str, type: TypeIR, pos: Position):
         super().__init__(pos)
@@ -210,6 +198,14 @@ class CallIR(ExprIR):
     def __init__(self, callee: ExprIR, arguments: List[ExprIR], pos: Position):
         super().__init__(pos)
         self.callee = callee
+        self.arguments = arguments
+
+
+class MethodCallIR(ExprIR):
+    def __init__(self, obj: ExprIR, attr: str, arguments: List[ExprIR], pos: Position):
+        super().__init__(pos)
+        self.obj = obj
+        self.attr = attr
         self.arguments = arguments
 
 
@@ -315,6 +311,11 @@ class GetTypeIR(TypeIR):
     def __init__(self, name: str, pos: Position):
         super().__init__(pos)
         self.name = name
+
+
+class NoTypeIR(TypeIR):
+    def __init__(self):
+        super().__init__(Position.new_none())
 
 
 class GeneratedTypeIR(TypeIR):

@@ -2,15 +2,19 @@ import "<local>/thing.az";
 import "<std>/io.az";
 
 
-@link_in
-def malloc(bytes: uint64) -> uint64 {
-    return @uint64(0);
+struct Container {
+    attr num: int32;
+
+    def get_num(self) -> int32 {
+        return self.num;
+    }
 }
 
 
 @entry
 def main() -> int32 {
-    var size: uint64 = @uint64(700);
-    var ptr: uint64 = malloc(size);
-    return ptr;
+    var container: Container = new Container{30};
+    var num: int32 = container.get_num();
+    io::print_int(num);
+    return 0;
 }

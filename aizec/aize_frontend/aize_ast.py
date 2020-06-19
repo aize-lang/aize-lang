@@ -8,9 +8,9 @@ __all__ = [
     'ASTVisitor',
     'NodeAST', 'TextAST',
     'ProgramAST', 'SourceAST',
-    'TopLevelAST', 'ClassAST', 'FunctionAST', 'ImportAST', 'StructAST',
+    'TopLevelAST', 'FunctionAST', 'ImportAST', 'StructAST',
     'ParamAST', 'FunctionAttributeAST',
-    'AttrAST', 'MethodSigAST', 'MethodImplAST', 'MethodAST',
+    'AggregateStmtAST', 'AggregateFieldAST', 'AggregateFunctionAST',
     'StmtAST', 'IfStmtAST', 'WhileStmtAST', 'BlockStmtAST', 'VarDeclStmtAST', 'ReturnStmtAST', 'ExprStmtAST',
 
     'ExprAST', 'CompareExprAST', 'BinaryExprAST', 'GetVarExprAST',
@@ -35,9 +35,7 @@ class ASTVisitor(ABC):
         pass
 
     def visit_top_level(self, top_level: TopLevelAST):
-        if isinstance(top_level, ClassAST):
-            return self.visit_class(top_level)
-        elif isinstance(top_level, FunctionAST):
+        if isinstance(top_level, FunctionAST):
             return self.visit_function(top_level)
         elif isinstance(top_level, StructAST):
             return self.visit_struct(top_level)
@@ -55,31 +53,15 @@ class ASTVisitor(ABC):
         pass
 
     @abstractmethod
-    def visit_class(self, cls: ClassAST):
-        pass
-
-    @abstractmethod
     def visit_function(self, func: FunctionAST):
         pass
 
     @abstractmethod
-    def visit_attr(self, attr: AttrAST):
-        pass
-
-    def visit_method(self, method: MethodAST):
-        if isinstance(method, MethodImplAST):
-            return self.visit_method_impl(method)
-        elif isinstance(method, MethodSigAST):
-            return self.visit_method_sig(method)
-        else:
-            raise TypeError(f"Expected a method node, got {method}")
-
-    @abstractmethod
-    def visit_method_impl(self, method: MethodImplAST):
+    def visit_agg_field(self, attr: AggregateFieldAST):
         pass
 
     @abstractmethod
-    def visit_method_sig(self, method: MethodSigAST):
+    def visit_agg_func(self, func: AggregateFunctionAST):
         pass
 
     @abstractmethod
@@ -227,8 +209,14 @@ class ASTVisitor(ABC):
     def visit_type(self, type: ExprAST):
         if isinstance(type, GetVarExprAST):
             return self.visit_get_type(type)
+        elif type is None:
+            return self.visit_no_type()
         else:
             return self.handle_malformed_type(type)
+
+    @abstractmethod
+    def visit_no_type(self):
+        pass
 
     @abstractmethod
     def visit_get_type(self, type: GetVarExprAST):
@@ -274,21 +262,12 @@ class TopLevelAST(TextAST):
     pass
 
 
-class ClassAST(TopLevelAST):
-    def __init__(self, name: str, parents: List[ExprAST], body: List[ClassStmtAST], pos: Position):
-        super().__init__(pos)
-
-        self.name: str = name
-        self.parents: List[ExprAST] = parents
-        self.body: List[ClassStmtAST] = body
-
-
 class StructAST(TopLevelAST):
-    def __init__(self, name: str, attrs: List[AttrAST], pos: Position):
+    def __init__(self, name: str, body: List[AggregateStmtAST], pos: Position):
         super().__init__(pos)
 
         self.name = name
-        self.attrs = attrs
+        self.body = body
 
 
 class ImportAST(TopLevelAST):
@@ -311,11 +290,11 @@ class FunctionAST(TopLevelAST):
         self.attributes = attributes
 
 
-class ClassStmtAST(TextAST):
+class AggregateStmtAST(TextAST):
     pass
 
 
-class AttrAST(ClassStmtAST):
+class AggregateFieldAST(AggregateStmtAST):
     def __init__(self, name: str, annotation: ExprAST, pos: Position):
         super().__init__(pos)
 
@@ -323,31 +302,19 @@ class AttrAST(ClassStmtAST):
         self.annotation = annotation
 
 
-class MethodSigAST(ClassStmtAST):
-    def __init__(self, name: str, params: List[ParamAST], ret: ExprAST, pos: Position):
+class AggregateFunctionAST(AggregateStmtAST):
+    def __init__(self, name: str, params: List[ParamAST], ret: ExprAST, attrs: List[FunctionAttributeAST], body: List[StmtAST], pos: Position):
         super().__init__(pos)
 
         self.name = name
         self.params = params
         self.ret = ret
 
-
-class MethodImplAST(MethodSigAST):
-    def __init__(self, name: str, params: List[ParamAST], ret: ExprAST, body: List[StmtAST], pos: Position):
-        super().__init__(name, params, ret, pos)
-
         self.body = body
-
-    @classmethod
-    def from_sig(cls, sig: MethodSigAST, body: List[StmtAST]) -> MethodImplAST:
-        return cls(sig.name, sig.params, sig.ret, body, sig.pos)
-
-
-MethodAST = MethodSigAST
 
 
 class ParamAST(TextAST):
-    def __init__(self, name: str, annotation: ExprAST, pos: Position):
+    def __init__(self, name: str, annotation: Optional[ExprAST], pos: Position):
         super().__init__(pos)
 
         self.name = name

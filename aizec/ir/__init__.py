@@ -5,7 +5,7 @@ from aizec.common import *
 from .nodes import *
 from .extensions import Extension
 
-from aizec.aize_common.aize_source import Source
+from aizec.aize_common import Source, Position
 from aizec.aize_frontend.aize_ast import *
 
 
@@ -61,40 +61,27 @@ class CreateIR(ASTVisitor):
 
     def visit_struct(self, struct: StructAST):
         fields = []
-        for attr in struct.attrs:
-            fields.append(self.visit_attr(attr))
-        return StructIR(struct.name, fields, struct.pos)
-
-    def visit_class(self, cls: ClassAST):
-        fields = {}
-        methods = {}
-        for cls_stmt in cls.body:
-            if isinstance(cls_stmt, AttrAST):
-                fields[cls_stmt.name] = self.visit_attr(cls_stmt)
-            elif isinstance(cls_stmt, MethodAST):
-                if isinstance(cls_stmt, MethodImplAST):
-                    methods[cls_stmt.name] = self.visit_method(cls_stmt)
-                else:
-                    pass
+        funcs = []
+        for stmt in struct.body:
+            if isinstance(stmt, AggregateFieldAST):
+                fields.append(self.visit_agg_field(stmt))
+            elif isinstance(stmt, AggregateFunctionAST):
+                funcs.append(self.visit_agg_func(stmt))
             else:
                 raise Exception()
-        return ClassIR(cls.name, fields, methods, cls.pos)
+        return StructIR(struct.name, fields, funcs, struct.pos)
 
-    def visit_attr(self, attr: AttrAST):
+    def visit_agg_field(self, attr: AggregateFieldAST):
         ann = self.visit_ann(attr.annotation)
-        return FieldIR(attr.name, ann.type, attr.pos)
+        return AggFieldIR(attr.name, ann.type, attr.pos)
 
-    def visit_method_sig(self, method: MethodSigAST):
-        pass
-
-    def visit_method_impl(self, method: MethodImplAST):
-        ret_ann = self.visit_ann(method.ret)
-        return MethodDefIR(
-            name=method.name,
-            params=[self.visit_param(param) for param in method.params],
-            ret=ret_ann.type,
-            body=[self.visit_stmt(stmt) for stmt in method.body],
-            pos=method.pos
+    def visit_agg_func(self, func: AggregateFunctionAST):
+        return AggFuncIR(
+            func.name,
+            [self.visit_param(param) for param in func.params],
+            self.visit_type(func.ret),
+            [self.visit_stmt(stmt) for stmt in func.body],
+            func.pos
         )
 
     def visit_param(self, param: ParamAST):
@@ -169,10 +156,13 @@ class CreateIR(ASTVisitor):
         return MalformedNamespaceIR(namespace.pos)
 
     def visit_ann(self, ann: ExprAST):
-        return AnnotationIR(self.visit_type(ann), ann.pos)
+        return AnnotationIR(self.visit_type(ann), ann.pos if ann else Position.new_none())
 
     def handle_malformed_type(self, type: ExprAST):
         return MalformedTypeIR(type.pos)
+
+    def visit_no_type(self):
+        return NoTypeIR()
 
     def visit_get_type(self, type: GetVarExprAST):
         return GetTypeIR(type.var, type.pos)

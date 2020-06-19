@@ -21,9 +21,7 @@ class IRVisitor(ABC):
         pass
 
     def visit_top_level(self, top_level: TopLevelIR):
-        if isinstance(top_level, ClassIR):
-            return self.visit_class(top_level)
-        elif isinstance(top_level, FunctionIR):
+        if isinstance(top_level, FunctionIR):
             return self.visit_function(top_level)
         elif isinstance(top_level, StructIR):
             return self.visit_struct(top_level)
@@ -41,19 +39,15 @@ class IRVisitor(ABC):
         pass
 
     @abstractmethod
-    def visit_class(self, cls: ClassIR):
-        pass
-
-    @abstractmethod
     def visit_function(self, func: FunctionIR):
         pass
 
     @abstractmethod
-    def visit_field(self, attr: FieldIR):
+    def visit_agg_field(self, field: AggFieldIR):
         pass
 
     @abstractmethod
-    def visit_method_def(self, method: MethodDefIR):
+    def visit_agg_func(self, func: AggFuncIR):
         pass
 
     @abstractmethod
@@ -109,6 +103,8 @@ class IRVisitor(ABC):
             return self.visit_new(expr)
         elif isinstance(expr, CallIR):
             return self.visit_call(expr)
+        elif isinstance(expr, MethodCallIR):
+            return self.visit_method_call(expr)
         elif isinstance(expr, GetVarIR):
             return self.visit_get_var(expr)
         elif isinstance(expr, SetVarIR):
@@ -144,6 +140,10 @@ class IRVisitor(ABC):
 
     @abstractmethod
     def visit_call(self, call: CallIR):
+        pass
+
+    @abstractmethod
+    def visit_method_call(self, method_call: MethodCallIR):
         pass
 
     @abstractmethod
@@ -189,11 +189,17 @@ class IRVisitor(ABC):
     def visit_type(self, type: TypeIR):
         if isinstance(type, GetTypeIR):
             return self.visit_get_type(type)
+        elif isinstance(type, NoTypeIR):
+            return self.visit_no_type(type)
         else:
             raise TypeError(f"Expected a type node, got {type}")
 
     @abstractmethod
     def visit_get_type(self, type: GetTypeIR):
+        pass
+
+    @abstractmethod
+    def visit_no_type(self, type: NoTypeIR):
         pass
 
     def visit_namespace(self, namespace: NamespaceIR):
@@ -319,13 +325,10 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     def visit_struct(self, struct: StructIR):
         pass
 
-    def visit_class(self, cls: ClassIR):
+    def visit_agg_field(self, field: AggFieldIR):
         pass
 
-    def visit_field(self, attr: FieldIR):
-        pass
-
-    def visit_method_def(self, method: MethodDefIR):
+    def visit_agg_func(self, func: AggFuncIR):
         pass
 
     def visit_param(self, param: ParamIR):
@@ -353,6 +356,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_call(self, call: CallIR):
+        pass
+
+    def visit_method_call(self, method_call: MethodCallIR):
         pass
 
     def visit_compare(self, cmp: CompareIR):
@@ -392,6 +398,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_get_type(self, type: GetTypeIR):
+        pass
+
+    def visit_no_type(self, type: NoTypeIR):
         pass
 
     def visit_get_namespace(self, namespace: GetNamespaceIR):

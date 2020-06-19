@@ -44,6 +44,14 @@ class Extension:
         return self._get_data(node, 'function', set_to)
 
     @abstractmethod
+    def struct(self, node: StructIR, set_to: T = None) -> T:
+        return self._get_data(node, 'struct', set_to)
+
+    @abstractmethod
+    def agg_func(self, node: AggFuncIR, set_to: T = None) -> T:
+        return self._get_data(node, 'agg_func', set_to)
+
+    @abstractmethod
     def param(self, node: ParamIR, set_to: T = None) -> T:
         return self._get_data(node, 'param', set_to)
 
@@ -62,6 +70,10 @@ class Extension:
     @abstractmethod
     def arithmetic(self, node: ArithmeticIR, set_to: T = None) -> T:
         return self._get_data(node, 'arithmetic', set_to)
+
+    @abstractmethod
+    def method_call(self, node: MethodCallIR, set_to: T = None) -> T:
+        return self._get_data(node, 'method_call', set_to)
 
     @abstractmethod
     def get_var(self, node: GetVarIR, set_to: T = None) -> T:

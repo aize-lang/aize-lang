@@ -352,10 +352,8 @@ class AizeParser:
         top_levels: List[TopLevelAST] = []
         try:
             while not self.is_done():
-                with self.sync_point("class", "struct", "def", "import", "@"):
-                    if self.curr_is("class"):
-                        top_levels += [self.parse_class()]
-                    elif self.curr_is("struct"):
+                with self.sync_point("struct", "def", "import", "@"):
+                    if self.curr_is("struct"):
                         top_levels += [self.parse_struct()]
                     elif self.curr_is("def") or self.curr_is("@"):
                         top_levels += [self.parse_function()]
@@ -375,95 +373,52 @@ class AizeParser:
             MessageHandler.flush_messages()
         return SourceAST(source, top_levels)
 
-    def parse_class(self) -> ClassAST:
-        start = self.match_exc("class")
-
-        name = self.match_exc(Token.IDENTIFIER_TYPE).text
-
-        if self.match("["):
-            type_vars = []
-            while not self.match("]"):
-                type_var = self.match(Token.IDENTIFIER_TYPE).text
-                type_vars.append(type_var)
-                if not self.match(","):
-                    self.match_exc("]")
-                    break
-        else:
-            type_vars = []
-
-        if self.match(":"):
-            traits = []
-            while not self.match("{"):
-                trait = self.parse_type()
-                traits.append(trait)
-                if not self.match(","):
-                    self.match_exc("{")
-                    break
-        else:
-            traits = []
-            self.match_exc("{")
-
-        body = []
-        while not self.match("}"):
-            with self.sync_point("attr", "method"):
-                if self.curr_is("attr"):
-                    body.append(self.parse_attr())
-                elif self.curr_is("method"):
-                    body.append(self.parse_method())
-                else:
-                    if self.report_error("Class body statements must start with one of 'attr' or 'method'", self.curr):
-                        self.synchronize()
-                        assert False
-                    else:
-                        assert False
-
-        return ClassAST(name, traits, body, start.pos())
-
     def parse_struct(self) -> StructAST:
         start = self.match("struct")
         name = self.match_exc(Token.IDENTIFIER_TYPE)
 
         self.match_exc("{")
-        attrs = []
+        attrs: List[AggregateStmtAST] = []
         while not (end := self.match("}")):
-            with self.sync_point("attr"):
+            with self.sync_point("attr", "def"):
                 if self.curr_is("attr"):
                     attr = self.parse_attr()
                     attrs += [attr]
+                elif self.curr_is("def"):
+                    attrs.append(self.parse_agg_func())
                 else:
-                    self.report_error("Struct body must consist entirely of attributes", self.curr)
+                    self.report_error("Struct body must consist entirely of attributes and functions", self.curr)
                     self.synchronize()
                     assert False
 
         return StructAST(name.text, attrs, start.pos())
 
-    def parse_attr(self) -> AttrAST:
-        start = self.match("attr")
+    def parse_attr(self) -> AggregateFieldAST:
+        start = self.match_exc("attr")
         name = self.match_exc(Token.IDENTIFIER_TYPE).text
         self.match_exc(":")
         ann = self.parse_ann()
         self.match_exc(";")
-        return AttrAST(name, ann, start.pos().to(ann.pos))
+        return AggregateFieldAST(name, ann, start.pos().to(ann.pos))
 
-    def parse_method_sig(self) -> MethodSigAST:
-        start = self.match("method")
-        name = self.match_exc(Token.IDENTIFIER_TYPE).text
+    def parse_agg_func(self) -> AggregateFunctionAST:
+        attrs = []
+        while attr_start := self.match("@"):
+            attr_name = self.match_exc(Token.IDENTIFIER_TYPE)
+            attr = FunctionAttributeAST(attr_name.text, Position.combine(attr_start.pos(), attr_name.pos()))
+            attrs.append(attr)
+        start = self.match("def")
+        name = self.match_exc(Token.IDENTIFIER_TYPE)
         self.match_exc("(")
-        args = []
+        params = []
         while not self.match(")"):
             param_name = self.match_exc(Token.IDENTIFIER_TYPE)
-            if not self.match(":"):
-                if len(args) == 0:  # If this is the first argument (self), which doesn't need an annotation
-                    param_ann = None
-                else:               # Otherwise we need an annotation
-                    if self.report_error("Annotation expected", self.curr):
-                        self.synchronize()
-                        assert False
-                    else:
-                        assert False
+            if len(params) == 0:
+                param_ann = None  # first attribute is self, doesn't have a type specified
             else:
+                self.match_exc(":")
                 param_ann = self.parse_ann()
-            args.append(ParamAST(param_name.text, param_ann, param_name.pos()))
+            params.append(ParamAST(param_name.text, param_ann, param_name.pos()))
             if not self.match(","):
                 self.match_exc(")")
                 break
@@ -471,18 +426,15 @@ class AizeParser:
             ret = self.parse_ann()
         else:
             ret = None
-        return MethodSigAST(name, args, ret, start.pos())
+        self.match_exc("{")
 
-    def parse_method(self) -> MethodSigAST:
-        sig = self.parse_method_sig()
-        if self.match("{"):
-            body = []
-            while not self.match("}"):
+        body = []
+        with self.sync_point():
+            while not self.curr_is("}"):
                 body.append(self.parse_stmt())
-            return MethodImplAST.from_sig(sig, body)
-        else:
-            self.match_exc(";")
-            return sig
+        self.match_exc("}")
+
+        return AggregateFunctionAST(name.text, params, ret, attrs, body, start.pos())
 
     def parse_import(self) -> ImportAST:
         start = self.match("import")

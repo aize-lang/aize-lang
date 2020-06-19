@@ -39,6 +39,14 @@ class LLVMData(Extension):
     def function(self, node: FunctionIR, set_to: FunctionData = None) -> FunctionData:
         return super().function(node, set_to)
 
+    class AggFuncData:
+        def __init__(self, llvm_func: ir.Function, code_entry: ir.Block):
+            self.llvm_func = llvm_func
+            self.code_entry = code_entry
+
+    def agg_func(self, node: AggFuncIR, set_to: AggFuncData = None) -> AggFuncData:
+        return super().agg_func(node, set_to)
+
     def param(self, node: ParamIR, set_to=None):
         raise NotImplementedError()
 
@@ -147,7 +155,7 @@ class IRLLVMPass(IRTreePass, ABC):
         elif isinstance(type, FunctionTypeSymbol):
             llvm_type = ir.FunctionType(self.resolve_type(type.ret), [self.resolve_type(param) for param in type.params])
         elif isinstance(type, StructTypeSymbol):
-            llvm_type = ir.LiteralStructType([self.resolve_type(field_type) for field_name, field_type in type.fields.items()])
+            llvm_type = ir.LiteralStructType([self.resolve_type(field_type) for _, (field_type, _) in type.fields.items()])
         else:
             raise NotImplementedError(type)
         return llvm_type
@@ -191,6 +199,36 @@ class DeclareFunctions(IRLLVMPass):
 
         self._main_builder.ret(self._last_ret)
 
+    def visit_struct(self, struct: StructIR):
+        for func in struct.funcs:
+            self.visit_agg_func(func)
+
+    def visit_agg_func(self, func: AggFuncIR):
+        param_types = []
+        for param in func.params:
+            param_type = param.type
+            self.visit_type(param_type)
+            param_types.append(self.llvm.type(param_type).llvm_type)
+        self.visit_type(func.ret)
+        ret_type = self.llvm.type(func.ret).llvm_type
+        llvm_func_type = ir.FunctionType(ret_type, param_types)
+
+        llvm_func = ir.Function(self.mod, llvm_func_type, func.name)
+        self.llvm.decl(func, LLVMData.DeclData(llvm_func, is_ptr=False))
+
+        prep = llvm_func.append_basic_block("prep")
+        self.builder.position_at_start(prep)
+
+        for param, llvm_arg in zip(func.params, llvm_func.args):
+            param_ptr = self.builder.alloca(llvm_arg.type)
+            self.builder.store(llvm_arg, param_ptr)
+            self.llvm.decl(param, LLVMData.DeclData(param_ptr, is_ptr=True))
+
+        entry = self.builder.append_basic_block("entry")
+        self.builder.branch(entry)
+
+        self.llvm.agg_func(func, LLVMData.AggFuncData(llvm_func, entry))
+
     def visit_function(self, func: FunctionIR):
         param_types = []
         for param in func.params:
@@ -231,6 +269,11 @@ class DeclareFunctions(IRLLVMPass):
         llvm_type = self.resolve_type(resolved)
         self.llvm.type(type, set_to=LLVMData.TypeData(llvm_type))
 
+    def visit_no_type(self, type: NoTypeIR):
+        resolved: TypeSymbol = self.symbols.type(type).resolved_type
+        llvm_type = self.resolve_type(resolved)
+        self.llvm.type(type, set_to=LLVMData.TypeData(llvm_type))
+
 
 @PassesRegister.register(to_sequences=[GenerateLLVM])
 class DefineFunctions(IRLLVMPass):
@@ -253,6 +296,19 @@ class DefineFunctions(IRLLVMPass):
                 self.visit_stmt(stmt)
             if not self.builder.block.is_terminated:
                 self.builder.unreachable()
+
+    def visit_struct(self, struct: StructIR):
+        for func in struct.funcs:
+            self.visit_agg_func(func)
+
+    def visit_agg_func(self, func: AggFuncIR):
+        llvm_func = self.llvm.agg_func(func).llvm_func
+        code_entry = self.llvm.agg_func(func).code_entry
+        self.builder.position_at_end(code_entry)
+        for stmt in func.body:
+            self.visit_stmt(stmt)
+        if not self.builder.block.is_terminated:
+            self.builder.unreachable()
 
     def visit_if(self, if_: IfStmtIR):
         self.visit_expr(if_.cond)
@@ -368,6 +424,21 @@ class DefineFunctions(IRLLVMPass):
 
         self.llvm.expr(call, LLVMData.ExprData(None, llvm_val))
 
+    def visit_method_call(self, method_call: MethodCallIR):
+        self.visit_expr(method_call.obj)
+
+        arg_vals = [self.llvm.expr(method_call.obj).r_val]
+        for arg in method_call.arguments:
+            self.visit_expr(arg)
+            arg_vals.append(self.llvm.expr(arg).r_val)
+
+        func = self.symbols.method_call(method_call).func
+        decl = self.llvm.decl(func.declarer)
+
+        llvm_val = self.builder.call(decl.var_value, arg_vals)
+
+        self.llvm.expr(method_call, set_to=LLVMData.ExprData(None, llvm_val))
+
     def visit_new(self, new: NewIR):
         struct_type = self.symbols.type(new.type).resolved_type
 
@@ -446,6 +517,11 @@ class DefineFunctions(IRLLVMPass):
         self.llvm.expr(get_static, set_to=LLVMData.ExprData(var_ptr, llvm_val))
 
     def visit_get_type(self, type: GetTypeIR):
+        resolved: TypeSymbol = self.symbols.type(type).resolved_type
+        llvm_type = self.resolve_type(resolved)
+        self.llvm.type(type, set_to=LLVMData.TypeData(llvm_type))
+
+    def visit_no_type(self, type: NoTypeIR):
         resolved: TypeSymbol = self.symbols.type(type).resolved_type
         llvm_type = self.resolve_type(resolved)
         self.llvm.type(type, set_to=LLVMData.TypeData(llvm_type))

@@ -35,6 +35,21 @@ class SymbolData(Extension):
     def function(self, node: FunctionIR, set_to: FunctionData = None) -> FunctionData:
         return super().function(node, set_to)
 
+    class AggFuncData:
+        def __init__(self, symbol: VariableSymbol, namespace: NamespaceSymbol):
+            self.symbol = symbol
+            self.namespace = namespace
+
+    def agg_func(self, node: AggFuncIR, set_to: AggFuncData = None) -> AggFuncData:
+        return super().agg_func(node, set_to)
+
+    class StructData:
+        def __init__(self, struct_type: StructTypeSymbol):
+            self.struct_type = struct_type
+
+    def struct(self, node: StructIR, set_to: StructData = None) -> StructData:
+        return super().struct(node, set_to)
+
     class ParamData:
         def __init__(self, symbol: VariableSymbol):
             self.symbol = symbol
@@ -71,6 +86,13 @@ class SymbolData(Extension):
     def arithmetic(self, node: ArithmeticIR, set_to: ArithmeticData = None) -> ArithmeticData:
         return super().arithmetic(node, set_to)
 
+    class MethodCallData:
+        def __init__(self, func: VariableSymbol):
+            self.func = func
+
+    def method_call(self, node: MethodCallIR, set_to: MethodCallData = None) -> MethodCallData:
+        return super().method_call(node, set_to)
+
     class GetVarData:
         def __init__(self, symbol: VariableSymbol, is_function: bool):
             self.symbol = symbol
@@ -87,9 +109,11 @@ class SymbolData(Extension):
         return super().set_var(node, set_to)
 
     class GetAttrData:
-        def __init__(self, struct_type: Optional[StructTypeSymbol], index: Optional[int]):
+        def __init__(self, struct_type: Optional[StructTypeSymbol], index: Optional[int], is_method: Optional[bool], func: Optional[VariableSymbol]):
             self.struct_type = struct_type
             self.index = index
+            self.is_method = is_method
+            self.func = func
 
     def get_attr(self, node: GetAttrIR, set_to: GetAttrData = None) -> GetAttrData:
         return super().get_attr(node, set_to)
