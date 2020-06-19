@@ -357,6 +357,7 @@ class DefineFunctions(IRLLVMPass):
     def visit_call(self, call: CallIR):
         self.visit_expr(call.callee)
         callee_val = self.llvm.expr(call.callee).r_val
+
         arg_vals = []
         for arg in call.arguments:
             self.visit_expr(arg)
@@ -448,6 +449,16 @@ class DefineFunctions(IRLLVMPass):
         resolved: TypeSymbol = self.symbols.type(type).resolved_type
         llvm_type = self.resolve_type(resolved)
         self.llvm.type(type, set_to=LLVMData.TypeData(llvm_type))
+
+    def visit_cast_int(self, cast_int: CastIntIR):
+        self.visit_expr(cast_int.expr)
+        expr_val = self.llvm.expr(cast_int.expr).r_val
+        data = self.symbols.cast_int(cast_int)
+        if data.is_signed:
+            llvm_val = self.builder.sext(expr_val, ir.IntType(data.to_bits))
+        else:
+            llvm_val = self.builder.zext(expr_val, ir.IntType(data.to_bits))
+        self.llvm.expr(cast_int, set_to=LLVMData.ExprData(None, llvm_val))
 
     def visit_intrinsic(self, intrinsic: IntrinsicIR):
         if intrinsic.name in ('int8', 'int32', 'int64'):

@@ -88,6 +88,10 @@ class Extension:
         return self._get_data(node, 'get_static_attr_expr', set_to)
 
     @abstractmethod
+    def cast_int(self, node: CastIntIR, set_to: T = None) -> T:
+        return self._get_data(node, 'cast_int', set_to)
+
+    @abstractmethod
     def type(self, node: TypeIR, set_to: T = None) -> T:
         return self._get_data(node, 'type', set_to)
 

@@ -104,7 +104,7 @@ class IntTypeSymbol(TypeSymbol):
         self.bit_size = bit_size
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
-        return isinstance(sub, IntTypeSymbol) and sub.is_signed == self.is_signed and sub.bit_size == self.bit_size
+        return isinstance(sub, IntTypeSymbol) and sub.is_signed == self.is_signed and sub.bit_size <= self.bit_size
 
     def __str__(self):
         return self.name

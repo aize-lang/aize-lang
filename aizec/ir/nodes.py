@@ -12,9 +12,9 @@ __all__ = [
     'ParamIR', 'FuncAttrIR',
     'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR', 'WhileStmtIR',
     'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',
-    'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR',
+    'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR', 'CastIntIR',
     'AnnotationIR',
-    'TypeIR', 'GetTypeIR', 'MalformedTypeIR',
+    'TypeIR', 'GetTypeIR', 'MalformedTypeIR', 'GeneratedTypeIR',
     'NamespaceIR', 'GetNamespaceIR', 'MalformedNamespaceIR',
 ]
 
@@ -259,6 +259,14 @@ class IntrinsicIR(ExprIR):
         self.args = args
 
 
+class CastIntIR(ExprIR):
+    def __init__(self, expr: ExprIR, type: TypeIR, pos: Position):
+        super().__init__(pos)
+
+        self.expr = expr
+        self.type = type
+
+
 class IntIR(ExprIR):
     def __init__(self, num: int, pos: Position):
         super().__init__(pos)
@@ -307,6 +315,11 @@ class GetTypeIR(TypeIR):
     def __init__(self, name: str, pos: Position):
         super().__init__(pos)
         self.name = name
+
+
+class GeneratedTypeIR(TypeIR):
+    def __init__(self, pos: Position):
+        super().__init__(pos)
 # endregion
 
 

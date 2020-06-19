@@ -125,6 +125,8 @@ class IRVisitor(ABC):
             return self.visit_negate(expr)
         elif isinstance(expr, GetStaticAttrExprIR):
             return self.visit_get_static_attr_expr(expr)
+        elif isinstance(expr, CastIntIR):
+            return self.visit_cast_int(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
 
@@ -166,6 +168,10 @@ class IRVisitor(ABC):
 
     @abstractmethod
     def visit_intrinsic(self, intrinsic: IntrinsicIR):
+        pass
+
+    @abstractmethod
+    def visit_cast_int(self, cast_int: CastIntIR):
         pass
 
     @abstractmethod
@@ -368,6 +374,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_set_attr(self, set_attr: SetAttrIR):
+        pass
+
+    def visit_cast_int(self, cast_int: CastIntIR):
         pass
 
     def visit_intrinsic(self, intrinsic: IntrinsicIR):

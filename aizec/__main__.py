@@ -29,7 +29,7 @@ def main():
     backend_options: List[str] = args.backend_opt
 
     with fail_callback(lambda c: exit(0)):
-        frontend = FrontendManager(Path.cwd(), Path(__file__))
+        frontend = FrontendManager(Path.cwd(), Path(__file__).parent / "std")
         frontend.add_file(input_file)
         frontend.trace_imports()
 

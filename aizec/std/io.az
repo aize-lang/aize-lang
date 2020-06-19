@@ -1,0 +1,38 @@
+
+@link_in
+def putchar(char: int32) -> int32 {
+    return 0;
+}
+
+
+def print_int(num: int32) -> int32 {
+    if (num == 0) {
+        putchar(48);
+    } else {
+        if (num < 0) {
+            putchar(45);
+        }
+        var original: int32 = num;
+        var digits: int32 = 0;
+        while (num != 0) {
+            digits = digits + 1;
+            num = num / 10;
+        }
+        while (digits > 0) {
+            var digit: int32 = original;
+            var i: int32 = 0;
+            while (i < (digits-1)) {
+                digit = digit / 10;
+                i = i + 1;
+            }
+            digit = digit % 10;
+            if (digit < 0) {
+                digit = digit * -1;
+            }
+            putchar(48 + digit);
+            digits = digits - 1;
+        }
+    }
+    putchar(10);
+    return 0;
+}

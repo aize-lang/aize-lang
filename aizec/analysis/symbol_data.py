@@ -124,6 +124,15 @@ class SymbolData(Extension):
     def get_static_attr_expr(self, node: GetStaticAttrExprIR, set_to: GetStaticAttrExprData = None) -> GetStaticAttrExprData:
         return super().get_static_attr_expr(node, set_to)
 
+    class CastIntData:
+        def __init__(self, from_bits: int, to_bits: int, is_signed: bool):
+            self.from_bits = from_bits
+            self.to_bits = to_bits
+            self.is_signed = is_signed
+
+    def cast_int(self, node: CastIntIR, set_to: CastIntData = None) -> CastIntData:
+        return super().cast_int(node, set_to)
+
     class TypeData:
         def __init__(self, resolved_type: TypeSymbol):
             self.resolved_type: TypeSymbol = resolved_type

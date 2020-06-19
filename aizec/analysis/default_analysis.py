@@ -527,7 +527,7 @@ class ResolveSymbols(IRSymbolsPass):
 
         self.check_argument_count(arguments, len(params), pos)
 
-    def check_type(self, expr: ExprIR, expected: TypeSymbol, decl: Optional[Position], node: TextIR) -> Optional[TypeSymbol]:
+    def check_type(self, expr: ExprIR, expected: TypeSymbol, node: TextIR, decl: Position = None) -> Optional[TypeSymbol]:
         got_type = self.symbols.expr(expr).return_type
         for type in [expected, got_type]:
             if isinstance(type, ErroredTypeSymbol):
@@ -578,6 +578,28 @@ class ResolveSymbols(IRSymbolsPass):
                     return ErroredTypeSymbol(node.pos)
             else:
                 return None
+
+    def cast_implicit(self, expr: ExprIR, to_type: TypeSymbol) -> ExprIR:
+        expr_type = self.symbols.expr(expr).return_type
+        if isinstance(expr_type, IntTypeSymbol) and isinstance(to_type, IntTypeSymbol):
+            if expr_type.is_signed == to_type.is_signed:
+                from_bits = expr_type.bit_size
+                to_bits = to_type.bit_size
+                if from_bits < to_bits:
+                    cast_type = GeneratedTypeIR(expr.pos)
+                    self.symbols.type(cast_type, set_to=SymbolData.TypeData(to_type))
+                    cast_expr = CastIntIR(expr, cast_type, expr.pos)
+                    self.symbols.expr(cast_expr, set_to=SymbolData.ExprData(to_type, False))
+                    self.symbols.cast_int(cast_expr, set_to=SymbolData.CastIntData(from_bits, to_bits, expr_type.is_signed))
+                    return cast_expr
+                elif from_bits == to_bits:
+                    return expr
+                else:
+                    raise Exception()
+            else:
+                raise Exception()
+        else:
+            raise Exception()
     # endregion
 
     def visit_program(self, program: ProgramIR):
@@ -626,7 +648,9 @@ class ResolveSymbols(IRSymbolsPass):
         self.visit_stmt(if_.then_do)
 
         boolean = self.builtins.general().uint[1]
-        self.check_type(if_.cond, boolean, None, if_)
+        self.check_type(if_.cond, boolean, if_)
+        if_.cond = self.cast_implicit(if_.cond, boolean)
+
         is_terminal = self.symbols.stmt(if_.else_do).is_terminal and self.symbols.stmt(if_.then_do).is_terminal
         self.symbols.stmt(if_, set_to=SymbolData.StmtData(is_terminal))
 
@@ -635,7 +659,9 @@ class ResolveSymbols(IRSymbolsPass):
         self.visit_stmt(while_.while_do)
 
         boolean = self.builtins.general().uint[1]
-        self.check_type(while_.cond, boolean, None, while_)
+        self.check_type(while_.cond, boolean, while_)
+        while_.cond = self.cast_implicit(while_.cond, boolean)
+
         is_terminal = self.symbols.stmt(while_.while_do).is_terminal
         self.symbols.stmt(while_, set_to=SymbolData.StmtData(is_terminal))
 
@@ -650,7 +676,8 @@ class ResolveSymbols(IRSymbolsPass):
         self.visit_expr(decl.value)
         value_type = self.symbols.expr(decl.value).return_type
 
-        self.check_type(decl.value, var_type, decl.ann.pos, decl)
+        self.check_type(decl.value, var_type, decl, decl.ann.pos)
+        decl.value = self.cast_implicit(decl.value, var_type)
 
         symbol = VariableSymbol(decl.name, decl, var_type, decl.pos)
         self.define_value(symbol)
@@ -675,7 +702,10 @@ class ResolveSymbols(IRSymbolsPass):
     def visit_return(self, ret: ReturnIR):
         self.visit_expr(ret.expr)
         expected = self.current_func_type.ret
-        self.check_type(ret.expr, expected, self.current_func.ret.pos, ret)
+
+        self.check_type(ret.expr, expected, ret, self.current_func.ret.pos)
+        ret.expr = self.cast_implicit(ret.expr, expected)
+
         self.symbols.stmt(ret, set_to=SymbolData.StmtData(True))
 
     def visit_compare(self, cmp: CompareIR):
@@ -732,7 +762,9 @@ class ResolveSymbols(IRSymbolsPass):
             return_type = errored_type
         else:
             return_type = struct_type = cast(StructTypeSymbol, self.symbols.type(new.type).resolved_type)
-            self.check_arguments(new.arguments, [field_type for _, field_type in struct_type.fields.items()], new.pos)
+            field_types = [field_type for _, field_type in struct_type.fields.items()]
+            self.check_arguments(new.arguments, field_types, new.pos)
+            new.arguments = [self.cast_implicit(arg, field_type) for arg, field_type in zip(new.arguments, field_types)]
 
         self.symbols.expr(new, set_to=SymbolData.ExprData(return_type, False))
 
@@ -747,6 +779,7 @@ class ResolveSymbols(IRSymbolsPass):
             func_type = cast(FunctionTypeSymbol, self.symbols.expr(call.callee).return_type)
             return_type = func_type.ret
             self.check_arguments(call.arguments, func_type.params, call.pos)
+            call.arguments = [self.cast_implicit(arg, param_type) for arg, param_type in zip(call.arguments, func_type.params)]
 
         self.symbols.expr(call, SymbolData.ExprData(return_type, False))
 
@@ -764,9 +797,10 @@ class ResolveSymbols(IRSymbolsPass):
 
         value_type = self.symbols.expr(set_var.value).return_type
 
-        if errored_type := self.check_type(set_var.value, variable_type, variable.position, set_var):
+        if errored_type := self.check_type(set_var.value, variable_type, set_var, variable.position):
             return_type = errored_type
         else:
+            set_var.value = self.cast_implicit(set_var.value, variable_type)
             return_type = value_type
 
         self.symbols.expr(set_var, set_to=SymbolData.ExprData(return_type, True))
@@ -818,9 +852,10 @@ class ResolveSymbols(IRSymbolsPass):
                 field_pos = struct_type.field_pos[set_attr.attr]
                 index = list(struct_type.fields.keys()).index(set_attr.attr)
 
-                if errored_type := self.check_type(set_attr.value, field_type, field_pos, set_attr):
+                if errored_type := self.check_type(set_attr.value, field_type, set_attr, field_pos):
                     return_type = errored_type
                 else:
+                    set_attr.value = self.cast_implicit(set_attr.value, field_type)
                     return_type = value_type
             else:
                 msg = DefinitionError.field_not_found(set_attr.attr, set_attr.pos, struct_type)
