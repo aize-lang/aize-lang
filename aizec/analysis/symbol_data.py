@@ -5,7 +5,7 @@ from aizec.common import *
 from aizec.ir import Extension
 from aizec.ir.nodes import *
 
-from .symbols import NamespaceSymbol, VariableSymbol, TypeSymbol, StructTypeSymbol
+from .symbols import NamespaceSymbol, VariableSymbol, TypeSymbol, StructTypeSymbol, FunctionTypeSymbol
 
 
 class SymbolData(Extension):
@@ -156,6 +156,15 @@ class SymbolData(Extension):
 
     def cast_int(self, node: CastIntIR, set_to: CastIntData = None) -> CastIntData:
         return super().cast_int(node, set_to)
+
+    class LambdaData:
+        def __init__(self, value: VariableSymbol, type: FunctionTypeSymbol, namespace: NamespaceSymbol):
+            self.value = value
+            self.type = type
+            self.namespace = namespace
+
+    def lambda_(self, node: LambdaIR, set_to: LambdaData = None) -> LambdaData:
+        return super().lambda_(node, set_to)
 
     class TypeData:
         def __init__(self, resolved_type: TypeSymbol):

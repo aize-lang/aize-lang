@@ -123,8 +123,14 @@ class IRVisitor(ABC):
             return self.visit_get_static_attr_expr(expr)
         elif isinstance(expr, CastIntIR):
             return self.visit_cast_int(expr)
+        elif isinstance(expr, LambdaIR):
+            return self.visit_lambda(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
+
+    @abstractmethod
+    def visit_lambda(self, lambda_: LambdaIR):
+        pass
 
     @abstractmethod
     def visit_compare(self, cmp: CompareIR):
@@ -359,6 +365,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_method_call(self, method_call: MethodCallIR):
+        pass
+
+    def visit_lambda(self, lambda_: LambdaIR):
         pass
 
     def visit_compare(self, cmp: CompareIR):

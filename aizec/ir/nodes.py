@@ -12,9 +12,9 @@ __all__ = [
     'ParamIR', 'FuncAttrIR',
     'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR', 'WhileStmtIR',
     'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',
-    'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR', 'CastIntIR', 'MethodCallIR',
+    'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR', 'CastIntIR', 'MethodCallIR', 'LambdaIR', 'TupleIR',
     'AnnotationIR',
-    'TypeIR', 'GetTypeIR', 'MalformedTypeIR', 'GeneratedTypeIR', 'NoTypeIR',
+    'TypeIR', 'GetTypeIR', 'MalformedTypeIR', 'GeneratedTypeIR', 'NoTypeIR', 'FuncTypeIR', 'TupleTypeIR',
     'NamespaceIR', 'GetNamespaceIR', 'MalformedNamespaceIR',
 ]
 
@@ -263,6 +263,21 @@ class CastIntIR(ExprIR):
         self.type = type
 
 
+class LambdaIR(ExprIR):
+    def __init__(self, params: List[ParamIR], body: ExprIR, pos: Position):
+        super().__init__(pos)
+
+        self.params = params
+        self.body = body
+
+
+class TupleIR(ExprIR):
+    def __init__(self, items: List[ParamIR], pos: Position):
+        super().__init__(pos)
+
+        self.items = items
+
+
 class IntIR(ExprIR):
     def __init__(self, num: int, pos: Position):
         super().__init__(pos)
@@ -311,6 +326,20 @@ class GetTypeIR(TypeIR):
     def __init__(self, name: str, pos: Position):
         super().__init__(pos)
         self.name = name
+
+
+class FuncTypeIR(TypeIR):
+    def __init__(self, params: List[TypeIR], ret: TypeIR, pos: Position):
+        super().__init__(pos)
+        self.params = params
+        self.ret = ret
+
+
+class TupleTypeIR(TypeIR):
+    def __init__(self, items: List[TypeIR], pos: Position):
+        super().__init__(pos)
+
+        self.items = items
 
 
 class NoTypeIR(TypeIR):

@@ -685,11 +685,7 @@ class AizeParser:
         return self.parse_primary()
 
     def parse_primary(self):
-        if self.match("("):
-            expr = self.parse_expr()
-            self.match_exc(")")
-            return expr
-        elif self.curr_is(Token.DECIMAL_TYPE):
+        if self.curr_is(Token.DECIMAL_TYPE):
             num = self.match(Token.DECIMAL_TYPE)
             return IntLiteralAST(int(num.text), num.pos())
         elif self.curr_is(Token.STRING_TYPE):
@@ -699,9 +695,86 @@ class AizeParser:
         elif self.curr_is(Token.IDENTIFIER_TYPE):
             var = self.match(Token.IDENTIFIER_TYPE)
             return GetVarExprAST(var.text, var.pos())
+        elif self.curr_is("("):
+            return self.parse_parenthesized()
         else:
             if self.report_error(f"Cannot parse '{self.curr.type}' token", self.curr):
                 self.synchronize()
                 assert False
             else:
                 assert False
+
+    def parse_parenthesized(self):
+        maybe_lambda = True
+        maybe_expr = True
+        maybe_tuple = True
+
+        def not_lambda():
+            nonlocal maybe_lambda, maybe_expr, maybe_tuple
+            maybe_lambda = False
+            if not any([maybe_lambda, maybe_expr, maybe_tuple]):
+                raise Exception()
+
+        def not_expr():
+            nonlocal maybe_lambda, maybe_expr, maybe_tuple
+            maybe_expr = False
+            if not any([maybe_lambda, maybe_expr, maybe_tuple]):
+                raise Exception()
+
+        def not_tuple():
+            nonlocal maybe_lambda, maybe_expr, maybe_tuple
+            maybe_tuple = False
+            if not any([maybe_lambda, maybe_expr, maybe_tuple]):
+                raise Exception()
+
+        exprs: List[Tuple[ExprAST, Optional[ExprAST]]] = []
+
+        start_paren = self.match_exc("(")
+        while not (end_paren := self.match(")")):
+            expr = self.parse_expr()
+            if maybe_lambda:
+                if colon := self.match(":"):
+                    not_expr()
+                    not_tuple()
+
+                    if not isinstance(expr, GetVarExprAST):
+                        not_lambda()
+
+                    type_expr = self.parse_expr()
+                else:
+                    not_lambda()
+                    type_expr = None
+            else:
+                type_expr = None
+            exprs.append((expr, type_expr))
+            if maybe_tuple or maybe_lambda:
+                if comma := self.match(","):
+                    not_expr()
+                    continue
+        if maybe_lambda:
+            if arrow := self.match("->"):
+                not_expr()
+                not_tuple()
+
+                body_expr = self.parse_expr()
+
+                return LambdaExprAST([ParamAST(cast(GetVarExprAST, name).var, type, name.pos) for name, type in exprs],
+                                     body_expr,
+                                     Position.combine(start_paren.pos(), body_expr.pos))
+            else:
+                not_lambda()
+
+        if maybe_expr and maybe_tuple:
+            if len(exprs) == 1:
+                not_tuple()
+            else:
+                not_expr()
+
+        if maybe_expr:
+            expr, _ = exprs[0]
+            expr.pos = Position.combine(start_paren.pos(), end_paren.pos())
+            return expr
+        elif maybe_tuple:
+            return TupleExprAST([expr for expr, _ in exprs], Position.combine(start_paren.pos(), end_paren.pos()))
+        else:
+            raise Exception()

@@ -146,6 +146,12 @@ class CreateIR(ASTVisitor):
     def visit_intrinsic(self, intrinsic: IntrinsicExprAST):
         return IntrinsicIR(intrinsic.name, [self.visit_expr(arg) for arg in intrinsic.args], intrinsic.pos)
 
+    def visit_lambda(self, lambda_: LambdaExprAST):
+        return LambdaIR([self.visit_param(param) for param in lambda_.params], self.visit_expr(lambda_.body), lambda_.pos)
+
+    def visit_tuple(self, tuple: TupleExprAST):
+        return TupleIR([self.visit_expr(item) for item in tuple.items], tuple.pos)
+
     def visit_int(self, literal: IntLiteralAST):
         return IntIR(literal.num, literal.pos)
 
@@ -166,4 +172,10 @@ class CreateIR(ASTVisitor):
 
     def visit_get_type(self, type: GetVarExprAST):
         return GetTypeIR(type.var, type.pos)
+
+    def visit_func_type(self, func_type: LambdaExprAST):
+        return FuncTypeIR([self.visit_type(param.annotation).type for param in func_type.params], self.visit_type(func_type.body), func_type.pos)
+
+    def visit_tuple_type(self, tuple_: TupleExprAST):
+        return TupleTypeIR([self.visit_type(item) for item in tuple_.items], tuple_.pos)
 # endregion

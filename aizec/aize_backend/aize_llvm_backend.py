@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import itertools
+
 import llvmlite.ir as ir
 import llvmlite.binding as llvm
 
@@ -84,6 +86,14 @@ class LLVMData(Extension):
 
     def get_static_attr_expr(self, node: GetStaticAttrExprIR, set_to=None):
         raise NotImplementedError()
+
+    class LambdaData:
+        def __init__(self, func: ir.Function, entry: ir.Block):
+            self.func = func
+            self.entry = entry
+
+    def lambda_(self, node: LambdaIR, set_to: LambdaData = None) -> LambdaData:
+        return super().lambda_(node, set_to)
 
     class TypeData:
         def __init__(self, llvm_type: ir.Type):
@@ -277,6 +287,10 @@ class DeclareFunctions(IRLLVMPass):
 
 @PassesRegister.register(to_sequences=[GenerateLLVM])
 class DefineFunctions(IRLLVMPass):
+    def __init__(self, _ir: IR):
+        super().__init__(_ir)
+        self._lambda_counter = itertools.count()
+
     @classmethod
     def get_required_extensions(cls) -> Set[Type[Extension]]:
         return {SymbolData, LLVMData}
@@ -535,6 +549,29 @@ class DefineFunctions(IRLLVMPass):
         else:
             llvm_val = self.builder.zext(expr_val, ir.IntType(data.to_bits))
         self.llvm.expr(cast_int, set_to=LLVMData.ExprData(None, llvm_val))
+
+    def visit_lambda(self, lambda_: LambdaIR):
+        func_type = self.symbols.lambda_(lambda_).type
+        llvm_func_type = self.resolve_type(func_type)
+
+        llvm_func = ir.Function(self.mod, llvm_func_type, f"<lambda {next(self._lambda_counter)}>")
+        self.llvm.decl(lambda_, LLVMData.DeclData(llvm_func, is_ptr=False))
+
+        prep = llvm_func.append_basic_block("prep")
+        with self.builder.goto_block(prep):
+            for param, llvm_arg in zip(lambda_.params, llvm_func.args):
+                param_ptr = self.builder.alloca(llvm_arg.type)
+                self.builder.store(llvm_arg, param_ptr)
+                self.llvm.decl(param, LLVMData.DeclData(param_ptr, is_ptr=True))
+
+            entry = self.builder.append_basic_block("entry")
+            self.builder.branch(entry)
+            self.builder.position_at_start(entry)
+            self.visit_expr(lambda_.body)
+            ret_val = self.llvm.expr(lambda_.body).r_val
+            self.builder.ret(ret_val)
+
+        self.llvm.expr(lambda_, set_to=LLVMData.ExprData(None, llvm_func))
 
     def visit_intrinsic(self, intrinsic: IntrinsicIR):
         if intrinsic.name in ('int8', 'int32', 'int64', 'uint8', 'uint32', 'uint64'):

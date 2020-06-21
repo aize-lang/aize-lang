@@ -16,7 +16,7 @@ __all__ = [
     'ExprAST', 'CompareExprAST', 'BinaryExprAST', 'GetVarExprAST',
     'ArithmeticExprAST', 'UnaryExprAST', 'InvExprAST', 'NotExprAST', 'GetAttrExprAST',
     'SetAttrExprAST', 'NegExprAST', 'SetVarExprAST', 'CallExprAST', 'StrLiteralAST', 'NewExprAST',
-    'IntLiteralAST', 'IntrinsicExprAST',
+    'IntLiteralAST', 'IntrinsicExprAST', 'LambdaExprAST', 'TupleExprAST',
 
     'GetStaticAttrExprAST'
 ]
@@ -137,6 +137,10 @@ class ASTVisitor(ABC):
             return self.visit_neg(expr)
         elif isinstance(expr, GetStaticAttrExprAST):
             return self.visit_static_attr_expr(expr)
+        elif isinstance(expr, LambdaExprAST):
+            return self.visit_lambda(expr)
+        elif isinstance(expr, TupleExprAST):
+            return self.visit_tuple(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
 
@@ -185,6 +189,14 @@ class ASTVisitor(ABC):
         pass
 
     @abstractmethod
+    def visit_tuple(self, tuple: TupleExprAST):
+        pass
+
+    @abstractmethod
+    def visit_lambda(self, lambda_: LambdaExprAST):
+        pass
+
+    @abstractmethod
     def visit_int(self, num: IntLiteralAST):
         pass
 
@@ -209,6 +221,10 @@ class ASTVisitor(ABC):
     def visit_type(self, type: ExprAST):
         if isinstance(type, GetVarExprAST):
             return self.visit_get_type(type)
+        elif isinstance(type, LambdaExprAST):
+            return self.visit_func_type(type)
+        elif isinstance(type, TupleExprAST):
+            return self.visit_tuple_type(type)
         elif type is None:
             return self.visit_no_type()
         else:
@@ -220,6 +236,14 @@ class ASTVisitor(ABC):
 
     @abstractmethod
     def visit_get_type(self, type: GetVarExprAST):
+        pass
+
+    @abstractmethod
+    def visit_func_type(self, func_type: LambdaExprAST):
+        pass
+
+    @abstractmethod
+    def visit_tuple_type(self, tuple_: TupleExprAST):
         pass
 
     @abstractmethod
@@ -380,6 +404,21 @@ class ExprStmtAST(StmtAST):
 
 class ExprAST(TextAST):
     pass
+
+
+class LambdaExprAST(ExprAST):
+    def __init__(self, params: List[ParamAST], body: ExprAST, pos: Position):
+        super().__init__(pos)
+
+        self.params = params
+        self.body = body
+
+
+class TupleExprAST(ExprAST):
+    def __init__(self, items: List[ExprAST], pos: Position):
+        super().__init__(pos)
+
+        self.items = items
 
 
 class GetVarExprAST(ExprAST):

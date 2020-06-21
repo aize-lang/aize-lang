@@ -4,6 +4,12 @@ import "<std>/io.az";
 
 @entry
 def main() -> int32 {
+    (() -> test())();
+    return 0;
+}
+
+
+def test() -> int32 {
     var container: Container = new Container{30};
     container.print_num();
     return 0;
