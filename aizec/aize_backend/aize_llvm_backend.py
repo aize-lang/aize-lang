@@ -163,7 +163,7 @@ class IRLLVMPass(IRTreePass, ABC):
         if isinstance(type, IntTypeSymbol):
             llvm_type = ir.IntType(type.bit_size)
         elif isinstance(type, FunctionTypeSymbol):
-            llvm_type = ir.FunctionType(self.resolve_type(type.ret), [self.resolve_type(param) for param in type.params])
+            llvm_type = ir.FunctionType(self.resolve_type(type.ret), [self.resolve_type(param) for param in type.params]).as_pointer()
         elif isinstance(type, StructTypeSymbol):
             llvm_type = ir.LiteralStructType([self.resolve_type(field_type) for _, (field_type, _) in type.fields.items()])
         else:
@@ -273,6 +273,11 @@ class DeclareFunctions(IRLLVMPass):
             self.call_func_in_main(llvm_func)
 
         self.llvm.function(func, LLVMData.FunctionData(llvm_func, entry))
+
+    def visit_func_type(self, type: FuncTypeIR):
+        resolved: TypeSymbol = self.symbols.type(type).resolved_type
+        llvm_type = self.resolve_type(resolved)
+        self.llvm.type(type, set_to=LLVMData.TypeData(llvm_type))
 
     def visit_get_type(self, type: GetTypeIR):
         resolved: TypeSymbol = self.symbols.type(type).resolved_type
@@ -552,7 +557,7 @@ class DefineFunctions(IRLLVMPass):
 
     def visit_lambda(self, lambda_: LambdaIR):
         func_type = self.symbols.lambda_(lambda_).type
-        llvm_func_type = self.resolve_type(func_type)
+        llvm_func_type = cast(ir.PointerType, self.resolve_type(func_type)).pointee
 
         llvm_func = ir.Function(self.mod, llvm_func_type, f"<lambda {next(self._lambda_counter)}>")
         self.llvm.decl(lambda_, LLVMData.DeclData(llvm_func, is_ptr=False))
@@ -656,6 +661,11 @@ class LLVMBackend(CBackend):
         target = llvm.Target.from_default_triple()
         machine = target.create_target_machine(codemodel='small')
         self.llvm_ir.triple = target.triple
+
+        if self.emit_llvm:
+            llvm_file = self.output_path.with_suffix(".ll")
+            with llvm_file.open("w") as file:
+                file.write(str(self.llvm_ir))
 
         llvm_mod = llvm.parse_assembly(str(self.llvm_ir))
 

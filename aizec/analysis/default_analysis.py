@@ -397,6 +397,8 @@ class IRSymbolsPass(IRTreePass, ABC):
                 return expr
             else:
                 raise Exception()
+        elif isinstance(expr_type, FunctionTypeSymbol) and isinstance(to_type, FunctionTypeSymbol):
+            return expr
         else:
             raise Exception()
     # endregion
@@ -427,6 +429,17 @@ class IRSymbolsPass(IRTreePass, ABC):
         param.type = self.visit_type(param.type)
         symbol = VariableSymbol(param.name, param, self.symbols.type(param.type).resolved_type, param.pos)
         self.symbols.param(param, set_to=SymbolData.ParamData(symbol))
+
+    def visit_func_type(self, type: FuncTypeIR):
+        params = []
+        for param in type.params:
+            self.visit_type(param)
+            params.append(self.symbols.type(param).resolved_type)
+        self.visit_type(type.ret)
+        ret = self.symbols.type(type.ret).resolved_type
+        resolved_type = FunctionTypeSymbol(params, ret, type.pos)
+        self.symbols.type(type, SymbolData.TypeData(resolved_type))
+        return type
 
     def visit_get_type(self, type: GetTypeIR):
         resolved_type = self.lookup_type(type.name, type.pos)

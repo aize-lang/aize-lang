@@ -197,8 +197,14 @@ class IRVisitor(ABC):
             return self.visit_get_type(type)
         elif isinstance(type, NoTypeIR):
             return self.visit_no_type(type)
+        elif isinstance(type, FuncTypeIR):
+            return self.visit_func_type(type)
         else:
             raise TypeError(f"Expected a type node, got {type}")
+
+    @abstractmethod
+    def visit_func_type(self, type: TypeIR):
+        pass
 
     @abstractmethod
     def visit_get_type(self, type: GetTypeIR):
@@ -404,6 +410,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_ann(self, ann: AnnotationIR):
+        pass
+
+    def visit_func_type(self, type: TypeIR):
         pass
 
     def visit_get_type(self, type: GetTypeIR):

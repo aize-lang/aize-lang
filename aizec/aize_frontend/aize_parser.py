@@ -259,6 +259,8 @@ class AizeParser:
 
         self.sync_targets = []
 
+        self._enable_assign = True
+
         self._is_done = False
         self.advance()
 
@@ -346,6 +348,12 @@ class AizeParser:
             else:
                 raise
         self.sync_targets.pop()
+
+    @contextmanager
+    def with_assign(self, enabled: bool):
+        old, self._enable_assign = self._enable_assign, enabled
+        yield
+        self._enable_assign = old
     # endregion
 
     def parse_source(self, source: Source) -> SourceAST:
@@ -496,9 +504,6 @@ class AizeParser:
     def parse_ann(self) -> ExprAST:
         return self.parse_expr()
 
-    def parse_type(self) -> ExprAST:
-        return self.parse_expr(skip_assign=True)
-
     def parse_stmt(self) -> StmtAST:
         if self.curr_is("return"):
             return self.parse_return()
@@ -544,7 +549,8 @@ class AizeParser:
         start = self.match("var")
         var = self.match_exc(Token.IDENTIFIER_TYPE)
         if self.match(":"):
-            type = self.parse_type()
+            with self.with_assign(enabled=False):
+                type = self.parse_expr()
         else:
             type = None
         self.match_exc("=")
@@ -564,26 +570,24 @@ class AizeParser:
         self.match_exc(";")
         return ExprStmtAST(expr, start.pos())
 
-    def parse_expr(self, *, skip_assign=False) -> ExprAST:
-        if skip_assign:
-            return self.parse_logic()
-        else:
-            return self.parse_assign()
+    def parse_expr(self) -> ExprAST:
+        return self.parse_assign()
 
     def parse_assign(self) -> ExprAST:
         expr = self.parse_logic()
-        if start := self.match("="):
-            right: ExprAST = self.parse_assign()
-            if isinstance(expr, GetVarExprAST):
-                expr = SetVarExprAST(expr.var, right, start.pos())
-            elif isinstance(expr, GetAttrExprAST):
-                expr = SetAttrExprAST(expr.obj, expr.attr, right, start.pos())
-            else:
-                if self.report_error("Assignment targets must be a variable or an attribute", right):
-                    self.synchronize()
-                    assert False
+        if self._enable_assign:
+            if start := self.match("="):
+                right: ExprAST = self.parse_assign()
+                if isinstance(expr, GetVarExprAST):
+                    expr = SetVarExprAST(expr.var, right, start.pos())
+                elif isinstance(expr, GetAttrExprAST):
+                    expr = SetAttrExprAST(expr.obj, expr.attr, right, start.pos())
                 else:
-                    assert False
+                    if self.report_error("Assignment targets must be a variable or an attribute", right):
+                        self.synchronize()
+                        assert False
+                    else:
+                        assert False
         return expr
 
     def parse_logic(self) -> ExprAST:

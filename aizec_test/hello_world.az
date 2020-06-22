@@ -4,13 +4,19 @@ import "<std>/io.az";
 
 @entry
 def main() -> int32 {
-    (() -> test())();
+    var callback: () -> int32 = get_test_callback();
+    callback();
     return 0;
 }
 
 
+def get_test_callback() -> () -> int32 {
+    return () -> test();
+}
+
+
 def test() -> int32 {
-    var container: Container = new Container{30};
+    var container: Container = new Container { 30 };
     container.print_num();
     return 0;
 }
