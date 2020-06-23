@@ -272,7 +272,7 @@ class LambdaIR(ExprIR):
 
 
 class TupleIR(ExprIR):
-    def __init__(self, items: List[ParamIR], pos: Position):
+    def __init__(self, items: List[ExprIR], pos: Position):
         super().__init__(pos)
 
         self.items = items

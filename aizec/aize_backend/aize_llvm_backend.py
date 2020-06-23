@@ -17,6 +17,7 @@ from aizec.analysis import SymbolData, \
 from aizec.ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias, PassScheduler
 
 from .aize_backend import CBackend, CLinker
+from ..analysis.symbols import TupleTypeSymbol
 
 
 class LLVMData(Extension):
@@ -166,6 +167,8 @@ class IRLLVMPass(IRTreePass, ABC):
             llvm_type = ir.FunctionType(self.resolve_type(type.ret), [self.resolve_type(param) for param in type.params]).as_pointer()
         elif isinstance(type, StructTypeSymbol):
             llvm_type = ir.LiteralStructType([self.resolve_type(field_type) for _, (field_type, _) in type.fields.items()])
+        elif isinstance(type, TupleTypeSymbol):
+            llvm_type = ir.LiteralStructType([self.resolve_type(item_type) for item_type in type.items])
         else:
             raise NotImplementedError(type)
         return llvm_type
@@ -534,6 +537,17 @@ class DefineFunctions(IRLLVMPass):
             llvm_val = decl_data.var_value
 
         self.llvm.expr(get_static, set_to=LLVMData.ExprData(var_ptr, llvm_val))
+
+    def visit_tuple(self, tuple: TupleIR):
+        tuple_type = cast(TupleTypeSymbol, self.symbols.expr(tuple).return_type)
+
+        llvm_val = ir.Constant(self.resolve_type(tuple_type), ir.Undefined)
+        for index, expr in enumerate(tuple.items):
+            self.visit_expr(expr)
+            arg_val = self.llvm.expr(expr).r_val
+            llvm_val = self.builder.insert_value(llvm_val, arg_val, index)
+
+        self.llvm.expr(tuple, set_to=LLVMData.ExprData(None, llvm_val))
 
     def visit_get_type(self, type: GetTypeIR):
         resolved: TypeSymbol = self.symbols.type(type).resolved_type

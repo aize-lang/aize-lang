@@ -10,7 +10,7 @@ __all__ = [
     'Symbol',
     'VariableSymbol', 'ErroredVariableSymbol',
     'NamespaceSymbol', 'ErroredNamespaceSymbol',
-    'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'ErroredTypeSymbol', 'StructTypeSymbol',
+    'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'ErroredTypeSymbol', 'StructTypeSymbol', 'TupleTypeSymbol',
     'SymbolTable',
     'FailedLookupError', 'DuplicateSymbolError'
 ]
@@ -109,6 +109,22 @@ class IntTypeSymbol(TypeSymbol):
 
     def __str__(self):
         return self.name
+
+
+class TupleTypeSymbol(TypeSymbol):
+    def __init__(self, items: List[TypeSymbol], pos: Position):
+        super().__init__("<tuple type>", pos)
+        self.items = items
+
+    def is_super_of(self, sub: TypeSymbol) -> bool:
+        if not isinstance(sub, TupleTypeSymbol):
+            return False
+        if len(self.items) != len(sub.items):
+            return False
+        return all(item.is_super_of(other) for item, other in zip(self.items, sub.items))
+
+    def __str__(self):
+        return f"({', '.join(str(item) for item in self.items)})"
 
 
 class FunctionTypeSymbol(TypeSymbol):

@@ -5,6 +5,7 @@ import "<std>/io.az";
 @entry
 def main() -> int32 {
     var callback: () -> int32 = get_test_callback();
+    var tup: (() -> int32, int32) = (callback, 0);
     callback();
     return 0;
 }

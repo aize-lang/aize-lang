@@ -125,8 +125,14 @@ class IRVisitor(ABC):
             return self.visit_cast_int(expr)
         elif isinstance(expr, LambdaIR):
             return self.visit_lambda(expr)
+        elif isinstance(expr, TupleIR):
+            return self.visit_tuple(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
+
+    @abstractmethod
+    def visit_tuple(self, tuple: TupleIR):
+        pass
 
     @abstractmethod
     def visit_lambda(self, lambda_: LambdaIR):
@@ -199,11 +205,17 @@ class IRVisitor(ABC):
             return self.visit_no_type(type)
         elif isinstance(type, FuncTypeIR):
             return self.visit_func_type(type)
+        elif isinstance(type, TupleTypeIR):
+            return self.visit_tuple_type(type)
         else:
             raise TypeError(f"Expected a type node, got {type}")
 
     @abstractmethod
-    def visit_func_type(self, type: TypeIR):
+    def visit_tuple_type(self, type: TupleTypeIR):
+        pass
+
+    @abstractmethod
+    def visit_func_type(self, type: FuncAttrIR):
         pass
 
     @abstractmethod
@@ -406,6 +418,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     def visit_get_static_attr_expr(self, get_static: GetStaticAttrExprIR):
         pass
 
+    def visit_tuple(self, tuple: TupleIR):
+        pass
+
     def visit_int(self, num: IntIR):
         pass
 
@@ -416,6 +431,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_get_type(self, type: GetTypeIR):
+        pass
+
+    def visit_tuple_type(self, type: TupleTypeIR):
         pass
 
     def visit_no_type(self, type: NoTypeIR):

@@ -399,6 +399,8 @@ class IRSymbolsPass(IRTreePass, ABC):
                 raise Exception()
         elif isinstance(expr_type, FunctionTypeSymbol) and isinstance(to_type, FunctionTypeSymbol):
             return expr
+        elif isinstance(expr_type, TupleTypeSymbol) and isinstance(to_type, TupleTypeSymbol):
+            return expr
         else:
             raise Exception()
     # endregion
@@ -429,6 +431,15 @@ class IRSymbolsPass(IRTreePass, ABC):
         param.type = self.visit_type(param.type)
         symbol = VariableSymbol(param.name, param, self.symbols.type(param.type).resolved_type, param.pos)
         self.symbols.param(param, set_to=SymbolData.ParamData(symbol))
+
+    def visit_tuple_type(self, type: TupleTypeIR):
+        items = []
+        for item in type.items:
+            self.visit_type(item)
+            items.append(self.symbols.type(item).resolved_type)
+        resolved_type = TupleTypeSymbol(items, type.pos)
+        self.symbols.type(type, set_to=SymbolData.TypeData(resolved_type))
+        return type
 
     def visit_func_type(self, type: FuncTypeIR):
         params = []
@@ -776,7 +787,7 @@ class ResolveSymbols(IRSymbolsPass):
         decl.ann = self.visit_ann(decl.ann)
         var_type = self.symbols.type(decl.ann.type).resolved_type
 
-        decl.value = decl.value = self.visit_expr(decl.value)
+        decl.value = self.visit_expr(decl.value)
         value_type = self.symbols.expr(decl.value).return_type
 
         if errored_type := self.check_type(decl.value, var_type, decl, decl.ann.pos):
@@ -1084,6 +1095,15 @@ class ResolveSymbols(IRSymbolsPass):
         self.symbols.expr(get_static, set_to=SymbolData.ExprData(resolved_value.type, False))
         self.symbols.get_static_attr_expr(get_static, set_to=SymbolData.GetStaticAttrExprData(resolved_value))
         return get_static
+
+    def visit_tuple(self, tuple: TupleIR):
+        items = []
+        for item in tuple.items:
+            self.visit_expr(item)
+            items.append(self.symbols.expr(item).return_type)
+        return_type = TupleTypeSymbol(items, tuple.pos)
+        self.symbols.expr(tuple, set_to=SymbolData.ExprData(return_type, False))
+        return tuple
 
     def visit_int(self, num: IntIR):
         # TODO Number size checking and handle the INT_MAX vs INT_MIN problem with unary - in front of a literal
