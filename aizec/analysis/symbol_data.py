@@ -5,13 +5,10 @@ from aizec.common import *
 from aizec.ir import Extension
 from aizec.ir.nodes import *
 
-from .symbols import NamespaceSymbol, VariableSymbol, TypeSymbol, StructTypeSymbol, FunctionTypeSymbol
+from .symbols import *
 
 
 class SymbolData(Extension):
-    def general(self, set_to=None):
-        raise NotImplementedError()
-
     class ProgramData:
         def __init__(self, builtins: NamespaceSymbol):
             self.builtins = builtins
@@ -43,6 +40,13 @@ class SymbolData(Extension):
     def agg_func(self, node: AggFuncIR, set_to: AggFuncData = None) -> AggFuncData:
         return super().agg_func(node, set_to)
 
+    class UnionData:
+        def __init__(self, union_type: UnionTypeSymbol):
+            self.union_type = union_type
+
+    def union(self, node: UnionIR, set_to: UnionData = None) -> UnionData:
+        return super().union(node, set_to)
+
     class StructData:
         def __init__(self, struct_type: StructTypeSymbol):
             self.struct_type = struct_type
@@ -71,6 +75,14 @@ class SymbolData(Extension):
 
     def expr(self, node: ExprIR, set_to: ExprData = None) -> ExprData:
         return super().expr(node, set_to)
+
+    class IsData:
+        def __init__(self, union_type: Optional[UnionTypeSymbol], to_variant: UnionVariantTypeSymbol):
+            self.union_type = union_type
+            self.variant = to_variant
+
+    def is_(self, node: IsIR, set_to: IsData = None) -> IsData:
+        return super().is_(node, set_to)
 
     class CompareData:
         def __init__(self, is_signed: bool):
@@ -156,6 +168,14 @@ class SymbolData(Extension):
 
     def cast_int(self, node: CastIntIR, set_to: CastIntData = None) -> CastIntData:
         return super().cast_int(node, set_to)
+
+    class CastUnionData:
+        def __init__(self, from_variant: UnionVariantTypeSymbol, to_union: UnionTypeSymbol):
+            self.from_variant = from_variant
+            self.to_union = to_union
+
+    def cast_union(self, node: CastUnionIR, set_to: CastUnionData = None) -> CastUnionData:
+        return super().cast_union(node, set_to)
 
     class LambdaData:
         def __init__(self, value: VariableSymbol, type: FunctionTypeSymbol, namespace: NamespaceSymbol):

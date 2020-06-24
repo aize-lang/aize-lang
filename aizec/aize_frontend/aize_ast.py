@@ -8,7 +8,7 @@ __all__ = [
     'ASTVisitor',
     'NodeAST', 'TextAST',
     'ProgramAST', 'SourceAST',
-    'TopLevelAST', 'FunctionAST', 'ImportAST', 'StructAST',
+    'TopLevelAST', 'FunctionAST', 'ImportAST', 'StructAST', 'UnionAST', 'VariantAST',
     'ParamAST', 'FunctionAttributeAST',
     'AggregateStmtAST', 'AggregateFieldAST', 'AggregateFunctionAST',
     'StmtAST', 'IfStmtAST', 'WhileStmtAST', 'BlockStmtAST', 'VarDeclStmtAST', 'ReturnStmtAST', 'ExprStmtAST',
@@ -16,7 +16,7 @@ __all__ = [
     'ExprAST', 'CompareExprAST', 'BinaryExprAST', 'GetVarExprAST',
     'ArithmeticExprAST', 'UnaryExprAST', 'InvExprAST', 'NotExprAST', 'GetAttrExprAST',
     'SetAttrExprAST', 'NegExprAST', 'SetVarExprAST', 'CallExprAST', 'StrLiteralAST', 'NewExprAST',
-    'IntLiteralAST', 'IntrinsicExprAST', 'LambdaExprAST', 'TupleExprAST',
+    'IntLiteralAST', 'IntrinsicExprAST', 'LambdaExprAST', 'TupleExprAST', 'IsExprAST',
 
     'GetStaticAttrExprAST'
 ]
@@ -41,8 +41,18 @@ class ASTVisitor(ABC):
             return self.visit_struct(top_level)
         elif isinstance(top_level, ImportAST):
             return self.visit_import(top_level)
+        elif isinstance(top_level, UnionAST):
+            return self.visit_union(top_level)
         else:
             raise TypeError(f"Expected a top-level node, got {top_level}")
+
+    @abstractmethod
+    def visit_union(self, union: UnionAST):
+        pass
+
+    @abstractmethod
+    def visit_variant(self, variant: VariantAST):
+        pass
 
     @abstractmethod
     def visit_import(self, imp: ImportAST):
@@ -141,8 +151,14 @@ class ASTVisitor(ABC):
             return self.visit_lambda(expr)
         elif isinstance(expr, TupleExprAST):
             return self.visit_tuple(expr)
+        elif isinstance(expr, IsExprAST):
+            return self.visit_is(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
+
+    @abstractmethod
+    def visit_is(self, is_: IsExprAST):
+        pass
 
     @abstractmethod
     def visit_cmp(self, cmp: CompareExprAST):
@@ -294,6 +310,23 @@ class StructAST(TopLevelAST):
         self.body = body
 
 
+class UnionAST(TopLevelAST):
+    def __init__(self, name: str, variants: List[VariantAST], funcs: List[AggregateFunctionAST], pos: Position):
+        super().__init__(pos)
+
+        self.name = name
+        self.variants = variants
+        self.funcs = funcs
+
+
+class VariantAST(TopLevelAST):
+    def __init__(self, name: str, type: ExprAST, pos: Position):
+        super().__init__(pos)
+
+        self.name = name
+        self.type = type
+
+
 class ImportAST(TopLevelAST):
     def __init__(self, anchor: str, path: Path, pos: Position):
         super().__init__(pos)
@@ -419,6 +452,15 @@ class TupleExprAST(ExprAST):
         super().__init__(pos)
 
         self.items = items
+
+
+class IsExprAST(ExprAST):
+    def __init__(self, expr: ExprAST, variant: str, to_var: str, pos: Position):
+        super().__init__(pos)
+
+        self.expr = expr
+        self.variant = variant
+        self.to_var = to_var
 
 
 class GetVarExprAST(ExprAST):

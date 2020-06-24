@@ -11,13 +11,10 @@ from aizec.aize_common import MessageHandler
 from aizec.ir import IR, Extension
 from aizec.ir.nodes import *
 
-from aizec.analysis import SymbolData, \
-    TypeSymbol, IntTypeSymbol, FunctionTypeSymbol, StructTypeSymbol, \
-    DefaultPasses, MangleNames
+from aizec.analysis import *
 from aizec.ir_pass import IRTreePass, IRPassSequence, PassesRegister, PassAlias, PassScheduler
 
 from .aize_backend import CBackend, CLinker
-from ..analysis.symbols import TupleTypeSymbol
 
 
 class LLVMData(Extension):
@@ -152,6 +149,11 @@ class IRLLVMPass(IRTreePass, ABC):
 
         self.builder = ir.IRBuilder()
 
+    def get_size(self, type: ir.Type) -> int:
+        target = llvm.Target.from_default_triple()
+        machine = target.create_target_machine(codemodel='small')
+        return type.get_abi_size(machine.target_data)
+
     @property
     def mod(self) -> ir.Module:
         return self.llvm.general().mod
@@ -169,6 +171,17 @@ class IRLLVMPass(IRTreePass, ABC):
             llvm_type = ir.LiteralStructType([self.resolve_type(field_type) for _, (field_type, _) in type.fields.items()])
         elif isinstance(type, TupleTypeSymbol):
             llvm_type = ir.LiteralStructType([self.resolve_type(item_type) for item_type in type.items])
+        elif isinstance(type, UnionTypeSymbol):
+            variants = [self.resolve_type(variant) for variant in type.variant_types.values()]
+            # if len(variants) <= 256:
+            #     discriminator = ir.IntType(8)
+            discriminator = ir.IntType(8)
+            max_bytes = max(self.get_size(v) - self.get_size(discriminator) for v in variants)
+            llvm_type = ir.LiteralStructType([discriminator, ir.ArrayType(ir.IntType(8), max_bytes)])
+        elif isinstance(type, UnionVariantTypeSymbol):
+            discriminator = ir.IntType(8)
+            this_bytes = self.get_size(self.resolve_type(type.contains))
+            llvm_type = ir.LiteralStructType([discriminator, self.resolve_type(type.contains)])
         else:
             raise NotImplementedError(type)
         return llvm_type
@@ -211,6 +224,10 @@ class DeclareFunctions(IRLLVMPass):
             self.visit_source(source)
 
         self._main_builder.ret(self._last_ret)
+
+    def visit_union(self, union: UnionIR):
+        for func in union.funcs:
+            self.visit_agg_func(func)
 
     def visit_struct(self, struct: StructIR):
         for func in struct.funcs:
@@ -319,6 +336,10 @@ class DefineFunctions(IRLLVMPass):
             if not self.builder.block.is_terminated:
                 self.builder.unreachable()
 
+    def visit_union(self, union: UnionIR):
+        for func in union.funcs:
+            self.visit_agg_func(func)
+
     def visit_struct(self, struct: StructIR):
         for func in struct.funcs:
             self.visit_agg_func(func)
@@ -382,6 +403,30 @@ class DefineFunctions(IRLLVMPass):
         self.visit_expr(expr)
         llvm_val = self.llvm.expr(expr).r_val
         self.builder.ret(llvm_val)
+
+    def visit_is(self, is_: IsIR):
+        data = self.symbols.is_(is_)
+        cast_to = self.resolve_type(data.variant.contains)
+
+        self.visit_expr(is_.expr)
+        expr = self.llvm.expr(is_.expr).r_val
+
+        disc = self.builder.extract_value(expr, [0])
+        result = self.builder.icmp_unsigned("==", disc, ir.Constant(ir.IntType(8), data.variant.index))
+
+        var = self.builder.alloca(cast_to)
+        with self.builder.if_else(result) as (then_do, else_do):
+            with then_do:
+                tmp = self.builder.alloca(self.resolve_type(data.union_type))
+                self.builder.store(expr, tmp)
+                variant_ptr = self.builder.bitcast(tmp, self.resolve_type(data.variant).as_pointer())
+                value = self.builder.extract_value(self.builder.load(variant_ptr), 1)
+                self.builder.store(value, var)
+            with else_do:
+                self.builder.store(ir.Constant(cast_to, ir.Undefined), var)
+        llvm_val = result
+        self.llvm.decl(is_, set_to=LLVMData.DeclData(var, is_ptr=True))
+        self.llvm.expr(is_, set_to=LLVMData.ExprData(None, llvm_val))
 
     def visit_compare(self, cmp: CompareIR):
         self.visit_expr(cmp.left)
@@ -462,13 +507,23 @@ class DefineFunctions(IRLLVMPass):
         self.llvm.expr(method_call, set_to=LLVMData.ExprData(None, llvm_val))
 
     def visit_new(self, new: NewIR):
-        struct_type = self.symbols.type(new.type).resolved_type
+        type = self.symbols.type(new.type).resolved_type
+        if isinstance(type, StructTypeSymbol):
+            llvm_val = ir.Constant(self.resolve_type(type), ir.Undefined)
+            for index, arg in enumerate(new.arguments):
+                self.visit_expr(arg)
+                arg_val = self.llvm.expr(arg).r_val
+                llvm_val = self.builder.insert_value(llvm_val, arg_val, index)
+        elif isinstance(type, UnionVariantTypeSymbol):
+            llvm_val = ir.Constant(self.resolve_type(type), ir.Undefined)
+            llvm_val = self.builder.insert_value(llvm_val, ir.Constant(ir.IntType(8), type.index), 0)
 
-        llvm_val = ir.Constant(self.resolve_type(struct_type), ir.Undefined)
-        for index, arg in enumerate(new.arguments):
+            arg = new.arguments[0]
             self.visit_expr(arg)
             arg_val = self.llvm.expr(arg).r_val
-            llvm_val = self.builder.insert_value(llvm_val, arg_val, index)
+            llvm_val = self.builder.insert_value(llvm_val, arg_val, 1)
+        else:
+            raise Exception()
 
         self.llvm.expr(new, set_to=LLVMData.ExprData(None, llvm_val))
 
@@ -563,11 +618,38 @@ class DefineFunctions(IRLLVMPass):
         self.visit_expr(cast_int.expr)
         expr_val = self.llvm.expr(cast_int.expr).r_val
         data = self.symbols.cast_int(cast_int)
-        if data.is_signed:
-            llvm_val = self.builder.sext(expr_val, ir.IntType(data.to_bits))
+        if data.from_bits < data.to_bits:
+            if data.is_signed:
+                llvm_val = self.builder.sext(expr_val, ir.IntType(data.to_bits))
+            else:
+                llvm_val = self.builder.zext(expr_val, ir.IntType(data.to_bits))
         else:
-            llvm_val = self.builder.zext(expr_val, ir.IntType(data.to_bits))
+            llvm_val = self.builder.trunc(expr_val, ir.IntType(data.to_bits))
         self.llvm.expr(cast_int, set_to=LLVMData.ExprData(None, llvm_val))
+
+    def debug_print(self, arg: ir.Value):
+        self.builder.call(self.mod.get_global("aize_S1_V9print_int"), [arg])
+
+    def visit_cast_union(self, cast_union: CastUnionIR):
+        self.visit_expr(cast_union.expr)
+        expr_val = self.llvm.expr(cast_union.expr).r_val
+        data = self.symbols.cast_union(cast_union)
+
+        # val = self.builder.extract_value(expr_val, 1)
+        # self.debug_print(val)
+
+        # print("from:", self.resolve_type(data.from_variant), self.get_size(self.resolve_type(data.from_variant)))
+        # print("to:", self.resolve_type(data.to_union), self.get_size(self.resolve_type(data.to_union)))
+
+        tmp = self.builder.alloca(self.resolve_type(data.from_variant))
+        self.builder.store(expr_val, tmp)
+        tmp = self.builder.bitcast(tmp, self.resolve_type(data.to_union).as_pointer())
+        llvm_val = self.builder.load(tmp)
+
+        # val = self.builder.sext(self.builder.extract_value(llvm_val, (1, 0)), ir.IntType(32))
+        # self.debug_print(val)
+
+        self.llvm.expr(cast_union, set_to=LLVMData.ExprData(None, llvm_val))
 
     def visit_lambda(self, lambda_: LambdaIR):
         func_type = self.symbols.lambda_(lambda_).type

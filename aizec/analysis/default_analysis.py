@@ -18,7 +18,6 @@ class DefinitionError(AizeMessage):
         super().__init__(ErrorLevel.ERROR)
         self.msg = msg
         self.pos = pos
-
         self.notes = notes
 
     @classmethod
@@ -32,33 +31,25 @@ class DefinitionError(AizeMessage):
 
     @classmethod
     def name_undefined(cls, pos: Position, name: str):
-        error = cls.from_pos(pos, f"Name '{name}' could not be found")
+        error = cls(f"Name '{name}' could not be found", pos, [])
         return error
 
     @classmethod
-    def field_not_found(cls, field_name: str, accessor: Position, struct_type: StructTypeSymbol):
-        note = DefinitionNote.from_pos(struct_type.position, f"{struct_type} defined here")
-        error = cls(f"Field '{field_name}' not found on {struct_type}", accessor, [])
+    def attr_not_found(cls, attr_name: str, name: str, accessor: Position, agg_type: AggTypeSymbol):
+        note = DefinitionNote.from_pos(agg_type.position, f"{agg_type} defined here")
+        error = cls(f"{attr_name} '{name}' not found on {agg_type}", accessor, [])
         return error
 
     @classmethod
-    def field_repeated(cls, repeat: Position, original: Position, name: str):
+    def attr_repeated(cls, attr_name: str, repeat: Position, original: Position, name: str):
         note = DefinitionNote.from_pos(original, "Previously declared here")
-        error = cls.from_pos(repeat, f"Field name '{name}' repeated", note)
+        error = cls(f"{attr_name} name '{name}' repeated", repeat, [note])
         return error
 
     @classmethod
     def no_such_intrinsic(cls, intrinsic: Position, name: str):
-        error = cls.from_pos(intrinsic, f"No intrinsic with name '{name}'")
+        error = cls(f"No intrinsic with name '{name}'", intrinsic, [])
         return error
-
-    @classmethod
-    def from_pos(cls, pos: Position, msg: str, note: AizeMessage = None):
-        return cls(msg, pos, [note] if note else [])
-
-    @classmethod
-    def from_node(cls, node: TextIR, msg: str, note: AizeMessage = None):
-        return cls.from_pos(node.pos, msg, note)
 
     def display(self, reporter: Reporter):
         reporter.positioned_error("Name Resolution Error", self.msg, self.pos)
@@ -159,74 +150,12 @@ PassesRegister.register(DefaultPasses)
 
 class LiteralData(Extension):
     class BuiltinData:
-        def __init__(self,
-                     uint: Dict[int, TypeSymbol],
-                     sint: Dict[int, TypeSymbol]):
+        def __init__(self, uint: Dict[int, TypeSymbol], sint: Dict[int, TypeSymbol]):
             self.uint = uint
             self.sint = sint
 
     def general(self, set_to: BuiltinData = None) -> BuiltinData:
         return super().general(set_to)
-
-    def program(self, node: ProgramIR, set_to=None):
-        raise NotImplementedError()
-
-    def source(self, node: SourceIR, set_to=None):
-        raise NotImplementedError()
-
-    def function(self, node: FunctionIR, set_to=None):
-        raise NotImplementedError()
-
-    def struct(self, node: StructIR, set_to=None):
-        raise NotImplementedError()
-
-    def agg_func(self, node: AggFuncIR, set_to=None):
-        raise NotImplementedError()
-
-    def param(self, node: ParamIR, set_to=None):
-        raise NotImplementedError()
-
-    def stmt(self, node: StmtIR, set_to=None):
-        raise NotImplementedError()
-
-    def expr(self, node: ExprIR, set_to=None):
-        raise NotImplementedError()
-
-    def compare(self, node: CompareIR, set_to=None):
-        raise NotImplementedError()
-
-    def arithmetic(self, node: ArithmeticIR, set_to=None):
-        raise NotImplementedError()
-
-    def method_call(self, node: MethodCallIR, set_to=None):
-        raise NotImplementedError()
-
-    def get_var(self, node: GetVarIR, set_to=None):
-        raise NotImplementedError()
-
-    def set_var(self, node: SetVarIR, set_to=None):
-        raise NotImplementedError()
-
-    def get_attr(self, node: GetAttrIR, set_to=None):
-        raise NotImplementedError()
-
-    def set_attr(self, node: SetAttrIR, set_to=None):
-        raise NotImplementedError()
-
-    def intrinsic(self, node: IntrinsicIR, set_to=None):
-        raise NotImplementedError()
-
-    def get_static_attr_expr(self, node: GetStaticAttrExprIR, set_to=None):
-        raise NotImplementedError()
-
-    def cast_int(self, node: CastIntIR, set_to=None):
-        raise NotImplementedError()
-
-    def namespace(self, node: NamespaceIR, set_to=None):
-        raise NotImplementedError()
-
-    def type(self, node: TypeIR, set_to=None):
-        raise NotImplementedError()
 
 
 class IRSymbolsPass(IRTreePass, ABC):
@@ -290,7 +219,7 @@ class IRSymbolsPass(IRTreePass, ABC):
         try:
             in_namespace.define_value(symbol)
         except DuplicateSymbolError as err:
-            msg = DefinitionError.name_existing(symbol.position)
+            msg = DefinitionError.name_existing(symbol.position, err.old_symbol)
             MessageHandler.handle_message(msg)
 
     def check_argument_count(self, arguments: List[ExprIR], expected_count: int, pos: Position) -> bool:
@@ -332,11 +261,9 @@ class IRSymbolsPass(IRTreePass, ABC):
                 MessageHandler.handle_message(msg)
                 return ErroredTypeSymbol(node.pos)
 
-    def check_type_cls(self, exprs: List[Union[ExprIR, TypeIR]], cls: Type[TypeSymbol], place: Position, err_msg: str) -> Optional[TypeSymbol]:
-        types = [self.symbols.expr(expr).return_type
-                 if isinstance(expr, ExprIR) else
-                 self.symbols.type(expr).resolved_type
-                 for expr in exprs]
+    def check_type_cls(self, exprs: List[Union[ExprIR, TypeIR]], cls: Union[Type[TypeSymbol], Tuple[Type[TypeSymbol], ...]],
+                       place: Position, err_msg: str) -> Optional[TypeSymbol]:
+        types = [self.symbols.expr(expr).return_type if isinstance(expr, ExprIR) else self.symbols.type(expr).resolved_type for expr in exprs]
         positions = [expr.pos for expr in exprs]
         for type in types:
             if isinstance(type, ErroredTypeSymbol):
@@ -379,7 +306,7 @@ class IRSymbolsPass(IRTreePass, ABC):
             if expr_type.is_signed == to_type.is_signed:
                 from_bits = expr_type.bit_size
                 to_bits = to_type.bit_size
-                if from_bits < to_bits:
+                if from_bits != to_bits:
                     cast_type = GeneratedTypeIR(expr.pos)
                     self.symbols.type(cast_type, set_to=SymbolData.TypeData(to_type))
                     cast_expr = CastIntIR(expr, cast_type, expr.pos)
@@ -401,6 +328,20 @@ class IRSymbolsPass(IRTreePass, ABC):
             return expr
         elif isinstance(expr_type, TupleTypeSymbol) and isinstance(to_type, TupleTypeSymbol):
             return expr
+        elif isinstance(expr_type, UnionVariantTypeSymbol):
+            if isinstance(to_type, UnionVariantTypeSymbol):
+                return expr
+            elif isinstance(to_type, UnionTypeSymbol):
+                to_union = GeneratedTypeIR(expr.pos)
+                self.symbols.type(to_union, set_to=SymbolData.TypeData(to_type))
+                from_variant = GeneratedTypeIR(expr.pos)
+                self.symbols.type(from_variant, set_to=SymbolData.TypeData(expr_type))
+                cast_expr = CastUnionIR(expr, to_union, from_variant, expr.pos)
+                self.symbols.cast_union(cast_expr, set_to=SymbolData.CastUnionData(expr_type, to_type))
+                self.symbols.expr(cast_expr, set_to=SymbolData.ExprData(to_type, False))
+                return cast_expr
+            else:
+                raise Exception()
         else:
             raise Exception()
     # endregion
@@ -549,11 +490,32 @@ class DeclareTypes(IRSymbolsPass):
             msg = DefinitionError.name_existing(imp.pos, err.old_symbol)
             MessageHandler.handle_message(msg)
 
+    def visit_union(self, union: UnionIR):
+        variants: Dict[str, Tuple[TypeSymbol, Position]] = {}
+        for variant in union.variants:
+            if variant.name in variants:
+                msg = DefinitionError.attr_repeated("Variant", variant.pos, variants[variant.name][1], variant.name)
+                MessageHandler.handle_message(msg)
+            else:
+                variant.contains = self.visit_type(variant.contains)
+                variants[variant.name] = self.symbols.type(variant.contains).resolved_type, variant.pos
+        union_type = UnionTypeSymbol(union.name, variants, {}, {}, union.pos)
+        self.current_namespace.define_type(union_type)
+
+        index = 0
+        for variant_name, (variant_type, variant_pos) in variants.items():
+            variant_type = UnionVariantTypeSymbol(variant_name, variant_name, index, variant_type, union_type, variant_pos)
+            union_type.variant_types[variant_name] = variant_type
+            self.current_namespace.define_type(variant_type)
+            index += 1
+
+        self.symbols.union(union, set_to=SymbolData.UnionData(union_type))
+
     def visit_struct(self, struct: StructIR):
         fields: Dict[str, Tuple[TypeSymbol, Position]] = {}
         for field in struct.fields:
             if field.name in fields:
-                msg = DefinitionError.field_repeated(field.pos, fields[field.name][1], field.name)
+                msg = DefinitionError.attr_repeated("field", field.pos, fields[field.name][1], field.name)
                 MessageHandler.handle_message(msg)
             else:
                 field.type = self.visit_type(field.type)
@@ -570,7 +532,7 @@ class DeclareFunctions(IRSymbolsPass):
 
         self.builtins: LiteralData = self.get_ext(LiteralData)
 
-        self.current_struct: Optional[StructTypeSymbol] = None
+        self.current_agg: Optional[AggTypeSymbol] = None
 
     @classmethod
     def get_required_passes(cls) -> Set[PassAlias]:
@@ -581,11 +543,10 @@ class DeclareFunctions(IRSymbolsPass):
         return {LiteralData, SymbolData}
 
     @contextmanager
-    def in_struct(self, struct: StructIR):
-        struct_type = self.symbols.struct(struct).struct_type
-        old, self.current_struct = self.current_struct, struct_type
+    def in_agg(self, type: AggTypeSymbol):
+        old, self.current_agg = self.current_agg, type
         yield
-        self.current_struct = old
+        self.current_agg = old
 
     def visit_program(self, program: ProgramIR):
         with self.enter_namespace(self.symbols.program(program).builtins):
@@ -597,18 +558,34 @@ class DeclareFunctions(IRSymbolsPass):
             for top_level in source.top_levels:
                 self.visit_top_level(top_level)
 
-    def visit_struct(self, struct: StructIR):
-        struct_type = self.symbols.struct(struct).struct_type
+    def visit_union(self, union: UnionIR):
+        union_type = self.symbols.union(union).union_type
         funcs: Dict[str, VariableSymbol] = {}
-        for func in struct.funcs:
-            if func.name in struct_type.fields:
-                msg = DefinitionError.field_repeated(func.pos, struct_type.fields[func.name][1], func.name)
+        for func in union.funcs:
+            if func.name in union_type.variants:
+                msg = DefinitionError.attr_repeated("field", func.pos, union_type.variants[func.name][1], func.name)
                 MessageHandler.handle_message(msg)
             elif func.name in funcs:
                 msg = DefinitionError.name_existing(func.pos, funcs[func.name])
                 MessageHandler.handle_message(msg)
             else:
-                with self.in_struct(struct):
+                with self.in_agg(union_type):
+                    self.visit_agg_func(func)
+                    funcs[func.name] = self.symbols.decl(func).declares
+        union_type.funcs = funcs
+
+    def visit_struct(self, struct: StructIR):
+        struct_type = self.symbols.struct(struct).struct_type
+        funcs: Dict[str, VariableSymbol] = {}
+        for func in struct.funcs:
+            if func.name in struct_type.fields:
+                msg = DefinitionError.attr_repeated("field", func.pos, struct_type.fields[func.name][1], func.name)
+                MessageHandler.handle_message(msg)
+            elif func.name in funcs:
+                msg = DefinitionError.name_existing(func.pos, funcs[func.name])
+                MessageHandler.handle_message(msg)
+            else:
+                with self.in_agg(struct_type):
                     self.visit_agg_func(func)
                     funcs[func.name] = self.symbols.decl(func).declares
         struct_type.funcs = funcs
@@ -619,7 +596,7 @@ class DeclareFunctions(IRSymbolsPass):
             MessageHandler.handle_message(msg)
         else:
             self_param = func.params[0]
-            self.symbols.type(self_param.type, set_to=SymbolData.TypeData(self.current_struct))
+            self.symbols.type(self_param.type, set_to=SymbolData.TypeData(self.current_agg))
 
         func_value, func_namespace = self.create_function(func)
         self.symbols.agg_func(func, set_to=SymbolData.AggFuncData(func_value, func_namespace))
@@ -694,6 +671,10 @@ class ResolveSymbols(IRSymbolsPass):
         with self.enter_namespace(self.symbols.source(source).globals):
             for top_level in source.top_levels:
                 self.visit_top_level(top_level)
+
+    def visit_union(self, union: UnionIR):
+        for func in union.funcs:
+            self.visit_agg_func(func)
 
     def visit_struct(self, struct: StructIR):
         for func in struct.funcs:
@@ -826,6 +807,30 @@ class ResolveSymbols(IRSymbolsPass):
 
         self.symbols.stmt(ret, set_to=SymbolData.StmtData(True))
 
+    def visit_is(self, is_: IsIR):
+        is_.expr = self.visit_expr(is_.expr)
+
+        union_type = None
+        variant = None
+        if errored_type := self.check_type_cls([is_.expr], UnionTypeSymbol, is_.pos, "is expected a union"):
+            return_type = errored_type
+        else:
+            union_type = cast(UnionTypeSymbol, self.symbols.expr(is_.expr).return_type)
+            if is_.variant in union_type.variants:
+                variant = union_type.variant_types[is_.variant]
+                contains = variant.contains
+            else:
+                msg = DefinitionError.attr_not_found("variant", is_.variant, is_.pos, union_type)
+                MessageHandler.handle_message(msg)
+                contains = ErroredTypeSymbol(is_.pos)
+            value_symbol = VariableSymbol(is_.to_var, is_, contains, is_.pos)
+            self.define_value(value_symbol)
+            return_type = self.builtins.general().uint[1]
+
+        self.symbols.expr(is_, set_to=SymbolData.ExprData(return_type, False))
+        self.symbols.is_(is_, set_to=SymbolData.IsData(union_type, variant))
+        return is_
+
     def visit_compare(self, cmp: CompareIR):
         cmp.left = self.visit_expr(cmp.left)
         cmp.right = self.visit_expr(cmp.right)
@@ -878,13 +883,17 @@ class ResolveSymbols(IRSymbolsPass):
         new.type = self.visit_type(new.type)
         new.arguments = [self.visit_expr(arg) for arg in new.arguments]
 
-        if errored_type := self.check_type_cls([new.type], StructTypeSymbol, new.pos, "New expected a struct"):
+        if errored_type := self.check_type_cls([new.type], (StructTypeSymbol, UnionVariantTypeSymbol), new.pos, "New expected a struct or union variant"):
             return_type = errored_type
         else:
-            return_type = struct_type = cast(StructTypeSymbol, self.symbols.type(new.type).resolved_type)
-            field_types = [field_type for _, (field_type, _) in struct_type.fields.items()]
-            self.check_arguments(new.arguments, field_types, new.pos)
-            new.arguments = [self.cast_implicit(arg, field_type) for arg, field_type in zip(new.arguments, field_types)]
+            return_type = type = self.symbols.type(new.type).resolved_type
+            if isinstance(type, StructTypeSymbol):
+                field_types = [field_type for _, (field_type, _) in type.fields.items()]
+                self.check_arguments(new.arguments, field_types, new.pos)
+                new.arguments = [self.cast_implicit(arg, field_type) for arg, field_type in zip(new.arguments, field_types)]
+            elif isinstance(type, UnionVariantTypeSymbol):
+                self.check_arguments(new.arguments, [type.contains], new.pos)
+                new.arguments = [self.cast_implicit(new.arguments[0], type.contains)]
 
         self.symbols.expr(new, set_to=SymbolData.ExprData(return_type, False))
         return new
@@ -972,7 +981,7 @@ class ResolveSymbols(IRSymbolsPass):
                 return_type = func.type
                 is_method = True
             else:
-                msg = DefinitionError.field_not_found(get_attr.attr, get_attr.pos, struct_type)
+                msg = DefinitionError.attr_not_found("field", get_attr.attr, get_attr.pos, struct_type)
                 MessageHandler.handle_message(msg)
                 return_type = ErroredTypeSymbol(get_attr.pos)
 
@@ -1007,7 +1016,7 @@ class ResolveSymbols(IRSymbolsPass):
                     set_attr.value = self.cast_implicit(set_attr.value, field_type)
                     return_type = value_type
             else:
-                msg = DefinitionError.field_not_found(set_attr.attr, set_attr.pos, struct_type)
+                msg = DefinitionError.attr_not_found("field", set_attr.attr, set_attr.pos, struct_type)
                 MessageHandler.handle_message(msg)
                 return_type = ErroredTypeSymbol(set_attr.pos)
                 index = None

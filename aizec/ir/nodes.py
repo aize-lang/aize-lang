@@ -7,12 +7,14 @@ from aizec.aize_common import Position, Source
 __all__ = [
     'NodeIR', 'TextIR',
     'ProgramIR', 'SourceIR',
-    'TopLevelIR', 'FunctionIR', 'StructIR', 'ImportIR',
+    'TopLevelIR', 'FunctionIR', 'StructIR', 'ImportIR', 'UnionIR',
+    'VariantIR',
     'AggFieldIR', 'AggFuncIR',
     'ParamIR', 'FuncAttrIR',
-    'StmtIR','ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR', 'WhileStmtIR',
+    'StmtIR', 'ReturnIR', 'IfStmtIR', 'BlockIR', 'VarDeclIR', 'ExprStmtIR', 'WhileStmtIR',
     'ExprIR', 'CallIR', 'IntIR', 'GetVarIR', 'SetVarIR', 'CompareIR', 'ArithmeticIR', 'NewIR', 'GetAttrIR', 'SetAttrIR',
-    'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR', 'CastIntIR', 'MethodCallIR', 'LambdaIR', 'TupleIR',
+    'IntrinsicIR', 'GetStaticAttrExprIR', 'NegateIR', 'CastIntIR', 'MethodCallIR', 'LambdaIR', 'TupleIR', 'IsIR',
+    'CastUnionIR',
     'AnnotationIR',
     'TypeIR', 'GetTypeIR', 'MalformedTypeIR', 'GeneratedTypeIR', 'NoTypeIR', 'FuncTypeIR', 'TupleTypeIR',
     'NamespaceIR', 'GetNamespaceIR', 'MalformedNamespaceIR',
@@ -74,6 +76,23 @@ class StructIR(TopLevelIR):
         self.name = name
         self.fields = fields
         self.funcs = funcs
+
+
+class UnionIR(TopLevelIR):
+    def __init__(self, name: str, variants: List[VariantIR], funcs: List[AggFuncIR], pos: Position):
+        super().__init__(pos)
+
+        self.name = name
+        self.variants = variants
+        self.funcs = funcs
+
+
+class VariantIR(TextIR):
+    def __init__(self, name: str, contains: TypeIR, pos: Position):
+        super().__init__(pos)
+
+        self.name = name
+        self.contains = contains
 
 
 # region Aggregate Statement Nodes
@@ -162,6 +181,15 @@ class ReturnIR(StmtIR):
 # region Expression Nodes
 class ExprIR(TextIR):
     pass
+
+
+class IsIR(ExprIR):
+    def __init__(self, expr: ExprIR, variant: str, to_var: str, pos: Position):
+        super().__init__(pos)
+
+        self.expr = expr
+        self.variant = variant
+        self.to_var = to_var
 
 
 class CompareIR(ExprIR):
@@ -261,6 +289,15 @@ class CastIntIR(ExprIR):
 
         self.expr = expr
         self.type = type
+
+
+class CastUnionIR(ExprIR):
+    def __init__(self, expr: ExprIR, to_union: TypeIR, from_variant: TypeIR, pos: Position):
+        super().__init__(pos)
+
+        self.expr = expr
+        self.to_union = to_union
+        self.from_variant = from_variant
 
 
 class LambdaIR(ExprIR):

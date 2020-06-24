@@ -71,6 +71,12 @@ class CreateIR(ASTVisitor):
                 raise Exception()
         return StructIR(struct.name, fields, funcs, struct.pos)
 
+    def visit_union(self, union: UnionAST):
+        return UnionIR(union.name, [self.visit_variant(variant) for variant in union.variants], [self.visit_agg_func(func) for func in union.funcs], union.pos)
+
+    def visit_variant(self, variant: VariantAST):
+        return VariantIR(variant.name, self.visit_type(variant.type), variant.pos)
+
     def visit_agg_field(self, attr: AggregateFieldAST):
         ann = self.visit_ann(attr.annotation)
         return AggFieldIR(attr.name, ann.type, attr.pos)
@@ -112,6 +118,9 @@ class CreateIR(ASTVisitor):
 
     def visit_return(self, ret: ReturnStmtAST):
         return ReturnIR(self.visit_expr(ret.value), ret.pos)
+
+    def visit_is(self, is_: IsExprAST):
+        return IsIR(self.visit_expr(is_.expr), is_.variant, is_.to_var, is_.pos)
 
     def visit_cmp(self, cmp: CompareExprAST):
         return CompareIR(cmp.op, self.visit_expr(cmp.left), self.visit_expr(cmp.right), cmp.pos)

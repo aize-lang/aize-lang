@@ -10,7 +10,7 @@ __all__ = [
     'Symbol',
     'VariableSymbol', 'ErroredVariableSymbol',
     'NamespaceSymbol', 'ErroredNamespaceSymbol',
-    'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'ErroredTypeSymbol', 'StructTypeSymbol', 'TupleTypeSymbol',
+    'TypeSymbol', 'IntTypeSymbol', 'FunctionTypeSymbol', 'ErroredTypeSymbol', 'StructTypeSymbol', 'TupleTypeSymbol', 'UnionTypeSymbol', 'AggTypeSymbol', 'UnionVariantTypeSymbol',
     'SymbolTable',
     'FailedLookupError', 'DuplicateSymbolError'
 ]
@@ -84,18 +84,54 @@ class ErroredTypeSymbol(TypeSymbol):
         return False
 
 
-class StructTypeSymbol(TypeSymbol):
-    def __init__(self, name: str, fields: Dict[str, Tuple[TypeSymbol, Position]], funcs: Dict[str, VariableSymbol], pos: Position):
+class AggTypeSymbol(TypeSymbol):
+    def __init__(self, name: str, funcs: Dict[str, VariableSymbol], pos: Position):
         super().__init__(name, pos)
 
-        self.fields = fields
         self.funcs = funcs
+
+
+class StructTypeSymbol(AggTypeSymbol):
+    def __init__(self, name: str, fields: Dict[str, Tuple[TypeSymbol, Position]], funcs: Dict[str, VariableSymbol], pos: Position):
+        super().__init__(name, funcs, pos)
+
+        self.fields = fields
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
         return isinstance(sub, StructTypeSymbol) and sub is self
 
     def __str__(self):
         return f"struct {self.name}"
+
+
+class UnionTypeSymbol(AggTypeSymbol):
+    def __init__(self, name: str, variants: Dict[str, Tuple[TypeSymbol, Position]], variant_types: Dict[str, UnionVariantTypeSymbol], funcs: Dict[str, VariableSymbol], pos: Position):
+        super().__init__(name, funcs, pos)
+
+        self.variants = variants
+        self.variant_types = variant_types
+
+    def is_super_of(self, sub: TypeSymbol) -> bool:
+        return isinstance(sub, UnionTypeSymbol) and sub is self or isinstance(sub, UnionVariantTypeSymbol) and self.is_super_of(sub.union)
+
+    def __str__(self):
+        return f"union {self.name}"
+
+
+class UnionVariantTypeSymbol(AggTypeSymbol):
+    def __init__(self, name: str, variant: str, index: int, contains: TypeSymbol, union: UnionTypeSymbol, pos: Position):
+        super().__init__(name, union.funcs, pos)
+
+        self.union = union
+        self.index = index
+        self.contains = contains
+        self.variant = variant
+
+    def is_super_of(self, sub: TypeSymbol) -> bool:
+        return isinstance(sub, UnionVariantTypeSymbol) and sub is self
+
+    def __str__(self):
+        return f"{self.union} variant {self.variant}"
 
 
 class IntTypeSymbol(TypeSymbol):

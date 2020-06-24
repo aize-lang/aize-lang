@@ -27,11 +27,17 @@ class IRVisitor(ABC):
             return self.visit_struct(top_level)
         elif isinstance(top_level, ImportIR):
             return self.visit_import(top_level)
+        elif isinstance(top_level, UnionIR):
+            return self.visit_union(top_level)
         else:
             raise TypeError(f"Expected a top-level node, got {top_level}")
 
     @abstractmethod
     def visit_import(self, imp: ImportIR):
+        pass
+
+    @abstractmethod
+    def visit_union(self, union: UnionIR):
         pass
 
     @abstractmethod
@@ -123,12 +129,20 @@ class IRVisitor(ABC):
             return self.visit_get_static_attr_expr(expr)
         elif isinstance(expr, CastIntIR):
             return self.visit_cast_int(expr)
+        elif isinstance(expr, CastUnionIR):
+            return self.visit_cast_union(expr)
         elif isinstance(expr, LambdaIR):
             return self.visit_lambda(expr)
         elif isinstance(expr, TupleIR):
             return self.visit_tuple(expr)
+        elif isinstance(expr, IsIR):
+            return self.visit_is(expr)
         else:
             raise TypeError(f"Expected a expr node, got {expr}")
+
+    @abstractmethod
+    def visit_is(self, is_: IsIR):
+        pass
 
     @abstractmethod
     def visit_tuple(self, tuple: TupleIR):
@@ -187,6 +201,10 @@ class IRVisitor(ABC):
         pass
 
     @abstractmethod
+    def visit_cast_union(self, cast_union: CastUnionIR):
+        pass
+
+    @abstractmethod
     def visit_int(self, num: IntIR):
         pass
 
@@ -215,7 +233,7 @@ class IRVisitor(ABC):
         pass
 
     @abstractmethod
-    def visit_func_type(self, type: FuncAttrIR):
+    def visit_func_type(self, type: FuncTypeIR):
         pass
 
     @abstractmethod
@@ -321,7 +339,7 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
 
     def add_ext(self, ext_type: Type[E]) -> E:
         ext_type: Type[Extension]
-        ext = ext_type.new()
+        ext = ext_type.create()
         self.ir.extensions[ext_type] = ext
         return ext
 
@@ -344,6 +362,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_function(self, func: FunctionIR):
+        pass
+
+    def visit_union(self, union: UnionIR):
         pass
 
     def visit_struct(self, struct: StructIR):
@@ -388,6 +409,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
     def visit_lambda(self, lambda_: LambdaIR):
         pass
 
+    def visit_is(self, is_: IsIR):
+        pass
+
     def visit_compare(self, cmp: CompareIR):
         pass
 
@@ -410,6 +434,9 @@ class IRTreePass(IRVisitor, IRPassClass, ABC):
         pass
 
     def visit_cast_int(self, cast_int: CastIntIR):
+        pass
+
+    def visit_cast_union(self, cast_union: CastUnionIR):
         pass
 
     def visit_intrinsic(self, intrinsic: IntrinsicIR):

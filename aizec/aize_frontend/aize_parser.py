@@ -24,7 +24,7 @@ BASIC_TOKENS = Trie.from_list([
 
 BASIC_START = list(BASIC_TOKENS.children.keys())
 
-KEYWORDS = ['class', 'struct', 'def', 'method', 'attr', 'var', 'while', 'if', 'return', 'else', 'import', 'new']
+KEYWORDS = ['union', 'struct', 'def', 'method', 'attr', 'var', 'while', 'if', 'return', 'else', 'import', 'new', 'switch', 'is']
 
 BIN = '01'
 OCT = BIN + '234567'
@@ -360,15 +360,17 @@ class AizeParser:
         top_levels: List[TopLevelAST] = []
         try:
             while not self.is_done():
-                with self.sync_point("struct", "def", "import", "@"):
+                with self.sync_point("struct", "def", "import", "@", "union"):
                     if self.curr_is("struct"):
                         top_levels += [self.parse_struct()]
                     elif self.curr_is("def") or self.curr_is("@"):
                         top_levels += [self.parse_function()]
                     elif self.curr_is("import"):
                         top_levels += [self.parse_import()]
+                    elif self.curr_is("union"):
+                        top_levels += [self.parse_union()]
                     else:
-                        if self.report_error(f"Expected one of 'class', 'struct', 'def', or 'import' (got {self.curr.text!r})", self.curr):
+                        if self.report_error(f"Expected one of 'union', 'struct', 'def', '@', or 'import' (got {self.curr.text!r})", self.curr):
                             self.synchronize()
                         else:
                             assert False
@@ -380,6 +382,33 @@ class AizeParser:
         finally:
             MessageHandler.flush_messages()
         return SourceAST(source, top_levels)
+
+    def parse_union(self) -> UnionAST:
+        start = self.match_exc("union")
+        name = self.match_exc(Token.IDENTIFIER_TYPE)
+
+        self.match_exc("{")
+        variants: List[VariantAST] = []
+        funcs: List[AggregateFunctionAST] = []
+        while not (end := self.match("}")):
+            with self.sync_point("def"):
+                if self.curr_is(Token.IDENTIFIER_TYPE):
+                    variants.append(self.parse_variant())
+                elif self.curr_is("def"):
+                    funcs.append(self.parse_agg_func())
+                else:
+                    self.report_error("Union body must consist entirely of variants and functions", self.curr)
+                    self.synchronize()
+                    assert False
+        return UnionAST(name.text, variants, funcs, start.pos())
+
+    def parse_variant(self) -> VariantAST:
+        name = self.match_exc(Token.IDENTIFIER_TYPE)
+        self.match_exc("=")
+        with self.with_assign(enabled=False):
+            type = self.parse_expr()
+        self.match_exc(";")
+        return VariantAST(name.text, type, Position.combine(name.pos(), type.pos))
 
     def parse_struct(self) -> StructAST:
         start = self.match("struct")
@@ -574,7 +603,7 @@ class AizeParser:
         return self.parse_assign()
 
     def parse_assign(self) -> ExprAST:
-        expr = self.parse_logic()
+        expr = self.parse_is()
         if self._enable_assign:
             if start := self.match("="):
                 right: ExprAST = self.parse_assign()
@@ -588,6 +617,17 @@ class AizeParser:
                         assert False
                     else:
                         assert False
+        return expr
+
+    def parse_is(self):
+        expr = self.parse_logic()
+        while self.curr_is("is"):
+            is_ = self.match_exc("is")
+            variant = self.match_exc(Token.IDENTIFIER_TYPE)
+            self.match_exc("(")
+            to_var = self.match_exc(Token.IDENTIFIER_TYPE)
+            end = self.match_exc(")")
+            expr = IsExprAST(expr, variant.text, to_var.text, Position.combine(expr.pos, end.pos()))
         return expr
 
     def parse_logic(self) -> ExprAST:

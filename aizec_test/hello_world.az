@@ -2,11 +2,30 @@ import "<local>/thing.az";
 import "<std>/io.az";
 
 
+union Maybe {
+    Some = int32;
+    Could = int8;
+    None = ();
+
+    def expect(self) -> int32 {
+        if (self is Some(n)) {
+            return n;
+        } else {
+            return 0;
+        }
+    }
+}
+
+
 @entry
 def main() -> int32 {
-    var callback: () -> int32 = get_test_callback();
-    var tup: (() -> int32, int32) = (callback, 0);
-    callback();
+    var maybe: Maybe = new Could {@int8(40)};
+#     var none: Maybe = new None {()};
+    if (maybe is Some(n)) {
+        io::print_int(n);
+    } else if (maybe is Could(sn)) {
+        io::print_int(sn);
+    }
     return 0;
 }
 
