@@ -551,7 +551,7 @@ class DefineFunctions(IRLLVMPass):
         self.llvm.expr(set_var, set_to=LLVMData.ExprData(var_ptr, expr_val))
 
     def visit_get_attr(self, get_attr: GetAttrIR):
-        struct_type = self.symbols.get_attr(get_attr).struct_type
+        agg_type = self.symbols.get_attr(get_attr).agg_type
         index = self.symbols.get_attr(get_attr).index
 
         self.visit_expr(get_attr.obj)

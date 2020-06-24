@@ -121,8 +121,8 @@ class SymbolData(Extension):
         return super().set_var(node, set_to)
 
     class GetAttrData:
-        def __init__(self, struct_type: Optional[StructTypeSymbol], index: Optional[int], is_method: Optional[bool], func: Optional[VariableSymbol]):
-            self.struct_type = struct_type
+        def __init__(self, agg_type: Optional[AggTypeSymbol], index: Optional[int], is_method: Optional[bool], func: Optional[VariableSymbol]):
+            self.agg_type = agg_type
             self.index = index
             self.is_method = is_method
             self.func = func

@@ -10,6 +10,8 @@ union Maybe {
     def expect(self) -> int32 {
         if (self is Some(n)) {
             return n;
+        } else if (self is Could(sn)) {
+            return sn;
         } else {
             return 0;
         }
@@ -20,12 +22,7 @@ union Maybe {
 @entry
 def main() -> int32 {
     var maybe: Maybe = new Could {@int8(40)};
-#     var none: Maybe = new None {()};
-    if (maybe is Some(n)) {
-        io::print_int(n);
-    } else if (maybe is Could(sn)) {
-        io::print_int(sn);
-    }
+    io::print_int(maybe.expect());
     return 0;
 }
 

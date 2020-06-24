@@ -236,16 +236,15 @@ class IRSymbolsPass(IRTreePass, ABC):
         else:
             return True
 
-    def check_arguments(self, arguments: List[ExprIR], params: List[TypeSymbol], pos: Position):
+    def check_arguments(self, arguments: List[ExprIR], params: List[TypeSymbol], node: TextIR):
         for arg, param in zip(arguments, params):
             arg_type = self.symbols.expr(arg).return_type
-            if param.is_super_of(arg_type):
+            if errored_type := self.check_type(arg, param, node):
                 pass
             else:
-                msg = TypeCheckingError.expected_type(param, arg_type, arg.pos)
-                MessageHandler.handle_message(msg)
+                pass
 
-        self.check_argument_count(arguments, len(params), pos)
+        self.check_argument_count(arguments, len(params), node.pos)
 
     def check_type(self, expr: ExprIR, expected: TypeSymbol, node: TextIR, decl: Position = None) -> Optional[TypeSymbol]:
         got_type = self.symbols.expr(expr).return_type
@@ -342,8 +341,10 @@ class IRSymbolsPass(IRTreePass, ABC):
                 return cast_expr
             else:
                 raise Exception()
+        elif isinstance(expr_type, UnionTypeSymbol) and isinstance(to_type, UnionTypeSymbol):
+            return expr
         else:
-            raise Exception()
+            raise Exception(expr_type, to_type)
     # endregion
 
     def create_function(self, func: Union[AggFuncIR, FunctionIR, LambdaIR]):
@@ -889,10 +890,10 @@ class ResolveSymbols(IRSymbolsPass):
             return_type = type = self.symbols.type(new.type).resolved_type
             if isinstance(type, StructTypeSymbol):
                 field_types = [field_type for _, (field_type, _) in type.fields.items()]
-                self.check_arguments(new.arguments, field_types, new.pos)
+                self.check_arguments(new.arguments, field_types, new)
                 new.arguments = [self.cast_implicit(arg, field_type) for arg, field_type in zip(new.arguments, field_types)]
             elif isinstance(type, UnionVariantTypeSymbol):
-                self.check_arguments(new.arguments, [type.contains], new.pos)
+                self.check_arguments(new.arguments, [type.contains], new)
                 new.arguments = [self.cast_implicit(new.arguments[0], type.contains)]
 
         self.symbols.expr(new, set_to=SymbolData.ExprData(return_type, False))
@@ -914,7 +915,7 @@ class ResolveSymbols(IRSymbolsPass):
             else:
                 func_type = cast(FunctionTypeSymbol, self.symbols.expr(call.callee).return_type)
                 return_type = func_type.ret
-                self.check_arguments(call.arguments, func_type.params, call.pos)
+                self.check_arguments(call.arguments, func_type.params, call)
                 call.arguments = [self.cast_implicit(arg, param_type) for arg, param_type in zip(call.arguments, func_type.params)]
 
             method_call = MethodCallIR(obj, func_name, call.arguments[1:], call.pos)
@@ -928,7 +929,7 @@ class ResolveSymbols(IRSymbolsPass):
         else:
             func_type = cast(FunctionTypeSymbol, self.symbols.expr(call.callee).return_type)
             return_type = func_type.ret
-            self.check_arguments(call.arguments, func_type.params, call.pos)
+            self.check_arguments(call.arguments, func_type.params, call)
             call.arguments = [self.cast_implicit(arg, param_type) for arg, param_type in zip(call.arguments, func_type.params)]
 
         self.symbols.expr(call, SymbolData.ExprData(return_type, False))
@@ -968,25 +969,25 @@ class ResolveSymbols(IRSymbolsPass):
         index: Optional[int] = None
         is_method: Optional[bool] = None
         func: Optional[VariableSymbol] = None
-        if errored_type := self.check_type_cls([get_attr.obj], StructTypeSymbol, get_attr.pos, "Get Attribute expected a struct"):
+        if errored_type := self.check_type_cls([get_attr.obj], AggTypeSymbol, get_attr.pos, "Get Attribute expected a aggregate"):
             return_type = errored_type
-            struct_type = errored_type
+            agg_type = errored_type
         else:
-            struct_type = cast(StructTypeSymbol, obj_type)
-            if get_attr.attr in struct_type.fields:
-                return_type, _ = struct_type.fields[get_attr.attr]
-                index = list(struct_type.fields.keys()).index(get_attr.attr)
-            elif get_attr.attr in struct_type.funcs:
-                func = struct_type.funcs[get_attr.attr]
+            agg_type = cast(AggTypeSymbol, obj_type)
+            if isinstance(agg_type, StructTypeSymbol) and get_attr.attr in agg_type.fields:
+                return_type, _ = agg_type.fields[get_attr.attr]
+                index = list(agg_type.fields.keys()).index(get_attr.attr)
+            elif get_attr.attr in agg_type.funcs:
+                func = agg_type.funcs[get_attr.attr]
                 return_type = func.type
                 is_method = True
             else:
-                msg = DefinitionError.attr_not_found("field", get_attr.attr, get_attr.pos, struct_type)
+                msg = DefinitionError.attr_not_found("field", get_attr.attr, get_attr.pos, agg_type)
                 MessageHandler.handle_message(msg)
                 return_type = ErroredTypeSymbol(get_attr.pos)
 
         self.symbols.expr(get_attr, set_to=SymbolData.ExprData(return_type, is_lval=obj_is_lval))
-        self.symbols.get_attr(get_attr, set_to=SymbolData.GetAttrData(struct_type, index, is_method, func))
+        self.symbols.get_attr(get_attr, set_to=SymbolData.GetAttrData(agg_type, index, is_method, func))
         return get_attr
 
     def visit_set_attr(self, set_attr: SetAttrIR):
