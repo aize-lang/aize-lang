@@ -2,43 +2,6 @@ import "<local>/thing.az";
 import "<std>/io.az";
 
 
-union Maybe {
-    Some = int32;
-    Could = int8;
-    None = ();
-
-    def expect(self) -> int32 {
-        if (self is Some(n)) {
-            return n;
-        } else if (self is Could(sn)) {
-            return sn;
-        } else {
-            return 0;
-        }
-    }
-}
-
-
-@entry
-def main() -> int32 {
-    var maybe: Maybe = new Could {@int8(40)};
-    io::print_int(maybe.expect());
-    return 0;
-}
-
-
-def get_test_callback() -> () -> int32 {
-    return () -> test();
-}
-
-
-def test() -> int32 {
-    var container: Container = new Container { 30 };
-    container.print_num();
-    return 0;
-}
-
-
 struct Container {
     attr num: int32;
 
@@ -54,4 +17,12 @@ struct Container {
     def get_num(self) -> int32 {
         return self.num;
     }
+}
+
+
+@entry
+def main() -> int32 {
+    var container: Container = new Container {34534};
+    container.print_num();
+    return container.get_num();
 }

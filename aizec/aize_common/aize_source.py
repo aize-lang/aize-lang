@@ -127,6 +127,12 @@ class Position:
     def combine(cls, position, *positions: Position):
         return reduce(lambda a, b: a.to(b), positions, position)
 
+    def is_none(self) -> bool:
+        if isinstance(self, NoPosition):
+            return True
+        else:
+            return False
+
 
 class NoPosition(Position):
     def get_source_name(self) -> str:

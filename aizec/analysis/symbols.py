@@ -42,21 +42,20 @@ class Symbol:
         - `NamespaceSymbol` for namespaces
     """
 
-    def __init__(self, name: str, pos: Position):
+    def __init__(self, name: str, declarer: NodeIR, pos: Position):
         self.name: str = name
         """The name of this symbol, typically what it is called in its parent namespace"""
 
         self.namespace: Union[NamespaceSymbol, None] = None
         """The namespace this symbol is defined in, or None if it is the top-level namespace or unassigned"""
 
+        self.declarer: NodeIR = declarer
         self.position: Position = pos
 
 
 class VariableSymbol(Symbol):
     def __init__(self, name: str, declarer: NodeIR, type: TypeSymbol, pos: Position):
-        super().__init__(name, pos)
-
-        self.declarer: NodeIR = declarer
+        super().__init__(name, declarer, pos)
 
         self.type: TypeSymbol = type
         """A reference to the symbol of the type of this variable"""
@@ -64,12 +63,17 @@ class VariableSymbol(Symbol):
 
 class ErroredVariableSymbol(VariableSymbol):
     def __init__(self, declarer: NodeIR, pos: Position):
-        super().__init__("<errored value>", declarer, ErroredTypeSymbol(pos) ,pos)
+        super().__init__("<errored value>", declarer, ErroredTypeSymbol(declarer, pos) ,pos)
 
 
-class TypeSymbol(Symbol):
-    def __init__(self, name: str, pos: Position):
-        super().__init__(name, pos)
+class TypeSymbol(Symbol, ABC):
+    def __init__(self, name: str, declarer: NodeIR, pos: Position):
+        super().__init__(name, declarer, pos)
+
+    @classmethod
+    @abstractmethod
+    def get_cls_name(cls) -> str:
+        pass
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
         """Check if `other` is a subtype of this type"""
@@ -77,25 +81,37 @@ class TypeSymbol(Symbol):
 
 
 class ErroredTypeSymbol(TypeSymbol):
-    def __init__(self, pos: Position):
-        super().__init__("<errored type>", pos)
+    def __init__(self, declarer: NodeIR, pos: Position):
+        super().__init__("<errored type>", declarer, pos)
+
+    @classmethod
+    def get_cls_name(cls) -> str:
+        return "<errored>"
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
         return False
 
 
 class AggTypeSymbol(TypeSymbol):
-    def __init__(self, name: str, funcs: Dict[str, VariableSymbol], pos: Position):
-        super().__init__(name, pos)
+    def __init__(self, name: str, funcs: Dict[str, VariableSymbol], declarer: NodeIR, pos: Position):
+        super().__init__(name, declarer, pos)
 
         self.funcs = funcs
 
+    @classmethod
+    def get_cls_name(cls) -> str:
+        return "an aggregate"
+
 
 class StructTypeSymbol(AggTypeSymbol):
-    def __init__(self, name: str, fields: Dict[str, Tuple[TypeSymbol, Position]], funcs: Dict[str, VariableSymbol], pos: Position):
-        super().__init__(name, funcs, pos)
+    def __init__(self, name: str, fields: Dict[str, Tuple[TypeSymbol, Position]], funcs: Dict[str, VariableSymbol], declarer: NodeIR, pos: Position):
+        super().__init__(name, funcs, declarer, pos)
 
         self.fields = fields
+
+    @classmethod
+    def get_cls_name(cls) -> str:
+        return "a struct"
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
         return isinstance(sub, StructTypeSymbol) and sub is self
@@ -105,11 +121,17 @@ class StructTypeSymbol(AggTypeSymbol):
 
 
 class UnionTypeSymbol(AggTypeSymbol):
-    def __init__(self, name: str, variants: Dict[str, Tuple[TypeSymbol, Position]], variant_types: Dict[str, UnionVariantTypeSymbol], funcs: Dict[str, VariableSymbol], pos: Position):
-        super().__init__(name, funcs, pos)
+    def __init__(self, name: str,
+                 variants: Dict[str, Tuple[TypeSymbol, Position]],
+                 variant_types: Dict[str, UnionVariantTypeSymbol], funcs: Dict[str, VariableSymbol], declarer: NodeIR, pos: Position):
+        super().__init__(name, funcs, declarer, pos)
 
         self.variants = variants
         self.variant_types = variant_types
+
+    @classmethod
+    def get_cls_name(cls) -> str:
+        return "a union"
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
         return isinstance(sub, UnionTypeSymbol) and sub is self or isinstance(sub, UnionVariantTypeSymbol) and self.is_super_of(sub.union)
@@ -119,13 +141,17 @@ class UnionTypeSymbol(AggTypeSymbol):
 
 
 class UnionVariantTypeSymbol(AggTypeSymbol):
-    def __init__(self, name: str, variant: str, index: int, contains: TypeSymbol, union: UnionTypeSymbol, pos: Position):
-        super().__init__(name, union.funcs, pos)
+    def __init__(self, name: str, variant: str, index: int, contains: TypeSymbol, union: UnionTypeSymbol, declarer: NodeIR, pos: Position):
+        super().__init__(name, union.funcs, declarer, pos)
 
         self.union = union
         self.index = index
         self.contains = contains
         self.variant = variant
+
+    @classmethod
+    def get_cls_name(cls) -> str:
+        return "a union variant"
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
         return isinstance(sub, UnionVariantTypeSymbol) and sub is self
@@ -135,10 +161,14 @@ class UnionVariantTypeSymbol(AggTypeSymbol):
 
 
 class IntTypeSymbol(TypeSymbol):
-    def __init__(self, name: str, signed: bool, bit_size: int, pos: Position):
-        super().__init__(name, pos)
+    def __init__(self, name: str, signed: bool, bit_size: int, declarer: NodeIR, pos: Position):
+        super().__init__(name, declarer, pos)
         self.is_signed = signed
         self.bit_size = bit_size
+
+    @classmethod
+    def get_cls_name(cls) -> str:
+        return "an integer"
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
         return isinstance(sub, IntTypeSymbol) and sub.is_signed == self.is_signed and sub.bit_size <= self.bit_size
@@ -148,9 +178,13 @@ class IntTypeSymbol(TypeSymbol):
 
 
 class TupleTypeSymbol(TypeSymbol):
-    def __init__(self, items: List[TypeSymbol], pos: Position):
-        super().__init__("<tuple type>", pos)
+    def __init__(self, items: List[TypeSymbol], declarer: NodeIR, pos: Position):
+        super().__init__("<tuple type>", declarer, pos)
         self.items = items
+
+    @classmethod
+    def get_cls_name(cls) -> str:
+        return "a tuple"
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
         if not isinstance(sub, TupleTypeSymbol):
@@ -164,10 +198,14 @@ class TupleTypeSymbol(TypeSymbol):
 
 
 class FunctionTypeSymbol(TypeSymbol):
-    def __init__(self, params: List[TypeSymbol], ret: TypeSymbol, pos: Position):
-        super().__init__("<function type>", pos)
+    def __init__(self, params: List[TypeSymbol], ret: TypeSymbol, declarer: NodeIR, pos: Position):
+        super().__init__("<function type>", declarer, pos)
         self.params = params
         self.ret = ret
+
+    @classmethod
+    def get_cls_name(cls) -> str:
+        return "a function"
 
     def is_super_of(self, sub: TypeSymbol) -> bool:
         if not isinstance(sub, FunctionTypeSymbol):
@@ -184,8 +222,8 @@ class FunctionTypeSymbol(TypeSymbol):
 
 
 class NamespaceSymbol(Symbol):
-    def __init__(self, name: str, pos: Position):
-        super().__init__(name, pos)
+    def __init__(self, name: str, declarer: NodeIR, pos: Position):
+        super().__init__(name, declarer, pos)
 
         self.value_symbols: Dict[str, VariableSymbol] = {}
         self.type_symbols: Dict[str, TypeSymbol] = {}
@@ -215,6 +253,16 @@ class NamespaceSymbol(Symbol):
         while curr is not None:
             curr = curr.namespace
         return curr
+
+    def lookup(self, type: str, name: str, *, here: bool = False, nearest: bool = True) -> Symbol:
+        if type == "type":
+            return self.lookup_type(name, here=here, nearest=nearest)
+        elif type == "value":
+            return self.lookup_value(name, here=here, nearest=nearest)
+        elif type == "namespace":
+            return self.lookup_namespace(name, here=here, nearest=nearest)
+        else:
+            raise Exception()
 
     def lookup_type(self, name: str, *, here: bool = False, nearest: bool = True) -> TypeSymbol:
         """
@@ -327,8 +375,8 @@ class NamespaceSymbol(Symbol):
 
 
 class ErroredNamespaceSymbol(NamespaceSymbol):
-    def __init__(self, pos: Position):
-        super().__init__("<errored>", pos)
+    def __init__(self, declarer: NodeIR, pos: Position):
+        super().__init__("<errored>", declarer, pos)
 
     def define_value(self, value: VariableSymbol, as_name: str = None, visible: bool = True):
         raise NotImplementedError()
