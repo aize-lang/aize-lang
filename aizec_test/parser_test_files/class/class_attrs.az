@@ -1,4 +1,0 @@
-class Person {
-    attr name: str;
-    attr age: int;
-}
