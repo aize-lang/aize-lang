@@ -1,0 +1,43 @@
+
+
+static IntContainer = struct {
+    attr item: int;
+
+    method get_item(self) -> int {
+        return self.item;
+    }
+}
+
+
+@memoize
+static def LinkedList(T: static type) -> static type {
+    return struct {
+        attr previous: LinkedList(T)?;
+        attr next: LinkedList(T)?;
+
+        attr data: T;
+
+        def new() -> LinkedList(T) {
+            return
+        }
+    };
+}
+
+
+# static def max(T: static type) -> static def {
+#     static def _max(a: value, b: value) -> value {
+#         assert T:is_super(a.type) && T:is_super(b.type);
+#         dyn {
+#             var _a: T = a;
+#             var _b: T = b;
+#             if (_a >= _b) {
+#                 return _a;
+#             } else {
+#                 return _b;
+#             }
+#         }
+#     }
+#     return _max;
+# }
+#
+# max(int)(5, x)
