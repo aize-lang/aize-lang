@@ -1,0 +1,96 @@
+source: stmt*
+
+?stmt: if_stmt
+     | while_stmt
+     | block_stmt
+     | return_stmt
+     | var_decl_stmt
+     | static_decl_stmt
+     | expr_stmt
+
+if_stmt: "if" "(" expr ")" stmt ["else" stmt]
+while_stmt: "while" "(" expr ")" stmt
+block_stmt: "{" stmt* "}"
+return_stmt: "return" expr ";"
+var_decl_stmt: "var" IDENT [":" expr_no_assign] "=" expr ";"
+static_decl_stmt: "static" IDENT "=" expr ";"
+expr_stmt: expr_without_block ";" | expr_with_block ";"?
+
+?expr: definition
+     | precedence_assign
+?expr_with_block: definition
+?expr_without_block: precedence_assign
+?expr_no_assign: definition
+               | precedence_logic
+
+?definition: trait_expr
+                      | class_expr
+                      | struct_expr
+                      | function_def
+
+trait_expr: "trait" [IDENT] [param_list] "{" trait_body_stmt* "}"
+?trait_body_stmt: function_decl
+
+class_expr: "class" [IDENT] [param_list] ":" expr "{" class_body_stmt* "}"
+?class_body_stmt: function_def
+
+struct_expr: "struct" [IDENT] [param_list] "{" struct_body_stmt* "}"
+?struct_body_stmt: "attr" IDENT ":" expr ";" -> attr
+
+function_def: "def" IDENT param_lists "->" expr "{" stmt* "}"
+function_decl: "def" IDENT param_lists "->" expr ";"
+
+param_lists: param_list*
+param_list: "(" ( param ("," param)* )? ")"
+param: IDENT [":" expr]
+
+?precedence_assign: IDENT "=" precedence_logic -> assign
+                  | precedence_logic
+
+?precedence_logic: precedence_logic "&&" precedence_compare -> logic_and
+                 | precedence_logic "||" precedence_compare -> logic_or
+                 | precedence_compare
+
+?precedence_compare: precedence_addition (_comparison_operator precedence_addition)+ -> comparison_chain
+                   | precedence_addition
+!_comparison_operator: "<" | ">" | "<=" | ">=" | "==" | "!="
+
+?precedence_addition: precedence_addition "+" precedence_multiplication -> add
+                    | precedence_addition "-" precedence_multiplication -> sub
+                    | precedence_multiplication
+
+?precedence_multiplication: precedence_multiplication "*" precedence_unary -> mul
+                          | precedence_multiplication "/" precedence_unary -> int_div
+                          | precedence_multiplication "//" precedence_unary -> float_div
+                          | precedence_multiplication "%" precedence_unary -> mod
+                          | precedence_unary
+
+?precedence_unary: "-" precedence_unary -> neg
+                 | "+" precedence_unary -> pos
+                 | "!" precedence_unary -> not
+                 | precedence_call
+
+?precedence_call: precedence_call "(" argument_list ")" -> function_call
+                | precedence_call ":" IDENT "(" argument_list ")" -> method_call
+                | precedence_call "[" argument_list "]" -> index
+                | precedence_call "." IDENT -> field_access
+                | precedence_call "::" IDENT -> namespace_access
+                | precedence_primary
+
+?precedence_primary: IDENT -> name
+                   | ESCAPED_STRING -> string
+                   | DEC -> decimal
+                   | "(" expr ")"
+
+argument_list: (expr ("," expr)*)?
+
+
+DEC: /-?[0-9]+(.[0-9]+)?/
+IDENT: /[a-zA-Z_][a-zA-Z0-9_]*/
+ESCAPED_STRING: /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/
+
+COMMENT: /#[^\n]*/
+%ignore COMMENT
+
+WS: /\s/
+%ignore WS

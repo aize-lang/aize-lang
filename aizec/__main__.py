@@ -1,4 +1,4 @@
-from aizec.parser import AizeParser, SourceInfo
+from aizec.parse.parser import AizeParser
 from aizec.aize_common import *
 from aizec.common import *
 

@@ -1,43 +1,40 @@
 
+trait Addable(T: type) {
+    def add(a: T, b: T) -> T;
+}
 
-static IntContainer = struct {
-    attr item: int;
 
-    method get_item(self) -> int {
-        return self.item;
+struct Point_t {
+    attr x: i32;
+    attr y: i32;
+    attr z: i32;
+}
+
+
+class Point : Point_t {
+    def new(x: i32, y: i32, z: i32) -> Point {
+        var p: Point = malloc(Point_t);
+        return p;
     }
 }
 
 
-@memoize
-static def LinkedList(T: static type) -> static type {
-    return struct {
-        attr previous: LinkedList(T)?;
-        attr next: LinkedList(T)?;
-
-        attr data: T;
-
-        def new() -> LinkedList(T) {
-            return
-        }
-    };
-}
-
-
-# static def max(T: static type) -> static def {
-#     static def _max(a: value, b: value) -> value {
-#         assert T:is_super(a.type) && T:is_super(b.type);
-#         dyn {
-#             var _a: T = a;
-#             var _b: T = b;
-#             if (_a >= _b) {
-#                 return _a;
-#             } else {
-#                 return _b;
-#             }
-#         }
+# impl Addable(Point) for Point {
+#     def add(a: Point, b: Point) -> Point {
+#         return Point::new(a.x + b.x, a.y + b.y, a.z + b.z);
 #     }
-#     return _max;
-# }
+# };
 #
-# max(int)(5, x)
+# def sum(T: class > Addable(T))(a: T, b: T) -> T {
+#     return T::add(a, b);
+# };
+
+
+def main() -> i32 {
+    var a: Point = Point::new(x=0, y=50, z=-3);
+    var b: Point = Point::new(-3, 4, 7);
+
+    var c: Point = sum(Point)(a, b);
+
+    a.add(b);
+}
